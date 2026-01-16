@@ -1,0 +1,419 @@
+/**
+ * Job generation tools
+ */
+
+import { z } from "zod";
+import * as yaml from "yaml";
+
+export interface WorkflowStep {
+  type: "command" | "script" | "jobref" | "plugin";
+  exec?: string;
+  script?: string;
+  scriptfile?: string;
+  scripturl?: string;
+  jobref?: {
+    name: string;
+    group?: string;
+    args?: string;
+  };
+  plugin?: {
+    type: string;
+    configuration?: Record<string, unknown>;
+  };
+  nodeStep?: boolean;
+  description?: string;
+}
+
+export interface JobOption {
+  name: string;
+  description?: string;
+  required?: boolean;
+  default?: string;
+  values?: string[];
+  valuesUrl?: string;
+  regex?: string;
+  enforcedValues?: boolean;
+  multivalued?: boolean;
+  delimiter?: string;
+  secure?: boolean;
+  valueExposed?: boolean;
+}
+
+/**
+ * Generate a Rundeck job definition
+ */
+export function rundeckGenerateJob(params: {
+  name: string;
+  description?: string;
+  project: string;
+  workflow_steps: WorkflowStep[];
+  node_filter?: string;
+  options?: JobOption[];
+  format?: "yaml" | "json";
+  group?: string;
+  loglevel?: "DEBUG" | "VERBOSE" | "INFO" | "WARN" | "ERROR";
+  timeout?: string;
+  retry?: number | string;
+  multipleExecutions?: boolean;
+}): string {
+  const format = params.format || "yaml";
+  const loglevel = params.loglevel || "INFO";
+
+  // Build workflow sequence
+  const commands: unknown[] = [];
+  for (const step of params.workflow_steps) {
+    if (step.type === "command" && step.exec) {
+      commands.push({ exec: step.exec });
+    } else if (step.type === "script" && step.script) {
+      commands.push({ script: step.script });
+    } else if (step.type === "script" && step.scriptfile) {
+      commands.push({ scriptfile: step.scriptfile });
+    } else if (step.type === "script" && step.scripturl) {
+      commands.push({ scripturl: step.scripturl });
+    } else if (step.type === "jobref" && step.jobref) {
+      commands.push({ jobref: step.jobref });
+    } else if (step.type === "plugin" && step.plugin) {
+      const pluginStep: Record<string, unknown> = {
+        type: step.plugin.type,
+      };
+      if (step.nodeStep !== undefined) {
+        pluginStep.nodeStep = step.nodeStep;
+      }
+      if (step.plugin.configuration) {
+        pluginStep.configuration = step.plugin.configuration;
+      }
+      commands.push(pluginStep);
+    }
+  }
+
+  const job: Record<string, unknown> = {
+    name: params.name,
+    description: params.description || "",
+    loglevel,
+    sequence: {
+      commands,
+    },
+  };
+
+  if (params.group) {
+    job.group = params.group;
+  }
+
+  if (params.node_filter) {
+    job.nodefilters = {
+      filter: params.node_filter,
+    };
+  }
+
+  if (params.options && params.options.length > 0) {
+    const options: Record<string, unknown>[] = [];
+    for (const opt of params.options) {
+      const optionDef: Record<string, unknown> = {
+        name: opt.name,
+      };
+      if (opt.description) optionDef.description = opt.description;
+      if (opt.required !== undefined) optionDef.required = opt.required;
+      if (opt.default !== undefined) optionDef.default = opt.default;
+      if (opt.values) optionDef.values = opt.values;
+      if (opt.valuesUrl) optionDef.valuesUrl = opt.valuesUrl;
+      if (opt.regex) optionDef.regex = opt.regex;
+      if (opt.enforcedValues !== undefined)
+        optionDef.enforcedValues = opt.enforcedValues;
+      if (opt.multivalued !== undefined) optionDef.multivalued = opt.multivalued;
+      if (opt.delimiter) optionDef.delimiter = opt.delimiter;
+      if (opt.secure !== undefined) optionDef.secure = opt.secure;
+      if (opt.valueExposed !== undefined)
+        optionDef.valueExposed = opt.valueExposed;
+      options.push(optionDef);
+    }
+    job.options = options;
+  }
+
+  if (params.timeout) {
+    job.timeout = params.timeout;
+  }
+
+  if (params.retry !== undefined) {
+    job.retry = params.retry;
+  }
+
+  if (params.multipleExecutions !== undefined) {
+    job.multipleExecutions = params.multipleExecutions;
+  }
+
+  if (format === "yaml") {
+    return yaml.stringify([job], { indent: 2 });
+  } else {
+    return JSON.stringify([job], null, 2);
+  }
+}
+
+/**
+ * Validate a job definition
+ */
+export function rundeckValidateJob(params: {
+  job_definition: string;
+  format: "yaml" | "json";
+}): {
+  valid: boolean;
+  errors: string[];
+  warnings: string[];
+} {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+
+    try {
+      let job: unknown;
+
+      if (params.format === "yaml") {
+        job = yaml.parse(params.job_definition);
+      } else {
+        job = JSON.parse(params.job_definition);
+      }
+
+    // Basic validation
+    if (!Array.isArray(job) && typeof job === "object") {
+      job = [job];
+    }
+
+    if (!Array.isArray(job)) {
+      errors.push("Job definition must be an array or object");
+      return { valid: false, errors, warnings };
+    }
+
+    for (const jobItem of job as unknown[]) {
+      if (typeof jobItem !== "object" || jobItem === null) {
+        errors.push("Each job must be an object");
+        continue;
+      }
+
+      const jobObj = jobItem as Record<string, unknown>;
+
+      // Required fields
+      if (!jobObj.name || typeof jobObj.name !== "string") {
+        errors.push("Job must have a 'name' field (string)");
+      }
+
+      if (!jobObj.loglevel || typeof jobObj.loglevel !== "string") {
+        errors.push("Job must have a 'loglevel' field (string)");
+      } else {
+        const validLevels = ["DEBUG", "VERBOSE", "INFO", "WARN", "ERROR"];
+        if (!validLevels.includes(jobObj.loglevel as string)) {
+          errors.push(
+            `Invalid loglevel: ${jobObj.loglevel}. Must be one of: ${validLevels.join(", ")}`
+          );
+        }
+      }
+
+      if (!jobObj.sequence || typeof jobObj.sequence !== "object") {
+        errors.push("Job must have a 'sequence' field (object)");
+      } else {
+        const sequence = jobObj.sequence as Record<string, unknown>;
+        if (!Array.isArray(sequence.commands)) {
+          errors.push("Job sequence must have a 'commands' array");
+        } else if (sequence.commands.length === 0) {
+          warnings.push("Job has no workflow steps");
+        }
+      }
+
+      if (!jobObj.description) {
+        warnings.push("Job has no description");
+      }
+    }
+
+    return {
+      valid: errors.length === 0,
+      errors,
+      warnings,
+    };
+  } catch (error) {
+    errors.push(
+      `Failed to parse ${params.format}: ${error instanceof Error ? error.message : String(error)}`
+    );
+    return { valid: false, errors, warnings };
+  }
+}
+
+/**
+ * Get a job template
+ */
+export function rundeckGetJobTemplate(params: {
+  template_type: string;
+}): string {
+  const templates: Record<string, string> = {
+    "simple-command": `- name: Simple Command Job
+  description: A simple job that runs a command
+  loglevel: INFO
+  sequence:
+    commands:
+      - exec: echo "Hello, World!"`,
+
+    "multi-step": `- name: Multi-Step Job
+  description: A job with multiple workflow steps
+  loglevel: INFO
+  sequence:
+    commands:
+      - exec: echo "Step 1"
+      - exec: echo "Step 2"
+      - exec: echo "Step 3"`,
+
+    scheduled: `- name: Scheduled Job
+  description: A job that runs on a schedule
+  loglevel: INFO
+  schedule:
+    time:
+      hour: '0'
+      minute: '0'
+  sequence:
+    commands:
+      - exec: echo "Scheduled task"`,
+
+    "with-options": `- name: Job with Options
+  description: A job that accepts user input via options
+  loglevel: INFO
+  options:
+    - name: message
+      description: Message to display
+      required: true
+      default: "Hello"
+  sequence:
+    commands:
+      - exec: echo "Message: \${option.message}"`,
+  };
+
+  const template = templates[params.template_type];
+  if (!template) {
+    const available = Object.keys(templates).join(", ");
+    return `Template "${params.template_type}" not found. Available templates: ${available}`;
+  }
+
+  return template;
+}
+
+// Zod schemas
+export const workflowStepSchema = z.object({
+  type: z.enum(["command", "script", "jobref", "plugin"]),
+  exec: z.string().optional(),
+  script: z.string().optional(),
+  scriptfile: z.string().optional(),
+  scripturl: z.string().url().optional(),
+  jobref: z
+    .object({
+      name: z.string(),
+      group: z.string().optional(),
+      args: z.string().optional(),
+    })
+    .optional(),
+  plugin: z
+    .object({
+      type: z.string(),
+      configuration: z.record(z.unknown()).optional(),
+    })
+    .optional(),
+  nodeStep: z.boolean().optional(),
+  description: z.string().optional(),
+});
+
+export const jobOptionSchema = z.object({
+  name: z.string(),
+  description: z.string().optional(),
+  required: z.boolean().optional(),
+  default: z.string().optional(),
+  values: z.array(z.string()).optional(),
+  valuesUrl: z.string().url().optional(),
+  regex: z.string().optional(),
+  enforcedValues: z.boolean().optional(),
+  multivalued: z.boolean().optional(),
+  delimiter: z.string().optional(),
+  secure: z.boolean().optional(),
+  valueExposed: z.boolean().optional(),
+});
+
+export const rundeckGenerateJobSchema = z.object({
+  name: z.string().describe(
+    "Job name. Must be unique within the project. " +
+    "Example: 'Deploy Application', 'Backup Database', 'Run Health Check'"
+  ),
+  description: z.string()
+    .optional()
+    .describe(
+      "Job description. Provides context about what the job does. " +
+      "Example: 'Deploys the latest version of the application to production servers'"
+    ),
+  project: z.string()
+    .describe(
+      "Project name. The Rundeck project this job belongs to. " +
+      "Example: 'production', 'development', 'infrastructure'"
+    ),
+  workflow_steps: z.array(workflowStepSchema)
+    .describe(
+      "Array of workflow step definitions. Each step defines a command, script, job reference, or plugin to execute. " +
+      "Example: [{ type: 'command', exec: 'echo Hello' }, { type: 'script', script: '#!/bin/bash\\necho World' }]"
+    ),
+  node_filter: z.string()
+    .optional()
+    .describe(
+      "Node filter expression. Determines which nodes the job targets. " +
+      "Examples: 'tags: production', 'name: web-.*', 'tags: web AND os-family: linux'"
+    ),
+  options: z.array(jobOptionSchema)
+    .optional()
+    .describe(
+      "Job options. Allow users to provide input when running the job. " +
+      "Example: [{ name: 'environment', description: 'Target environment', required: true, values: ['dev', 'prod'] }]"
+    ),
+  format: z.enum(["yaml", "json"])
+    .optional()
+    .default("yaml")
+    .describe("Output format. YAML is recommended for readability. Default: 'yaml'"),
+  group: z.string()
+    .optional()
+    .describe(
+      "Job group. Organizes jobs into logical groups. " +
+      "Example: 'Deployment', 'Maintenance', 'Monitoring'"
+    ),
+  loglevel: z.enum(["DEBUG", "VERBOSE", "INFO", "WARN", "ERROR"])
+    .optional()
+    .default("INFO")
+    .describe(
+      "Log level. Controls verbosity of job execution logs. " +
+      "Options: DEBUG (most verbose), VERBOSE, INFO (default), WARN, ERROR (least verbose)"
+    ),
+  timeout: z.string()
+    .optional()
+    .describe(
+      "Job timeout. Maximum time the job can run before being killed. " +
+      "Examples: '1h', '30m', '2h30m', '3600s'"
+    ),
+  retry: z.union([z.number(), z.string()])
+    .optional()
+    .describe(
+      "Number of retries. How many times to retry failed steps. " +
+      "Can be a number (e.g., 3) or string (e.g., '3')"
+    ),
+  multipleExecutions: z.boolean()
+    .optional()
+    .describe(
+      "Allow multiple simultaneous executions. " +
+      "If true, the job can run multiple times concurrently. Default: false"
+    ),
+});
+
+export const rundeckValidateJobSchema = z.object({
+  job_definition: z.string()
+    .describe(
+      "Job definition as a YAML or JSON string. " +
+      "Example YAML: 'name: My Job\\nproject: my-project\\nsequence:\\n  commands:\\n    - exec: echo Hello' " +
+      "Example JSON: '{\"name\":\"My Job\",\"project\":\"my-project\",\"sequence\":{\"commands\":[{\"exec\":\"echo Hello\"}]}}'"
+    ),
+  format: z.enum(["yaml", "json"])
+    .describe(
+      "Format of the job definition. Must match the actual format of job_definition. " +
+      "Use 'yaml' for YAML format, 'json' for JSON format"
+    ),
+});
+
+export const rundeckGetJobTemplateSchema = z.object({
+  template_type: z.enum(["simple-command", "multi-step", "scheduled", "with-options"]).describe("Template type"),
+});
+
