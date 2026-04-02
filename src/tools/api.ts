@@ -51,7 +51,11 @@ export async function rundeckApiCall(params: {
   }
 
   const apiBaseUrl = configManager.getApiBaseUrl();
-  const url = new URL(params.endpoint.startsWith("/") ? params.endpoint : `/${params.endpoint}`, apiBaseUrl);
+  // Ensure apiBaseUrl ends with '/' and endpoint doesn't start with '/'
+  // This prevents new URL() from discarding the /api/{version} path
+  const baseUrlWithSlash = apiBaseUrl.endsWith('/') ? apiBaseUrl : apiBaseUrl + '/';
+  const endpointWithoutSlash = params.endpoint.startsWith('/') ? params.endpoint.slice(1) : params.endpoint;
+  const url = new URL(endpointWithoutSlash, baseUrlWithSlash);
 
   // Add query parameters
   if (params.query_params) {
