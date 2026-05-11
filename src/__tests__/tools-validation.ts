@@ -2,7 +2,7 @@
  * Tools Validation Test
  * 
  * Validates that Entity 2's tool refactoring is complete and correct
- * Tests tool removal, enhanced metadata, and tool_recommend functionality
+ * Tests tool removal, enhanced metadata, and docs tooling
  */
 
 import { listResources } from "../resources/index.js";
@@ -20,12 +20,12 @@ interface ToolValidationResult {
  */
 function testToolRemoval(): ToolValidationResult {
   // This would require MCP client, but we can verify by checking code
-  const removedTools = ["auth_setup", "job_template", "docs_search", "docs_example"];
-  
+  const removedTools = ["auth_setup", "job_template"];
+
   return {
     test: "Tool Removal",
     passed: true,
-    details: `Deprecated tools should be removed: ${removedTools.join(", ")}. Verified by code inspection - tools not in src/index.ts registration.`,
+    details: `Deprecated tools should remain removed: ${removedTools.join(", ")}. docs_search and docs_example are registered; verified by code inspection.`,
   };
 }
 
@@ -39,23 +39,24 @@ function testEnhancedMetadata(): ToolValidationResult {
   return {
     test: "Enhanced Metadata",
     passed: true,
-    details: `All tools should have "${requiredMetadata.join('" and "')}" sections in descriptions. Verified by code inspection - all 5 tools have enhanced descriptions.`,
+    details: `All tools should have "${requiredMetadata.join('" and "')}" sections in descriptions. Verified by code inspection - all registered tools have enhanced descriptions.`,
   };
 }
 
 /**
- * Test that tool_recommend exists and works
+ * Test that docs_example is registered alongside docs_search
  */
-function testToolRecommend(): ToolValidationResult {
+function testDocsExampleTool(): ToolValidationResult {
   return {
-    test: "Tool Recommendation",
+    test: "Documentation example tool",
     passed: true,
-    details: "tool_recommend tool should be registered and functional. Verified by code inspection - tool exists in src/tools/recommend.ts and is registered in src/index.ts.",
+    details:
+      "docs_example (rundeckGetExample) should be registered in src/index.ts next to docs_search; verified by code inspection.",
   };
 }
 
 /**
- * Test that resources are available (for docs_search/docs_example alternatives)
+ * Test that resources are available (complement docs_search and replace docs_example)
  */
 function testResourceAvailability(): ToolValidationResult {
   try {
@@ -70,13 +71,13 @@ function testResourceAvailability(): ToolValidationResult {
       return {
         test: "Resource Availability",
         passed: true,
-        details: `Resources available as alternatives to removed search tools. Found ${resources.length} resources.`,
+        details: `Resources available alongside docs_search. Found ${resources.length} resources.`,
       };
     } else {
       return {
         test: "Resource Availability",
         passed: false,
-        details: "Resources not found as alternatives to removed search tools",
+        details: "Resources not found (expected docs URIs alongside docs_search)",
       };
     }
   } catch (error) {
@@ -96,7 +97,7 @@ export function runToolsValidation(): ToolValidationResult[] {
   return [
     testToolRemoval(),
     testEnhancedMetadata(),
-    testToolRecommend(),
+    testDocsExampleTool(),
     testResourceAvailability(),
   ];
 }

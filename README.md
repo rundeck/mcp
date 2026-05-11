@@ -1,8 +1,31 @@
-# Rundeck MCP Server: Technical Capabilities
+# Rundeck MCP Server
+
+## Quick Start
+
+```bash
+# Install dependencies
+npm install
+
+# Develop (runs server with auto-restart)
+npm run dev
+
+# Test with Inspector GUI
+npm run inspect
+
+# Run tests
+npm test
+
+# Full check (build + tests + MCP validation scripts)
+npm run validate
+```
+
+**See [SCRIPTS.md](./SCRIPTS.md) and [COMMANDS.md](./COMMANDS.md)** | **See [SETUP.md](./SETUP.md) for detailed setup**
+
+---
 
 ## Overview
 
-The Rundeck Model Context Protocol (MCP) Server is a comprehensive integration that exposes Rundeck's documentation, APIs, and capabilities to AI assistants through the Model Context Protocol standard. This document outlines the technical capabilities, architecture, and features of the MCP server implementation.
+The Rundeck Model Context Protocol (MCP) Server exposes Rundeck's documentation, APIs, and capabilities to AI assistants through the Model Context Protocol standard. This document covers technical capabilities, architecture, and features of the MCP server implementation.
 
 ## Architecture
 
@@ -12,8 +35,7 @@ The MCP server is built using TypeScript and follows the [MCP TypeScript SDK](ht
 
 1. **Resource Handlers** - Expose documentation as accessible resources
 2. **Tools** - Enable AI assistants to perform actions (API calls, job generation, validation)
-3. **Prompts** - Provide guided workflows for common Rundeck tasks
-4. **Guidance System** - Interactive help when tools are called without required parameters
+3. **Prompts** - Provide guided workflows for common Rundeck tasks (`create-job`, `call-api`, `setup-authentication`, and others)
 
 ## Resources
 
@@ -73,7 +95,7 @@ Resources provide AI assistants with read-only access to Rundeck documentation. 
 
 ## Tools
 
-Tools enable AI assistants to perform actions beyond reading documentation. All tools support "guidance mode" - when called without required parameters, they return step-by-step guidance instead of executing.
+Tools enable AI assistants to perform actions beyond reading documentation. Inputs are validated with Zod; missing required fields return validation errors. Use MCP **prompts** for guided walkthroughs.
 
 ### API Tools
 
@@ -91,8 +113,6 @@ Tools enable AI assistants to perform actions beyond reading documentation. All 
 - Querying projects, jobs, executions, nodes, or system information
 - Triggering job executions via API
 - Managing Rundeck resources programmatically
-
-**Guidance Mode**: Call without `endpoint` parameter for setup guidance.
 
 #### `api_list`
 **Purpose**: List available Rundeck API endpoints with descriptions and categories.
@@ -124,8 +144,6 @@ Tools enable AI assistants to perform actions beyond reading documentation. All 
 - Generating job YAML/JSON for import into Rundeck
 - Building jobs with AI assistance
 
-**Guidance Mode**: Call without required parameters (`name`, `project`, `workflow_steps`) for step-by-step guidance.
-
 #### `job_validate`
 **Purpose**: Validate Rundeck job definitions against Rundeck schemas.
 
@@ -139,8 +157,6 @@ Tools enable AI assistants to perform actions beyond reading documentation. All 
 - Validating job definitions before importing
 - Checking job syntax and structure
 - Debugging job definition errors
-
-**Guidance Mode**: Call without required parameters (`job_definition`, `format`) for validation guidance.
 
 ### Plugin Tools
 
@@ -163,28 +179,17 @@ Tools enable AI assistants to perform actions beyond reading documentation. All 
 - Generating plugin code following best practices
 - Building plugins programmatically
 
-**Guidance Mode**: Call without required parameters (`plugin_type`, `name`, `class_name`) for step-by-step guidance.
+### Documentation tools
 
-### Utility Tools
+#### `docs_search`
+**Purpose**: Search local Rundeck markdown documentation (`RUNDECK_DOCS_PATH`) by keywords, with optional category filters.
 
-#### `tool_recommend` 
-**Purpose**: Recommend which tool to use based on user intent or goal. 
-**Important:** this tool will be used mainly by the entity calling the mcp
-
-**Capabilities**:
-- Intent-based tool recommendation
-- Ranked list of recommended tools
-- Reasoning for each recommendation
-- Guidance on when to use each tool
-
-**When to use**:
-- Unsure which tool to use for a task
-- Want to discover available tools for a specific goal
-- Need guidance on tool selection
+#### `docs_example`
+**Purpose**: Extract code blocks for topic slugs such as `api-job-run`, `job-yaml-basic`, and `node-filter`. Use with `docs_search` or resources for full context.
 
 ## Prompts
 
-Prompts provide pre-configured, guided workflows for common Rundeck tasks. They combine documentation references, tool recommendations, and step-by-step instructions.
+Prompts provide pre-configured, guided workflows for common Rundeck tasks. They combine documentation references and step-by-step instructions.
 
 ### Available Prompts
 
@@ -223,29 +228,11 @@ Prompts provide pre-configured, guided workflows for common Rundeck tasks. They 
 - **Examples**: Each prompt includes usage examples
 - **Validation**: Prompt arguments are validated using Zod schemas
 
-## Guidance System
-
-The guidance system provides interactive help when tools are called without required parameters. Instead of returning errors, tools return comprehensive, step-by-step guidance.
-
-### Guidance Features
-
-- **Context-Aware**: Guidance references relevant resources and documentation
-- **Actionable**: Provides clear next steps and examples
-- **Tool-Specific**: Each tool has tailored guidance content
-- **Resource Links**: Guidance includes links to relevant documentation resources
-
-### Tools with Guidance Mode
-
-- `api_call` - API usage and authentication setup guidance
-- `job_create` - Job creation workflow guidance
-- `job_validate` - Validation process guidance
-- `plugin_create` - Plugin development guidance
-
 ## Technical Specifications
 
 ### Dependencies
 
-- **@modelcontextprotocol/sdk**: ^1.0.4 - MCP protocol implementation
+- **@modelcontextprotocol/sdk**: MCP protocol implementation (see `package.json` for the pinned version)
 - **marked**: ^12.0.0 - Markdown parsing
 - **yaml**: ^2.4.2 - YAML parsing and generation
 - **zod**: ^3.23.8 - Schema validation
@@ -270,11 +257,8 @@ The server is configured via environment variables:
 
 ### Testing
 
-- **Unit Tests**: 131 tests covering all components
-- **Integration Tests**: 21 tests validating cross-component functionality
-- **MCP Inspector Validation**: Protocol compliance testing
-- **Browser Validation**: Client integration testing
-- **Subagent Validation**: Real-world AI assistant testing
+- **Jest**: `npm test` — unit and integration tests (see `src/__tests__/`)
+- **Full pipeline**: `npm run validate` — build, Jest, then `run-all-validations.js` (browser / tools / inspector / subagent scripts under `dist/__tests__/`)
 
 ### Deployment
 

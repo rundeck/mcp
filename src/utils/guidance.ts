@@ -430,7 +430,7 @@ All plugins require:
 
 1. Use \`plugin_create\` with required parameters to generate plugin code
 2. Review plugin documentation: \`rundeck://docs/developer/plugins\`
-3. Review specific plugin type docs: \`rundeck://docs/developer/plugin/{type}\`
+3. Review specific plugin type docs (e.g. \`rundeck://docs/developer/plugin/step-plugins\`, \`rundeck://docs/developer/plugin/notification-plugins\`)
 4. Implement the TODO sections in generated code
 5. Package as .jar file with proper manifest entries
 6. Deploy to \`$RDECK_BASE/libext\` directory

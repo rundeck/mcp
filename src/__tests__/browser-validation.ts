@@ -125,7 +125,7 @@ function testToolsList(): Promise<BrowserValidationResult> {
 
     const timeout = setTimeout(() => {
       serverProcess.kill();
-      const expectedTools = ["api_call", "api_list", "job_create", "job_validate", "tool_recommend", "plugin_create"];
+      const expectedTools = ["api_call", "api_list", "job_create", "job_validate", "docs_search", "docs_example", "plugin_create"];
       const allFound = expectedTools.every(tool => output.includes(tool));
       if (allFound) {
         resolve({
@@ -145,7 +145,7 @@ function testToolsList(): Promise<BrowserValidationResult> {
 
     serverProcess.stdout.on("data", (data) => {
       output += data.toString();
-      const expectedTools = ["api_call", "api_list", "job_create", "job_validate", "tool_recommend", "plugin_create"];
+      const expectedTools = ["api_call", "api_list", "job_create", "job_validate", "docs_search", "docs_example", "plugin_create"];
       const allFound = expectedTools.every(tool => output.includes(tool));
       if (allFound) {
         clearTimeout(timeout);

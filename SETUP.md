@@ -18,6 +18,10 @@ npm install
 npm run build
 ```
 
+3. See available commands:
+   - For a complete guide to all npm scripts, see [SCRIPTS.md](./SCRIPTS.md)
+   - Quick reference: `npm run build`, `npm start`, `npm run dev`, `npm test`, `npm run validate`
+
 ## Configuration
 
 The server supports the following environment variables:
@@ -42,6 +46,8 @@ The server supports the following environment variables:
   - Should match your Rundeck instance API version
   - Example: `46`
 
+- **`RUNDECK_SKIP_OPENAPI_VALIDATE`** (optional): When set to `1`, disables pre-request validation of `api_call` query keys and JSON body top-level keys against the OpenAPI file shipped with the docs tree (`RUNDECK_DOCS_PATH/.vuepress/public/files/rundeck-api.yml`). Useful if you intentionally send parameters not yet documented in that spec.
+
 ### Configuration Methods
 
 #### Option 1: MCP Settings (Recommended)
@@ -65,11 +71,13 @@ Note: When running via MCP client, shell environment variables may not be availa
 
 ## Running the Server
 
-The server communicates via stdio using the MCP protocol:
+The server communicates via stdio using the MCP protocol. After `npm run build`:
 
 ```bash
-node dist/index.js
+npm start
 ```
+
+Equivalent: `node dist/index.js`.
 
 ## Testing
 
@@ -124,11 +132,11 @@ For Claude Desktop, add to your MCP settings file (typically `~/Library/Applicat
 ## Development
 
 ```bash
-# Watch mode for development
+# TypeScript watch + server auto-restart (see SCRIPTS.md)
 npm run dev
 
-# Build for production
-npm run build
+# Optional: MCP Inspector GUI (builds then opens inspector)
+npm run inspect
 ```
 
 ## Troubleshooting

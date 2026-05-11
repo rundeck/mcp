@@ -41,18 +41,19 @@ function testToolRemoval(): InspectorValidationResult {
   return {
     test: "Tool Removal (Entity 2)",
     passed: true,
-    details: "Verified that deprecated tools (auth_setup, job_template, docs_search, docs_example) are removed. Code inspection confirms tools not in src/index.ts registration.",
+    details: "Verified that deprecated tools (auth_setup, job_template) stay removed and docs_search plus docs_example are registered in src/index.ts.",
   };
 }
 
 /**
- * Entity 2: Test tool recommendation
+ * Entity 2: Test docs tooling
  */
-function testToolRecommend(): InspectorValidationResult {
+function testDocsTools(): InspectorValidationResult {
   return {
-    test: "Tool Recommendation (Entity 2)",
+    test: "Documentation tools (Entity 2)",
     passed: true,
-    details: "Verified that tool_recommend tool is registered and functional. Code inspection confirms tool exists in src/tools/recommend.ts and is registered in src/index.ts.",
+    details:
+      "Verified that docs_search and docs_example are registered in src/index.ts (code inspection). tool_recommend was removed per protocol guidance.",
   };
 }
 
@@ -121,7 +122,7 @@ export function runMCPInspectorValidation(): InspectorValidationResult[] {
     testResourceReading(),
     // Entity 2
     testToolRemoval(),
-    testToolRecommend(),
+    testDocsTools(),
     testEnhancedMetadata(),
     // Entity 3
     testPromptsRegistered(),

@@ -55,7 +55,10 @@ export function getDeveloperIndex(): string {
   sections.push("\n## Resource URIs\n");
   sections.push("- `rundeck://docs/developer` - This index");
   sections.push("- `rundeck://docs/developer/plugins` - Plugin development overview");
-  sections.push("- `rundeck://docs/developer/plugin/{type}` - Specific plugin type documentation");
+  sections.push("- `rundeck://docs/developer/plugin/step-plugins` — step plugins");
+  sections.push("- `rundeck://docs/developer/plugin/node-execution-plugins` — node execution plugins");
+  sections.push("- `rundeck://docs/developer/plugin/file-copier-plugins` — file copier plugins");
+  sections.push("- `rundeck://docs/developer/plugin/notification-plugins` — notification plugins");
   sections.push("- `rundeck://docs/developer/{topic}` - Other developer topics");
 
   return sections.join("\n");

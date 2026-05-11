@@ -29,26 +29,20 @@ import {
   rundeckValidateJobSchema,
 } from "./tools/jobs.js";
 import {
-  toolRecommend,
-  toolRecommendSchema,
-} from "./tools/recommend.js";
-import {
   pluginCreate,
   pluginCreateSchema,
 } from "./tools/plugins.js";
+import {
+  rundeckSearchDocs,
+  rundeckSearchDocsSchema,
+  rundeckGetExample,
+  rundeckGetExampleSchema,
+} from "./tools/search.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
 import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { JsonSchema7Type } from "zod-to-json-schema";
-import {
-  getJobCreationGuidance,
-  getApiCallGuidance,
-  getProjectConfigGuidance,
-  getNodeFilterGuidance,
-  getPluginIntegrationGuidance,
-  getPluginCreationGuidance,
-} from "./utils/guidance.js";
 import { prompts, getPrompt } from "./prompts/index.js";
 
 // Initialize configuration
@@ -119,6 +113,14 @@ function convertSchema(schema: any): any {
   }
 }
 
+const apiCallInputSchema = convertSchema(rundeckApiCallSchema);
+const apiListInputSchema = convertSchema(rundeckListEndpointsSchema);
+const jobCreateInputSchema = convertSchema(rundeckGenerateJobSchema);
+const jobValidateInputSchema = convertSchema(rundeckValidateJobSchema);
+const docsSearchInputSchema = convertSchema(rundeckSearchDocsSchema);
+const docsExampleInputSchema = convertSchema(rundeckGetExampleSchema);
+const pluginCreateInputSchema = convertSchema(pluginCreateSchema);
+
 // List tools
 server.setRequestHandler(ListToolsRequestSchema, async (request) => {
   logger.logRequest("tools/list", request.params);
@@ -139,8 +141,8 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 - Validating job definitions (use job_validate instead)
 
 **Authentication:** Set RUNDECK_URL and RUNDECK_TOKEN environment variables before calling.
-Call without required params for setup guidance.`,
-      inputSchema: convertSchema(rundeckApiCallSchema),
+Guided flows: MCP prompts \`setup-authentication\` and \`call-api\`.`,
+      inputSchema: apiCallInputSchema,
     },
     {
       name: "api_list",
@@ -156,7 +158,7 @@ Call without required params for setup guidance.`,
 - Reading API documentation (use rundeck://api resource instead)
 
 **Example:** List all job-related endpoints by calling with category: "jobs"`,
-      inputSchema: convertSchema(rundeckListEndpointsSchema),
+      inputSchema: apiListInputSchema,
     },
     {
       name: "job_create",
@@ -172,9 +174,9 @@ Call without required params for setup guidance.`,
 - Making API calls (use api_call instead)
 - Reading job documentation (use rundeck://docs/manual/jobs resource instead)
 
-**Guidance Mode:** Call without required params (name, project, workflow_steps) to get step-by-step guidance on job creation.
+For a guided authoring flow, open the MCP prompt \`create-job\`.
 **Resources:** See rundeck://docs/manual/jobs for comprehensive job documentation.`,
-      inputSchema: convertSchema(rundeckGenerateJobSchema),
+      inputSchema: jobCreateInputSchema,
     },
     {
       name: "job_validate",
@@ -190,26 +192,40 @@ Call without required params for setup guidance.`,
 - Making API calls (use api_call instead)
 - Reading job schema (use rundeck://jobs/schema resource instead)
 
-**Guidance Mode:** Call without required params (job_definition, format) to get validation guidance.
 **Output:** Returns validation result with errors and warnings.`,
-      inputSchema: convertSchema(rundeckValidateJobSchema),
+      inputSchema: jobValidateInputSchema,
     },
     {
-      name: "tool_recommend",
-      description: `Recommend which tool to use based on your intent or goal.
+      name: "docs_search",
+      description: `Search local Rundeck documentation (markdown under RUNDECK_DOCS_PATH) by keywords and phrases.
 
 **When to use:**
-- Unsure which tool to use for a task
-- Want to discover available tools for a specific goal
-- Need guidance on tool selection
+- Finding where a topic, term, or feature is documented before opening a resource
+- Exploring the docs when you do not know the exact \`rundeck://\` URI
+- Getting ranked excerpts and file paths to narrow which resource to read next
 
 **When NOT to use:**
-- You already know which tool to use
-- Looking for documentation (use resources instead: rundeck://docs/*)
+- Reading a full document you already identified (use resources/read with the \`rundeck://...\` URI)
+- Making API calls to a Rundeck server (use api_call)
+- Generating jobs or plugins (use job_create or plugin_create)
 
-**Example:** Call with intent: "I want to create a job that runs a command" to get recommendations.
-**Output:** Returns ranked list of recommended tools with reasoning and when to use each.`,
-      inputSchema: convertSchema(toolRecommendSchema),
+**Follow-up:** Prefer \`resources/read\` on the best match for complete, authoritative content.`,
+      inputSchema: docsSearchInputSchema,
+    },
+    {
+      name: "docs_example",
+      description: `Extract code-block examples from local Rundeck documentation for a known topic slug.
+
+**When to use:**
+- You want runnable or copy-paste examples for a topic such as \`api-job-run\`, \`job-yaml-basic\`, or \`node-filter\`
+- \`docs_search\` narrowed the file and you need concrete snippets
+
+**When NOT to use:**
+- Full-document reading (use \`resources/read\` with a \`rundeck://...\` URI)
+- Free-text exploration (use \`docs_search\`)
+
+**Parameter \`topic\`:** Use short topic keys (e.g. \`api-job-run\`, \`workflow-steps\`) or terms to match doc paths.`,
+      inputSchema: docsExampleInputSchema,
     },
     {
       name: "plugin_create",
@@ -232,9 +248,9 @@ Call without required params for setup guidance.`,
 - file-copier: Copies files to nodes
 - notification: Sends notifications on job events
 
-**Guidance Mode:** Call without required params (plugin_type, name, class_name) to get step-by-step guidance on plugin creation.
+For a guided flow, open the MCP prompt \`integrate-plugin\` (or \`create-job\` when embedding plugins in jobs).
 **Resources:** See rundeck://docs/developer/plugins for comprehensive plugin documentation.`,
-      inputSchema: convertSchema(pluginCreateSchema),
+      inputSchema: pluginCreateInputSchema,
     },
   ];
   logger.info(`Returning ${tools.length} tools`);
@@ -254,13 +270,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
-      case "api_call":
-        // Check for guidance mode (missing required params - endpoint is required, method has default)
-        if (needsGuidance(args, ["endpoint"])) {
-          logger.info("api_call called without required params - returning guidance");
-          return returnGuidance(getApiCallGuidance());
-        }
-        const apiResult = await rundeckApiCall(args as any);
+      case "api_call": {
+        const parsed = rundeckApiCallSchema.parse(args ?? {});
+        const apiResult = await rundeckApiCall(parsed);
         return {
           content: [
             {
@@ -269,9 +281,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
         };
+      }
 
-      case "api_list":
-        const endpoints = rundeckListEndpoints(args as any);
+      case "api_list": {
+        const parsed = rundeckListEndpointsSchema.parse(args ?? {});
+        const endpoints = rundeckListEndpoints(parsed);
         return {
           content: [
             {
@@ -280,14 +294,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
         };
+      }
 
-      case "job_create":
-        // Check for guidance mode (missing required params)
-        if (needsGuidance(args, ["name", "project", "workflow_steps"])) {
-          logger.info("job_create called without required params - returning guidance");
-          return returnGuidance(getJobCreationGuidance());
-        }
-        const jobDef = rundeckGenerateJob(args as any);
+      case "job_create": {
+        const parsed = rundeckGenerateJobSchema.parse(args ?? {});
+        const jobDef = rundeckGenerateJob(parsed);
         return {
           content: [
             {
@@ -296,33 +307,11 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             },
           ],
         };
+      }
 
-      case "job_validate":
-        // Check for guidance mode (missing required params)
-        if (needsGuidance(args, ["job_definition", "format"])) {
-          logger.info("job_validate called without required params - returning guidance");
-          return returnGuidance(`# Validating a Rundeck Job
-
-## Overview
-Validate a Rundeck job definition to ensure it follows the correct schema and format.
-
-## Required Parameters
-- **job_definition** (string): The job definition as a YAML or JSON string
-- **format** ("yaml" | "json"): The format of the job definition
-
-## Usage Example
-\`\`\`
-job_validate({
-  job_definition: "name: My Job\\nproject: my-project\\n...",
-  format: "yaml"
-})
-\`\`\`
-
-## Resources
-- Job Schema: \`rundeck://jobs/schema\`
-- Job Creation Guide: Call \`job_create\` without parameters`);
-        }
-        const validation = rundeckValidateJob(args as any);
+      case "job_validate": {
+        const parsed = rundeckValidateJobSchema.parse(args ?? {});
+        const validation = rundeckValidateJob(parsed);
         return {
           content: [
             {
@@ -331,28 +320,40 @@ job_validate({
             },
           ],
         };
+      }
 
-      case "tool_recommend":
-        const recommendations = toolRecommend(args as any);
+      case "docs_search": {
+        const parsed = rundeckSearchDocsSchema.parse(args ?? {});
+        const searchHits = rundeckSearchDocs(parsed);
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(recommendations, null, 2),
+              text: JSON.stringify(searchHits, null, 2),
             },
           ],
         };
+      }
 
-      case "plugin_create":
-        // Check for guidance mode (missing required params)
-        if (needsGuidance(args, ["plugin_type", "name", "class_name"])) {
-          logger.info("plugin_create called without required params - returning guidance");
-          return returnGuidance(getPluginCreationGuidance());
-        }
+      case "docs_example": {
+        const parsed = rundeckGetExampleSchema.parse(args ?? {});
+        const exampleText = rundeckGetExample(parsed);
+        return {
+          content: [
+            {
+              type: "text",
+              text: exampleText,
+            },
+          ],
+        };
+      }
+
+      case "plugin_create": {
+        const parsed = pluginCreateSchema.parse(args ?? {});
         try {
-          const pluginResult = pluginCreate(args as any);
-          const responseText = pluginResult.warnings 
-            ? `# Generated Plugin Code\n\n\`\`\`java\n${pluginResult.code}\n\`\`\`\n\n## Warnings\n${pluginResult.warnings.map(w => `- ${w}`).join("\n")}`
+          const pluginResult = pluginCreate(parsed);
+          const responseText = pluginResult.warnings
+            ? `# Generated Plugin Code\n\n\`\`\`java\n${pluginResult.code}\n\`\`\`\n\n## Warnings\n${pluginResult.warnings.map((w) => `- ${w}`).join("\n")}`
             : `# Generated Plugin Code\n\n\`\`\`java\n${pluginResult.code}\n\`\`\``;
           return {
             content: [
@@ -366,13 +367,21 @@ job_validate({
           const errorMessage = error instanceof Error ? error.message : String(error);
           throw new Error(`Plugin creation failed: ${errorMessage}`);
         }
+      }
 
       default:
         logger.warn(`Unknown tool requested: ${name}`);
-        throw new Error(`Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, tool_recommend, plugin_create. Use tool_recommend to find the right tool for your task.`);
+        throw new Error(
+          `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, docs_search, docs_example, plugin_create.`
+        );
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage =
+      error instanceof z.ZodError
+        ? error.issues.map((e) => `${e.path.join(".") || "(root)"}: ${e.message}`).join("; ")
+        : error instanceof Error
+          ? error.message
+          : String(error);
     logger.error(`Tool error for ${name}`, error);
     return {
       content: [
@@ -389,21 +398,22 @@ job_validate({
 // List prompts
 server.setRequestHandler(ListPromptsRequestSchema, async (request) => {
   logger.logRequest("prompts/list", request.params);
-  
+
   const promptList = prompts.map((prompt) => {
-    const promptArgs = prompt.arguments?.map((arg) => ({
-      name: arg.name,
-      description: arg.description,
-      required: arg.required,
-    })) || [];
-    
+    const promptArgs =
+      prompt.arguments?.map((arg) => ({
+        name: arg.name,
+        description: arg.description,
+        required: arg.required,
+      })) || [];
+
     return {
       name: prompt.name,
       description: prompt.description,
       arguments: promptArgs,
     };
   });
-  
+
   logger.info(`Returning ${promptList.length} prompts`);
   const result = {
     prompts: promptList,
@@ -415,131 +425,61 @@ server.setRequestHandler(ListPromptsRequestSchema, async (request) => {
 // Get prompt
 server.setRequestHandler(GetPromptRequestSchema, async (request) => {
   const { name, arguments: args } = request.params;
-  
+
   logger.logRequest("prompts/get", request.params);
-  
-  try {
-    // Find prompt
-    const prompt = getPrompt(name);
-    
-    if (!prompt) {
-      const availablePrompts = prompts.map((p) => p.name).join(", ");
-      const errorMessage = `Prompt "${name}" not found. Available prompts: ${availablePrompts}`;
-      logger.warn(errorMessage);
-      return {
-        content: [
-          {
-            type: "text",
-            text: errorMessage,
-          },
-        ],
-        isError: true,
-      };
-    }
-    
-    // Validate arguments if schema exists
-    if (prompt.argumentSchema && args) {
-      try {
-        prompt.argumentSchema.parse(args);
-      } catch (validationError) {
-        if (validationError instanceof z.ZodError) {
-          const errorMessages = validationError.errors.map((err) => 
-            `${err.path.join(".")}: ${err.message}`
-          ).join("; ");
-          const errorMessage = `Invalid arguments for prompt "${name}": ${errorMessages}`;
-          logger.warn(errorMessage);
-          return {
-            content: [
-              {
-                type: "text",
-                text: errorMessage,
-              },
-            ],
-            isError: true,
-          };
-        }
-      }
-    }
-    
-    // Check for missing required arguments
-    if (prompt.arguments) {
-      const missingRequired = prompt.arguments
-        .filter((arg) => arg.required && (!args || !(arg.name in args)))
-        .map((arg) => arg.name);
-      
-      if (missingRequired.length > 0) {
-        const errorMessage = `Missing required arguments for prompt "${name}": ${missingRequired.join(", ")}`;
+
+  const prompt = getPrompt(name);
+
+  if (!prompt) {
+    const availablePrompts = prompts.map((p) => p.name).join(", ");
+    const errorMessage = `Prompt "${name}" not found. Available prompts: ${availablePrompts}`;
+    logger.warn(errorMessage);
+    throw new Error(errorMessage);
+  }
+
+  if (prompt.argumentSchema && args) {
+    try {
+      prompt.argumentSchema.parse(args);
+    } catch (validationError) {
+      if (validationError instanceof z.ZodError) {
+        const errorMessages = validationError.issues
+          .map((err) => `${err.path.join(".")}: ${err.message}`)
+          .join("; ");
+        const errorMessage = `Invalid arguments for prompt "${name}": ${errorMessages}`;
         logger.warn(errorMessage);
-        return {
-          content: [
-            {
-              type: "text",
-              text: errorMessage,
-            },
-          ],
-          isError: true,
-        };
+        throw new Error(errorMessage);
       }
+      throw validationError;
     }
-    
-    // Generate prompt content
-    const content = prompt.getContent(args || {});
-    
-    logger.logResponse("prompts/get", { name, hasContent: !!content });
-    return {
-      messages: [
-        {
-          role: "user",
-          content: {
-            type: "text",
-            text: content,
-          },
-        },
-      ],
-    };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error(`Error getting prompt "${name}":`, errorMessage);
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Error retrieving prompt "${name}": ${errorMessage}`,
-        },
-      ],
-      isError: true,
-    };
   }
-});
 
-// Prompts are now registered as first-class MCP feature
-// Guidance mode in tools provides similar functionality when tools are called without required params
+  if (prompt.arguments) {
+    const missingRequired = prompt.arguments
+      .filter((arg) => arg.required && (!args || !(arg.name in args)))
+      .map((arg) => arg.name);
 
-/**
- * Helper function to check if required fields are missing
- */
-function needsGuidance(params: unknown, requiredFields: string[]): boolean {
-  if (!params || typeof params !== "object") {
-    return true;
+    if (missingRequired.length > 0) {
+      const errorMessage = `Missing required arguments for prompt "${name}": ${missingRequired.join(", ")}`;
+      logger.warn(errorMessage);
+      throw new Error(errorMessage);
+    }
   }
-  
-  const args = params as Record<string, unknown>;
-  return requiredFields.some((field) => !(field in args) || args[field] === undefined || args[field] === null);
-}
 
-/**
- * Helper function to format guidance as tool response
- */
-function returnGuidance(guidanceContent: string) {
+  const content = prompt.getContent(args || {});
+
+  logger.logResponse("prompts/get", { name, hasContent: !!content });
   return {
-    content: [
+    messages: [
       {
-        type: "text",
-        text: guidanceContent,
+        role: "user",
+        content: {
+          type: "text",
+          text: content,
+        },
       },
     ],
   };
-}
+});
 
 // Error handling
 server.onerror = (error) => {
