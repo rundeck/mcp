@@ -1,44 +1,33 @@
 /**
  * Integration Tests: All Tools Together
  *
- * Tests that all tools from Entity 2 and Entity 4 work together harmoniously
+ * MCP exposes five Phase 1 tools; plugin/docs-example helpers live in modules but are not registered.
  */
 
 import { pluginCreate, pluginCreateSchema } from "../../tools/plugins.js";
-import { rundeckGetExample } from "../../tools/search.js";
 import { rundeckGenerateJob, rundeckValidateJob } from "../../tools/jobs.js";
 import { rundeckApiCall, rundeckListEndpoints } from "../../tools/api.js";
 
 describe("Integration: All Tools Together", () => {
-  it("should list all tools correctly", () => {
+  it("should list all MCP tools correctly (Phase 1 surface)", () => {
     const expectedTools = [
       "api_call",
       "api_list",
       "job_create",
       "job_validate",
       "docs_search",
-      "docs_example",
-      "plugin_create",
     ];
 
-    // Verify tool schemas exist
     expect(pluginCreateSchema).toBeDefined();
-    expect(typeof rundeckGetExample).toBe("function");
     expect(typeof rundeckGenerateJob).toBe("function");
     expect(typeof rundeckValidateJob).toBe("function");
     expect(typeof rundeckApiCall).toBe("function");
     expect(typeof rundeckListEndpoints).toBe("function");
 
-    expect(expectedTools.length).toBe(7);
+    expect(expectedTools.length).toBe(5);
   });
 
-  it("should extract documentation examples via docs_example (topic)", () => {
-    const text = rundeckGetExample({ topic: "api-job-run" });
-    expect(typeof text).toBe("string");
-    expect(text.length).toBeGreaterThan(0);
-  });
-
-  it("should generate plugin and validate job that uses it", () => {
+  it("should generate plugin code via module (not MCP) and validate job that uses it", () => {
     const plugin = pluginCreate({
       plugin_type: "node-step",
       name: "test-integration-plugin",
@@ -75,11 +64,5 @@ describe("Integration: All Tools Together", () => {
 
     expect(validation).toBeDefined();
     expect(validation.valid).toBeDefined();
-  });
-
-  it("should run docs_example for multiple known topics without throwing", () => {
-    for (const topic of ["job-yaml-basic", "node-filter"]) {
-      expect(() => rundeckGetExample({ topic })).not.toThrow();
-    }
   });
 });

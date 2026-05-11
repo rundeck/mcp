@@ -7,7 +7,6 @@
 import { pluginCreate } from "../../tools/plugins.js";
 import { handleResource } from "../../resources/index.js";
 import { getPrompt } from "../../prompts/index.js";
-import { rundeckGetExample } from "../../tools/search.js";
 
 describe("Integration: Cross-Entity Functionality", () => {
   it("should use resources to inform plugin creation", () => {
@@ -39,16 +38,9 @@ describe("Integration: Cross-Entity Functionality", () => {
     
     expect(content).toBeDefined();
     if (content) {
-      // Should reference plugin_create tool (Entity 4)
-      expect(content).toContain("plugin_create");
-      // Prompt may reference tools or resources
+      expect(content).toContain("rundeck://docs/developer");
       expect(content.length).toBeGreaterThan(0);
     }
-  });
-
-  it("should expose docs_example output that complements developer resources", () => {
-    const topicExamples = rundeckGetExample({ topic: "workflow-steps" });
-    expect(topicExamples.length).toBeGreaterThanOrEqual(0);
   });
 
   it("should use resources to answer plugin-related questions", () => {

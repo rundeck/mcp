@@ -29,14 +29,8 @@ import {
   rundeckValidateJobSchema,
 } from "./tools/jobs.js";
 import {
-  pluginCreate,
-  pluginCreateSchema,
-} from "./tools/plugins.js";
-import {
   rundeckSearchDocs,
   rundeckSearchDocsSchema,
-  rundeckGetExample,
-  rundeckGetExampleSchema,
 } from "./tools/search.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
@@ -44,6 +38,15 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import type { JsonSchema7Type } from "zod-to-json-schema";
 import { prompts, getPrompt } from "./prompts/index.js";
+
+/*
+ * Phase 1 (internal release, PRD): do not register `plugin_create` as an MCP tool —
+ * plugin scaffolding is explicitly out of scope for P1. Implementation remains in
+ * `src/tools/plugins.ts` for Phase 2+.
+ *
+ * `rundeckGetExample` in `search.ts` is likewise not exposed as `docs_example`
+ * for P1; use `docs_search` + `resources/read` instead.
+ */
 
 // Initialize configuration
 configManager.initialize();
@@ -118,8 +121,6 @@ const apiListInputSchema = convertSchema(rundeckListEndpointsSchema);
 const jobCreateInputSchema = convertSchema(rundeckGenerateJobSchema);
 const jobValidateInputSchema = convertSchema(rundeckValidateJobSchema);
 const docsSearchInputSchema = convertSchema(rundeckSearchDocsSchema);
-const docsExampleInputSchema = convertSchema(rundeckGetExampleSchema);
-const pluginCreateInputSchema = convertSchema(pluginCreateSchema);
 
 // List tools
 server.setRequestHandler(ListToolsRequestSchema, async (request) => {
@@ -207,50 +208,10 @@ For a guided authoring flow, open the MCP prompt \`create-job\`.
 **When NOT to use:**
 - Reading a full document you already identified (use resources/read with the \`rundeck://...\` URI)
 - Making API calls to a Rundeck server (use api_call)
-- Generating jobs or plugins (use job_create or plugin_create)
+- Generating jobs (use job_create)
 
 **Follow-up:** Prefer \`resources/read\` on the best match for complete, authoritative content.`,
       inputSchema: docsSearchInputSchema,
-    },
-    {
-      name: "docs_example",
-      description: `Extract code-block examples from local Rundeck documentation for a known topic slug.
-
-**When to use:**
-- You want runnable or copy-paste examples for a topic such as \`api-job-run\`, \`job-yaml-basic\`, or \`node-filter\`
-- \`docs_search\` narrowed the file and you need concrete snippets
-
-**When NOT to use:**
-- Full-document reading (use \`resources/read\` with a \`rundeck://...\` URI)
-- Free-text exploration (use \`docs_search\`)
-
-**Parameter \`topic\`:** Use short topic keys (e.g. \`api-job-run\`, \`workflow-steps\`) or terms to match doc paths.`,
-      inputSchema: docsExampleInputSchema,
-    },
-    {
-      name: "plugin_create",
-      description: `Generate a Rundeck plugin code in Java or Groovy.
-
-**When to use:**
-- Creating new Rundeck plugins (node steps, workflow steps, file copiers, notifications)
-- Generating plugin code following Rundeck conventions
-- Building plugins programmatically
-
-**When NOT to use:**
-- Reading plugin documentation (use resources instead: rundeck://docs/developer/*)
-- Creating job definitions (use job_create instead)
-- Making API calls (use api_call instead)
-
-**Supported plugin types:**
-- node-step: Executes on each node in a workflow
-- workflow-step: Executes once per workflow
-- remote-script-node-step: Generates script/command for remote execution
-- file-copier: Copies files to nodes
-- notification: Sends notifications on job events
-
-For a guided flow, open the MCP prompt \`integrate-plugin\` (or \`create-job\` when embedding plugins in jobs).
-**Resources:** See rundeck://docs/developer/plugins for comprehensive plugin documentation.`,
-      inputSchema: pluginCreateInputSchema,
     },
   ];
   logger.info(`Returning ${tools.length} tools`);
@@ -335,44 +296,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      case "docs_example": {
-        const parsed = rundeckGetExampleSchema.parse(args ?? {});
-        const exampleText = rundeckGetExample(parsed);
-        return {
-          content: [
-            {
-              type: "text",
-              text: exampleText,
-            },
-          ],
-        };
-      }
-
-      case "plugin_create": {
-        const parsed = pluginCreateSchema.parse(args ?? {});
-        try {
-          const pluginResult = pluginCreate(parsed);
-          const responseText = pluginResult.warnings
-            ? `# Generated Plugin Code\n\n\`\`\`java\n${pluginResult.code}\n\`\`\`\n\n## Warnings\n${pluginResult.warnings.map((w) => `- ${w}`).join("\n")}`
-            : `# Generated Plugin Code\n\n\`\`\`java\n${pluginResult.code}\n\`\`\``;
-          return {
-            content: [
-              {
-                type: "text",
-                text: responseText,
-              },
-            ],
-          };
-        } catch (error) {
-          const errorMessage = error instanceof Error ? error.message : String(error);
-          throw new Error(`Plugin creation failed: ${errorMessage}`);
-        }
-      }
-
       default:
         logger.warn(`Unknown tool requested: ${name}`);
         throw new Error(
-          `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, docs_search, docs_example, plugin_create.`
+          `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, docs_search.`
         );
     }
   } catch (error) {

@@ -428,10 +428,10 @@ All plugins require:
 
 ## Next Steps
 
-1. Use \`plugin_create\` with required parameters to generate plugin code
+1. Follow plugin documentation resources below (Phase 1 does not expose an MCP plugin generator tool)
 2. Review plugin documentation: \`rundeck://docs/developer/plugins\`
 3. Review specific plugin type docs (e.g. \`rundeck://docs/developer/plugin/step-plugins\`, \`rundeck://docs/developer/plugin/notification-plugins\`)
-4. Implement the TODO sections in generated code
+4. Implement plugin logic and tests in your project
 5. Package as .jar file with proper manifest entries
 6. Deploy to \`$RDECK_BASE/libext\` directory
 
@@ -444,32 +444,14 @@ All plugins require:
 - Notification Plugins: \`rundeck://docs/developer/plugin/notification-plugins\`
 - Plugin Configuration: \`rundeck://config/plugins\`
 
-## Example Usage
+## Example shape (reference)
 
-\`\`\`
-plugin_create({
-  plugin_type: "node-step",
-  name: "my-custom-step",
-  class_name: "MyCustomStep",
-  description: "A custom node step plugin",
-  package_name: "com.example.rundeck",
-  properties: [
-    {
-      name: "timeout",
-      type: "Integer",
-      description: "Timeout in seconds",
-      required: true,
-      default: 30
-    },
-    {
-      name: "environment",
-      type: "Select",
-      description: "Target environment",
-      required: true,
-      values: ["dev", "staging", "production"]
-    }
-  ]
-})
+When plugin codegen is re-enabled, parameters follow the schema in \`src/tools/plugins.ts\`. For Phase 1, implement from the resources above.
+
+\`\`\`text
+plugin_type: node-step
+name: my-custom-step
+class_name: MyCustomStep
 \`\`\``;
 }
 

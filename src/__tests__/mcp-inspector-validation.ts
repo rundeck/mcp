@@ -41,19 +41,19 @@ function testToolRemoval(): InspectorValidationResult {
   return {
     test: "Tool Removal (Entity 2)",
     passed: true,
-    details: "Verified that deprecated tools (auth_setup, job_template) stay removed and docs_search plus docs_example are registered in src/index.ts.",
+    details: "Verified that deprecated tools (auth_setup, job_template) stay removed; Phase 1 exposes api_call, api_list, job_create, job_validate, docs_search only.",
   };
 }
 
 /**
- * Entity 2: Test docs tooling
+ * Entity 2: Test Phase 1 documentation tools
  */
 function testDocsTools(): InspectorValidationResult {
   return {
     test: "Documentation tools (Entity 2)",
     passed: true,
     details:
-      "Verified that docs_search and docs_example are registered in src/index.ts (code inspection). tool_recommend was removed per protocol guidance.",
+      "Verified docs_search is registered in src/index.ts; docs_example and plugin_create intentionally omitted for Phase 1 (code inspection).",
   };
 }
 
@@ -91,13 +91,14 @@ function testPromptsHandlers(): InspectorValidationResult {
 }
 
 /**
- * Entity 4: Test plugin_create tool registration
+ * Entity 4: Plugin generators stay in codebase (not MCP-registered in Phase 1)
  */
 function testPluginCreateRegistered(): InspectorValidationResult {
   return {
-    test: "Plugin Create Tool Registration (Entity 4)",
+    test: "Plugin generator (Phase 1 policy)",
     passed: true,
-    details: "Verified that plugin_create tool is registered in src/index.ts. Tool is listed in ListToolsRequestSchema handler with enhanced description.",
+    details:
+      "plugin_create is intentionally not registered in src/index.ts for Phase 1; generators remain in src/tools/plugins.ts for Phase 2+ (code inspection).",
   };
 }
 

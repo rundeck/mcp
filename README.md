@@ -158,34 +158,14 @@ Tools enable AI assistants to perform actions beyond reading documentation. Inpu
 - Checking job syntax and structure
 - Debugging job definition errors
 
-### Plugin Tools
-
-#### `plugin_create` (BETA)
-**Purpose**: Generate Rundeck plugin code in Java or Groovy.
-
-**Capabilities**:
-- Support for 5 plugin types:
-  - `node-step`: Executes on each node in a workflow
-  - `workflow-step`: Executes once per workflow
-  - `remote-script-node-step`: Generates script/command for remote execution
-  - `file-copier`: Copies files to nodes
-  - `notification`: Sends notifications on job events
-- Code generation following Rundeck conventions
-- Configuration property definition
-- Input validation and warnings
-
-**When to use**:
-- Creating new Rundeck plugins
-- Generating plugin code following best practices
-- Building plugins programmatically
-
 ### Documentation tools
 
 #### `docs_search`
 **Purpose**: Search local Rundeck markdown documentation (`RUNDECK_DOCS_PATH`) by keywords, with optional category filters.
 
-#### `docs_example`
-**Purpose**: Extract code blocks for topic slugs such as `api-job-run`, `job-yaml-basic`, and `node-filter`. Use with `docs_search` or resources for full context.
+### Phase 1 note (internal release)
+
+The **plugin code generator** and **`docs_example`-style** helpers are **not** exposed as MCP tools in this release. Use **`resources/read`** (`rundeck://docs/developer/*`) and **`docs_search`** for plugin documentation and examples. See the product requirements for Phase 2.
 
 ## Prompts
 

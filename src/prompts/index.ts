@@ -560,7 +560,7 @@ Job > Project > System
 - Node Step Plugins: \`rundeck://docs/developer/plugins\`
 - Workflow Step Plugins: \`rundeck://docs/developer/plugins\`
 - Plugin Configuration: \`rundeck://docs/administration/configuration\`
-- Plugin Creation: Use \`plugin_create\` tool (when available) to generate plugin code`;
+- Plugin development: see resources above; plugin scaffolding is not an MCP tool in Phase 1`;
   },
 };
 

@@ -25,7 +25,7 @@ function testToolRemoval(): ToolValidationResult {
   return {
     test: "Tool Removal",
     passed: true,
-    details: `Deprecated tools should remain removed: ${removedTools.join(", ")}. docs_search and docs_example are registered; verified by code inspection.`,
+    details: `Deprecated tools should remain removed: ${removedTools.join(", ")}. Phase 1 registers docs_search only (no docs_example, no plugin_create MCP tool); verified by code inspection.`,
   };
 }
 
@@ -44,14 +44,14 @@ function testEnhancedMetadata(): ToolValidationResult {
 }
 
 /**
- * Test that docs_example is registered alongside docs_search
+ * Phase 1: docs_example and plugin_create are not MCP tools
  */
-function testDocsExampleTool(): ToolValidationResult {
+function testPhase1DelistedTools(): ToolValidationResult {
   return {
-    test: "Documentation example tool",
+    test: "Phase 1 tool policy",
     passed: true,
     details:
-      "docs_example (rundeckGetExample) should be registered in src/index.ts next to docs_search; verified by code inspection.",
+      "docs_example and plugin_create are intentionally not registered in src/index.ts; use docs_search + resources for examples; see PRD P1 scope.",
   };
 }
 
@@ -97,7 +97,7 @@ export function runToolsValidation(): ToolValidationResult[] {
   return [
     testToolRemoval(),
     testEnhancedMetadata(),
-    testDocsExampleTool(),
+    testPhase1DelistedTools(),
     testResourceAvailability(),
   ];
 }
