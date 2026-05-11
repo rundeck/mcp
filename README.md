@@ -19,7 +19,7 @@ npm test
 npm run validate
 ```
 
-**See [SETUP.md](./SETUP.md) for detailed setup** and [`package.json`](./package.json) (`scripts`) for runnable commands.
+**See [SCRIPTS.md](./SCRIPTS.md) and [COMMANDS.md](./COMMANDS.md)** | **See [SETUP.md](./SETUP.md) for detailed setup**
 
 ---
 
@@ -95,7 +95,7 @@ Resources provide AI assistants with read-only access to Rundeck documentation. 
 
 ## Tools
 
-Tools enable AI assistants to perform actions beyond reading documentation. Inputs are validated with Zod; missing required fields return validation errors. Use MCP **prompts** for guided walkthroughs.
+Tools enable AI assistants to perform actions beyond reading documentation. Inputs are validated with Zod. For **`api_call`**, **`job_create`**, and **`job_validate`**, omitting required arguments (or leaving string fields blank) returns **markdown onboarding** in the normal tool response so the agent can steer the user; malformed types, enums, OpenAPI-shape checks, and other invalid input still return **validation errors**. Use MCP **prompts** for full guided workflows.
 
 ### API Tools
 
@@ -238,7 +238,7 @@ The server is configured via environment variables:
 ### Testing
 
 - **Jest**: `npm test` — unit and integration tests (see `src/__tests__/`)
-- **Full pipeline**: `npm run validate` — build, Jest, then `src/__tests__/run-all-validations.ts` (compiled to `dist/__tests__/`, runs browser / tools / inspector / subagent checks)
+- **Full pipeline**: `npm run validate` — build, Jest, then `run-all-validations.js` (browser / tools / inspector / subagent scripts under `dist/__tests__/`)
 
 ### Deployment
 

@@ -140,6 +140,29 @@ You can also use the \`call-api\` prompt via \`prompts/get\` for API guidance:
 - API Examples: \`rundeck://api/examples\``;
 }
 
+export function getJobValidationGuidance(): string {
+  return `# Validating a Rundeck Job
+
+## Overview
+Validate a Rundeck job definition against expected structure before import.
+
+## Required Parameters
+- **job_definition** (string): The job as a YAML or JSON string
+- **format** (\`yaml\` | \`json\`): Must match how \`job_definition\` is encoded
+
+## Example
+\`\`\`
+job_validate({
+  job_definition: "name: My Job\\nproject: my-project\\nsequence:\\n  commands:\\n    - exec: echo hello",
+  format: "yaml"
+})
+\`\`\`
+
+## Resources
+- Job schema: \`rundeck://jobs/schema\`
+- Authoring: MCP prompt \`create-job\` or tool \`job_create\``;
+}
+
 export function getProjectConfigGuidance(): string {
   return `# Configuring a Rundeck Project
 

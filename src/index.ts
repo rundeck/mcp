@@ -32,6 +32,11 @@ import {
   rundeckSearchDocs,
   rundeckSearchDocsSchema,
 } from "./tools/search.js";
+import {
+  getApiCallGuidance,
+  getJobCreationGuidance,
+  getJobValidationGuidance,
+} from "./utils/guidance.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
 import { z } from "zod";
@@ -142,7 +147,8 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 - Validating job definitions (use job_validate instead)
 
 **Authentication:** Set RUNDECK_URL and RUNDECK_TOKEN environment variables before calling.
-Guided flows: MCP prompts \`setup-authentication\` and \`call-api\`.`,
+Guided flows: MCP prompts \`setup-authentication\` and \`call-api\`.
+**Guidance:** Omit \`endpoint\` (or pass it empty) to receive step-by-step API usage instructions in the tool result.`,
       inputSchema: apiCallInputSchema,
     },
     {
@@ -176,6 +182,7 @@ Guided flows: MCP prompts \`setup-authentication\` and \`call-api\`.`,
 - Reading job documentation (use rundeck://docs/manual/jobs resource instead)
 
 For a guided authoring flow, open the MCP prompt \`create-job\`.
+**Guidance:** Omit any of \`name\`, \`project\`, or \`workflow_steps\` to receive job-authoring instructions in the tool result.
 **Resources:** See rundeck://docs/manual/jobs for comprehensive job documentation.`,
       inputSchema: jobCreateInputSchema,
     },
@@ -193,7 +200,8 @@ For a guided authoring flow, open the MCP prompt \`create-job\`.
 - Making API calls (use api_call instead)
 - Reading job schema (use rundeck://jobs/schema resource instead)
 
-**Output:** Returns validation result with errors and warnings.`,
+**Output:** Returns validation result with errors and warnings.
+**Guidance:** Omit \`job_definition\` or \`format\` (or pass empty \`job_definition\`) to receive validation instructions in the tool result.`,
       inputSchema: jobValidateInputSchema,
     },
     {
@@ -232,6 +240,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
   try {
     switch (name) {
       case "api_call": {
+        if (needsGuidanceForApiCall(args)) {
+          logger.info("api_call missing endpoint — returning guidance");
+          return returnGuidanceMarkdown(getApiCallGuidance());
+        }
         const parsed = rundeckApiCallSchema.parse(args ?? {});
         const apiResult = await rundeckApiCall(parsed);
         return {
@@ -258,6 +270,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "job_create": {
+        if (needsGuidance(args, ["name", "project", "workflow_steps"])) {
+          logger.info("job_create missing required params — returning guidance");
+          return returnGuidanceMarkdown(getJobCreationGuidance());
+        }
         const parsed = rundeckGenerateJobSchema.parse(args ?? {});
         const jobDef = rundeckGenerateJob(parsed);
         return {
@@ -271,6 +287,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       }
 
       case "job_validate": {
+        if (needsGuidance(args, ["job_definition", "format"])) {
+          logger.info("job_validate missing required params — returning guidance");
+          return returnGuidanceMarkdown(getJobValidationGuidance());
+        }
         const parsed = rundeckValidateJobSchema.parse(args ?? {});
         const validation = rundeckValidateJob(parsed);
         return {
@@ -321,6 +341,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     };
   }
 });
+
+/** Missing / empty required tool args → return onboarding markdown instead of a bare Zod error. */
+function needsGuidance(params: unknown, requiredFields: string[]): boolean {
+  if (!params || typeof params !== "object") {
+    return true;
+  }
+  const o = params as Record<string, unknown>;
+  return requiredFields.some((field) => missingRequiredScalar(o[field]));
+}
+
+function missingRequiredScalar(value: unknown): boolean {
+  if (value === undefined || value === null) {
+    return true;
+  }
+  if (typeof value === "string" && value.trim() === "") {
+    return true;
+  }
+  return false;
+}
+
+function needsGuidanceForApiCall(params: unknown): boolean {
+  if (!params || typeof params !== "object") {
+    return true;
+  }
+  return missingRequiredScalar((params as Record<string, unknown>).endpoint);
+}
+
+function returnGuidanceMarkdown(markdown: string) {
+  return {
+    content: [{ type: "text" as const, text: markdown }],
+  };
+}
 
 // List prompts
 server.setRequestHandler(ListPromptsRequestSchema, async (request) => {

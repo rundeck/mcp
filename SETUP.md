@@ -32,13 +32,12 @@ The server supports the following environment variables:
   - If not set, the server searches for docs in: `./docs/docs`, `../docs/docs`, `./docs`, `../docs`
   - Example: `/path/to/rundeck/docs`
 
-- **`RUNDECK_URL`** (optional): Rundeck instance URL for API calls
-  - Required for using API tools (`api_call`, `api_list`)
+- **`RUNDECK_URL`** (optional): Rundeck instance URL for **live** API calls (`api_call` only)
+  - Not required for documentation, `docs_search`, `api_list` (endpoint discovery from local docs), prompts, or resources
   - Example: `https://your-rundeck-instance.com`
 
 - **`RUNDECK_TOKEN`** (optional): Rundeck API authentication token
-  - Required for using API tools (`api_call`)
-  - Can be generated from your Rundeck instance user profile
+  - Required for **`api_call`** only (can be generated from your Rundeck user profile)
   - Example: `your-api-token-here`
 
 - **`RUNDECK_API_VERSION`** (optional): Rundeck API version
