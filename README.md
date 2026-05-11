@@ -19,7 +19,7 @@ npm test
 npm run validate
 ```
 
-**See [SCRIPTS.md](./SCRIPTS.md) and [COMMANDS.md](./COMMANDS.md)** | **See [SETUP.md](./SETUP.md) for detailed setup**
+**See [SETUP.md](./SETUP.md) for detailed setup** and [`package.json`](./package.json) (`scripts`) for runnable commands.
 
 ---
 
@@ -238,7 +238,7 @@ The server is configured via environment variables:
 ### Testing
 
 - **Jest**: `npm test` — unit and integration tests (see `src/__tests__/`)
-- **Full pipeline**: `npm run validate` — build, Jest, then `run-all-validations.js` (browser / tools / inspector / subagent scripts under `dist/__tests__/`)
+- **Full pipeline**: `npm run validate` — build, Jest, then `src/__tests__/run-all-validations.ts` (compiled to `dist/__tests__/`, runs browser / tools / inspector / subagent checks)
 
 ### Deployment
 
