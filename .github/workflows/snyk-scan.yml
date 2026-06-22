@@ -1,0 +1,46 @@
+name: Snyk Security Scan
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  snyk_security:
+    name: Snyk Security Scan
+    runs-on: ubuntu-latest
+    if: ${{ secrets.SNYK_TOKEN != '' && secrets.CLOUDSMITH_NPM_TOKEN != '' }}
+    permissions:
+      contents: read
+
+    env:
+      SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+      CLOUDSMITH_NPM_TOKEN: ${{ secrets.CLOUDSMITH_NPM_TOKEN }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Snyk CLI
+        run: npm install -g snyk@1.1304.1 --userconfig=.npmrc
+
+      - name: Verify Snyk installation
+        run: snyk --version
+
+      - name: Authenticate Snyk
+        run: snyk auth "$SNYK_TOKEN"
+
+      - name: Run Snyk monitor (default branch only)
+        if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+        run: snyk monitor --all-projects
+
+      - name: Test for vulnerabilities
+        run: snyk test --all-projects --severity-threshold=high
