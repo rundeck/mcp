@@ -5,10 +5,28 @@ on:
   push:
 
 jobs:
+  check_secrets:
+    name: Check required secrets
+    runs-on: ubuntu-latest
+    outputs:
+      has_secrets: ${{ steps.check.outputs.has_secrets }}
+    steps:
+      - id: check
+        env:
+          SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
+          CLOUDSMITH_NPM_TOKEN: ${{ secrets.CLOUDSMITH_NPM_TOKEN }}
+        run: |
+          if [ -n "$SNYK_TOKEN" ] && [ -n "$CLOUDSMITH_NPM_TOKEN" ]; then
+            echo "has_secrets=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_secrets=false" >> "$GITHUB_OUTPUT"
+          fi
+
   snyk_security:
     name: Snyk Security Scan
     runs-on: ubuntu-latest
-    if: ${{ secrets.SNYK_TOKEN != '' && secrets.CLOUDSMITH_NPM_TOKEN != '' }}
+    needs: check_secrets
+    if: needs.check_secrets.outputs.has_secrets == 'true'
     permissions:
       contents: read
 
