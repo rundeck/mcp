@@ -8,6 +8,9 @@ jobs:
   snyk_security:
     name: Snyk Security Scan
     runs-on: ubuntu-latest
+    if: ${{ secrets.SNYK_TOKEN != '' && secrets.CLOUDSMITH_NPM_TOKEN != '' }}
+    permissions:
+      contents: read
 
     env:
       SNYK_TOKEN: ${{ secrets.SNYK_TOKEN }}
