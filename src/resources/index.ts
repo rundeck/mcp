@@ -60,6 +60,15 @@ import {
 import {
   getSalesforceAlternatives,
 } from "./integrations.js";
+import {
+  getTerraformIndex,
+  getTerraformProvider,
+  getTerraformProject,
+  getTerraformJob,
+  getTerraformAclPolicy,
+  getTerraformKeyStorage,
+  getTerraformExamples,
+} from "./terraform.js";
 import { readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { configManager } from "../config.js";
@@ -305,6 +314,20 @@ export function handleResource(uri: string): string {
         }
       }
 
+      // Terraform provider documentation: rundeck://docs/terraform
+      if (category === "terraform") {
+        if (!section) return getTerraformIndex();
+        if (section === "provider") return getTerraformProvider();
+        if (section === "examples") return getTerraformExamples();
+        if (section === "resources") {
+          if (!topic) return getTerraformIndex();
+          if (topic === "project") return getTerraformProject();
+          if (topic === "job") return getTerraformJob();
+          if (topic === "acl-policy") return getTerraformAclPolicy();
+          if (topic === "key-storage" || topic === "private-key" || topic === "public-key" || topic === "password") return getTerraformKeyStorage();
+        }
+      }
+
       // API documentation: rundeck://docs/api (alias for rundeck://api)
       if (category === "api") {
         if (!section) {
@@ -402,6 +425,15 @@ export function listResources(): Array<{ uri: string; description: string }> {
     
     // Integrations documentation
     { uri: "rundeck://docs/integrations/salesforce", description: "Salesforce integration alternatives" },
+
+    // Terraform provider documentation
+    { uri: "rundeck://docs/terraform", description: "Rundeck Terraform provider overview and index" },
+    { uri: "rundeck://docs/terraform/provider", description: "Provider configuration reference (auth, URL, env vars)" },
+    { uri: "rundeck://docs/terraform/resources/project", description: "rundeck_project resource reference" },
+    { uri: "rundeck://docs/terraform/resources/job", description: "rundeck_job resource reference (commands, options, schedule, notifications)" },
+    { uri: "rundeck://docs/terraform/resources/acl-policy", description: "rundeck_acl_policy resource reference" },
+    { uri: "rundeck://docs/terraform/resources/key-storage", description: "Key storage resources: rundeck_private_key, rundeck_public_key, rundeck_password" },
+    { uri: "rundeck://docs/terraform/examples", description: "Complete HCL examples: full project, multi-project, import" },
   ];
 }
 

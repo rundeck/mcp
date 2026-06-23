@@ -1,0 +1,108 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Quick Start (first-time setup)
+
+After cloning the repo, run the setup skill to install dependencies, configure your Rundeck credentials, and start the MCP server:
+
+```
+/rundeck-mcp-setup
+```
+
+The skill will walk you through the full setup interactively.
+
+## Commands
+
+```bash
+# Install dependencies
+npm install
+
+# Build (TypeScript → dist/)
+npm run build
+
+# Development mode (TypeScript watch + nodemon auto-restart)
+npm run dev
+
+# Run all tests
+npm test
+
+# Run tests in watch mode
+npm test:watch
+
+# Run a single test file
+NODE_OPTIONS=--experimental-vm-modules npx jest src/__tests__/tools/api.test.ts
+
+# Full validation (build + test + integration validations)
+npm run validate
+
+# Launch MCP Inspector for protocol testing
+npm run inspect
+```
+
+## Architecture
+
+This is a **Model Context Protocol (MCP) server** that exposes Rundeck documentation and APIs to AI assistants via stdio transport. The server registers three MCP feature types: **resources**, **tools**, and **prompts**.
+
+### Request lifecycle (`src/index.ts`)
+
+`index.ts` is the sole entry point. It creates the MCP `Server`, registers handlers for all six MCP request types (`ListResources`, `ReadResource`, `ListTools`, `CallTool`, `ListPrompts`, `GetPrompt`), and starts a stdio transport. All tool dispatch lives in the `CallToolRequestSchema` handler's `switch` statement.
+
+**Guidance mode**: Tools called without their required parameters return markdown help text instead of executing. The `needsGuidance()` helper checks for missing required fields; `returnGuidance()` wraps the text in an MCP content response. Guidance content lives in `src/utils/guidance.ts`.
+
+### Resources (`src/resources/`)
+
+`src/resources/index.ts` owns the URI routing. It parses `rundeck://` URIs and dispatches to category-specific modules:
+
+| Module | URI prefix | Content source |
+|---|---|---|
+| `api.ts` | `rundeck://api/*` | Static inline markdown |
+| `jobs.ts` | `rundeck://jobs/*` | Static inline markdown |
+| `config.ts` | `rundeck://config/*` | Static inline markdown |
+| `learning.ts` | `rundeck://learn/*` | Reads from `RUNDECK_DOCS_PATH` |
+| `plugins.ts` | `rundeck://plugins/*` | Reads from `RUNDECK_DOCS_PATH` |
+| `manual.ts` | `rundeck://docs/manual/*` | Reads from `RUNDECK_DOCS_PATH` |
+| `administration.ts` | `rundeck://docs/administration/*` | Reads from `RUNDECK_DOCS_PATH` |
+| `developer.ts` | `rundeck://docs/developer/*` | Reads from `RUNDECK_DOCS_PATH` |
+| `rd-cli.ts` | `rundeck://docs/rd-cli/*` | Reads from `RUNDECK_DOCS_PATH` |
+| `integrations.ts` | `rundeck://docs/integrations/*` | Static inline markdown |
+
+Resources that read from the filesystem use `configManager.getConfig().docsPath` resolved at runtime. The docs path defaults to `./docs/docs` relative to cwd but is overridable via `RUNDECK_DOCS_PATH`.
+
+### Tools (`src/tools/`)
+
+| File | Tools registered |
+|---|---|
+| `api.ts` | `api_call`, `api_list` |
+| `jobs.ts` | `job_create`, `job_validate` |
+| `plugins.ts` | `plugin_create` |
+| `recommend.ts` | `tool_recommend` |
+
+Each tool exports its handler function and a Zod schema. Schemas are converted to JSON Schema via `zod-to-json-schema` in `index.ts` when responding to `ListTools`.
+
+`api_call` reads `RUNDECK_URL` and `RUNDECK_TOKEN` from `configManager` (which lazily refreshes from environment). The base URL is constructed as `{RUNDECK_URL}/api/{RUNDECK_API_VERSION}`.
+
+### Configuration (`src/config.ts`)
+
+`ConfigManager` is a singleton (`configManager`). It lazy-loads env vars on `getConfig()` calls when URL or token is missing. The `docsPath` is resolved once at construction and on `initialize()`, searching several candidate paths relative to cwd.
+
+### Prompts (`src/prompts/index.ts`)
+
+Prompts are static objects with `name`, `description`, `arguments`, optional `argumentSchema` (Zod), and a `getContent(args)` function. Argument validation and missing-required-arg checks happen in `index.ts` before calling `getContent`.
+
+## Environment Variables
+
+| Variable | Default | Purpose |
+|---|---|---|
+| `RUNDECK_URL` | — | Rundeck instance URL (required for `api_call`) |
+| `RUNDECK_TOKEN` | — | API token (required for `api_call`) |
+| `RUNDECK_API_VERSION` | `46` | API version appended to base URL |
+| `RUNDECK_DOCS_PATH` | auto-detected | Path to Rundeck docs directory |
+| `MCP_DEBUG` | — | Set to `1` or `true` for verbose logging |
+
+## Project conventions
+
+- The project uses **ES modules** (`"type": "module"` in package.json). All local imports must use `.js` extensions even for `.ts` source files.
+- TypeScript is compiled to `dist/` with `ES2022` target and `strict` mode enabled.
+- Tests use `jest` with `ts-jest` ESM preset. The `NODE_OPTIONS=--experimental-vm-modules` flag is required.
+- Coverage thresholds are enforced at 70% for branches, functions, lines, and statements.
