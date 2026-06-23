@@ -305,7 +305,6 @@ export function handleResource(uri: string): string {
         }
       }
 
-
       // API documentation: rundeck://docs/api (alias for rundeck://api)
       if (category === "api") {
         if (!section) {
