@@ -76,7 +76,7 @@ export async function rundeckApiCall(params: {
   };
 
   if (params.body && (params.method === "POST" || params.method === "PUT" || params.method === "PATCH")) {
-    options.body = typeof params.body === "string" ? params.body : JSON.stringify(params.body);
+    options.body = JSON.stringify(params.body);
   }
 
   try {
@@ -159,10 +159,10 @@ export const rundeckApiCallSchema = z.object({
       "HTTP method. GET for retrieving data, POST for creating/triggering, PUT for updating, DELETE for removing, PATCH for partial updates. " +
       "Default: GET"
     ),
-  body: z.union([z.record(z.unknown()), z.array(z.unknown()), z.string()])
+  body: z.unknown()
     .optional()
     .describe(
-      "Request body for POST/PUT/PATCH requests. Pass as a JSON object (preferred) or a pre-serialized JSON string. " +
+      "Request body for POST/PUT/PATCH requests. Should be a JSON object. " +
       "Example for running a job: { options: { 'option-name': 'value' }, nodeFilters: { name: 'web-*' } }"
     ),
   query_params: z.record(z.string())
