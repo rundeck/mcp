@@ -83,7 +83,11 @@ ls $REPO/package.json $REPO/src/http.ts $REPO/.claude/skills/rundeck-mcp-setup/s
 If any file is missing, stop:
 > "This does not appear to be the `rundeck_mcp` repository."
 
-**Use `$REPO` as a prefix for all subsequent file paths in this skill.**
+Change into the repo root so all subsequent relative paths work correctly:
+
+```bash
+cd "$REPO"
+```
 
 Check Node.js:
 

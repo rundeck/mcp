@@ -21,13 +21,18 @@ import { randomUUID } from "node:crypto";
 import { createRundeckMcpServer } from "./create-server.js";
 import { logger } from "./utils/logger.js";
 
-const PORT = parseInt(process.env.MCP_HTTP_PORT ?? "3456", 10);
+const rawPort = process.env.MCP_HTTP_PORT ?? "3456";
+const PORT = parseInt(rawPort, 10);
+if (isNaN(PORT) || PORT < 1 || PORT > 65535) {
+  console.error(`[rundeck-mcp] Invalid MCP_HTTP_PORT: "${rawPort}". Must be a number between 1 and 65535.`);
+  process.exit(1);
+}
 
 // Express app pre-configured for MCP (includes DNS-rebinding protection for localhost)
 const app = createMcpExpressApp();
 
-// Session map: sessionId → transport
-const transports: Record<string, StreamableHTTPServerTransport> = {};
+// Session map: sessionId → transport (null-prototype avoids prototype-pollution via header values)
+const transports: Record<string, StreamableHTTPServerTransport> = Object.create(null);
 
 // ── POST /mcp — initialize or forward to existing session ──────────────────
 
@@ -50,15 +55,17 @@ app.post("/mcp", async (req: Request, res: Response) => {
       },
     });
 
+    const server = createRundeckMcpServer();
+
     transport.onclose = () => {
       const sid = transport.sessionId;
       if (sid && transports[sid]) {
         delete transports[sid];
         logger.info(`MCP session closed: ${sid}`);
       }
+      server.close().catch(() => {});
     };
 
-    const server = createRundeckMcpServer();
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
     return;
@@ -95,7 +102,7 @@ app.delete("/mcp", async (req: Request, res: Response) => {
 
 // ── Start ─────────────────────────────────────────────────────────────────
 
-app.listen(PORT, () => {
+app.listen(PORT, "127.0.0.1", () => {
   logger.info(`Rundeck MCP HTTP server → http://localhost:${PORT}/mcp`);
   console.log(`[rundeck-mcp] HTTP server running on http://localhost:${PORT}/mcp`);
 });

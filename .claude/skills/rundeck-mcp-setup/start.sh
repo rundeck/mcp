@@ -6,4 +6,4 @@ pkill -f "dist/http.js" 2>/dev/null
 sleep 1
 
 node "$REPO_ROOT/dist/http.js" &
-echo "[rundeck-mcp] Iniciado → $RUNDECK_URL (puerto $MCP_HTTP_PORT)"
+echo "[rundeck-mcp] Started → $RUNDECK_URL (port $MCP_HTTP_PORT)"

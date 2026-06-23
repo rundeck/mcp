@@ -42,11 +42,20 @@ npm run inspect
 
 ## Architecture
 
-This is a **Model Context Protocol (MCP) server** that exposes Rundeck documentation and APIs to AI assistants via stdio transport. The server registers three MCP feature types: **resources**, **tools**, and **prompts**.
+This is a **Model Context Protocol (MCP) server** that exposes Rundeck documentation and APIs to AI assistants. The server registers three MCP feature types: **resources**, **tools**, and **prompts**.
 
-### Request lifecycle (`src/index.ts`)
+### Entry points
 
-`index.ts` is the sole entry point. It creates the MCP `Server`, registers handlers for all six MCP request types (`ListResources`, `ReadResource`, `ListTools`, `CallTool`, `ListPrompts`, `GetPrompt`), and starts a stdio transport. All tool dispatch lives in the `CallToolRequestSchema` handler's `switch` statement.
+| File | Transport | Use |
+|---|---|---|
+| `src/index.ts` | stdio | Default — used by Claude Desktop and stdio-based clients |
+| `src/http.ts` | Streamable HTTP | Local HTTP server on `http://localhost:<MCP_HTTP_PORT>/mcp` for Claude Code via `.mcp.json` |
+
+Both entry points call `createRundeckMcpServer()` from `src/create-server.ts`, which owns all handler registration.
+
+### Request lifecycle (`src/create-server.ts`)
+
+`create-server.ts` creates the MCP `Server` and registers handlers for all six MCP request types (`ListResources`, `ReadResource`, `ListTools`, `CallTool`, `ListPrompts`, `GetPrompt`). All tool dispatch lives in the `CallToolRequestSchema` handler's `switch` statement.
 
 **Guidance mode**: Tools called without their required parameters return markdown help text instead of executing. The `needsGuidance()` helper checks for missing required fields; `returnGuidance()` wraps the text in an MCP content response. Guidance content lives in `src/utils/guidance.ts`.
 
@@ -78,7 +87,7 @@ Resources that read from the filesystem use `configManager.getConfig().docsPath`
 | `plugins.ts` | `plugin_create` |
 | `recommend.ts` | `tool_recommend` |
 
-Each tool exports its handler function and a Zod schema. Schemas are converted to JSON Schema via `zod-to-json-schema` in `index.ts` when responding to `ListTools`.
+Each tool exports its handler function and a Zod schema. Schemas are converted to JSON Schema via `zod-to-json-schema` in `create-server.ts` when responding to `ListTools`.
 
 `api_call` reads `RUNDECK_URL` and `RUNDECK_TOKEN` from `configManager` (which lazily refreshes from environment). The base URL is constructed as `{RUNDECK_URL}/api/{RUNDECK_API_VERSION}`.
 
@@ -88,7 +97,7 @@ Each tool exports its handler function and a Zod schema. Schemas are converted t
 
 ### Prompts (`src/prompts/index.ts`)
 
-Prompts are static objects with `name`, `description`, `arguments`, optional `argumentSchema` (Zod), and a `getContent(args)` function. Argument validation and missing-required-arg checks happen in `index.ts` before calling `getContent`.
+Prompts are static objects with `name`, `description`, `arguments`, optional `argumentSchema` (Zod), and a `getContent(args)` function. Argument validation and missing-required-arg checks happen in `create-server.ts` before calling `getContent`.
 
 ## Environment Variables
 
