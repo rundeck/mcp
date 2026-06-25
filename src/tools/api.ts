@@ -93,7 +93,7 @@ export async function rundeckApiCall(params: {
   };
 
   if (params.body && (params.method === "POST" || params.method === "PUT" || params.method === "PATCH")) {
-    options.body = JSON.stringify(params.body);
+    options.body = typeof params.body === "string" ? params.body : JSON.stringify(params.body);
   }
 
   try {
@@ -176,11 +176,12 @@ export const rundeckApiCallSchema = z.object({
       "HTTP method. GET for retrieving data, POST for creating/triggering, PUT for updating, DELETE for removing, PATCH for partial updates. " +
       "Default: GET"
     ),
-  body: z.unknown()
+  body: z.union([z.record(z.unknown()), z.array(z.unknown()), z.string()])
     .optional()
     .describe(
-      "Request body for POST/PUT/PATCH requests (JSON object). When rundeck-api.yml is available under RUNDECK_DOCS_PATH, unknown top-level property names are rejected before the HTTP call. " +
-      "Example for running a job: { options: { 'option-name': 'value' } }"
+      "Request body for POST/PUT/PATCH requests. Accepts a JSON object, a JSON array, or a pre-serialized JSON string (sent verbatim). " +
+      "Example (run a job): {\"options\": {\"option-name\": \"value\"}, \"nodeFilters\": {\"name\": \"web-*\"}}. " +
+      "Example (import jobs): [{\"name\": \"my-job\", \"project\": \"MyProject\", \"sequence\": {\"commands\": []}}] — the jobs import endpoint requires a JSON array."
     ),
   query_params: z.record(z.string())
     .optional()
