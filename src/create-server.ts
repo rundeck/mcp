@@ -26,7 +26,6 @@ import {
   rundeckGenerateJobSchema,
   rundeckValidateJobSchema,
 } from "./tools/jobs.js";
-import { toolRecommend, toolRecommendSchema } from "./tools/recommend.js";
 import { pluginCreate, pluginCreateSchema } from "./tools/plugins.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
@@ -179,23 +178,6 @@ Call without required params for setup guidance.`,
         inputSchema: convertSchema(rundeckValidateJobSchema),
       },
       {
-        name: "tool_recommend",
-        description: `Recommend which tool to use based on your intent or goal.
-
-**When to use:**
-- Unsure which tool to use for a task
-- Want to discover available tools for a specific goal
-- Need guidance on tool selection
-
-**When NOT to use:**
-- You already know which tool to use
-- Looking for documentation (use resources instead: rundeck://docs/*)
-
-**Example:** Call with intent: "I want to create a job that runs a command" to get recommendations.
-**Output:** Returns ranked list of recommended tools with reasoning and when to use each.`,
-        inputSchema: convertSchema(toolRecommendSchema),
-      },
-      {
         name: "plugin_create",
         description: `Generate a Rundeck plugin code in Java or Groovy.
 
@@ -281,10 +263,6 @@ job_validate({
           const validation = rundeckValidateJob(args as any);
           return { content: [{ type: "text", text: JSON.stringify(validation, null, 2) }] };
 
-        case "tool_recommend":
-          const recommendations = toolRecommend(args as any);
-          return { content: [{ type: "text", text: JSON.stringify(recommendations, null, 2) }] };
-
         case "plugin_create":
           if (needsGuidance(args, ["plugin_type", "name", "class_name"])) {
             logger.info("plugin_create called without required params - returning guidance");
@@ -304,7 +282,7 @@ job_validate({
         default:
           logger.warn(`Unknown tool requested: ${name}`);
           throw new Error(
-            `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, tool_recommend, plugin_create. Use tool_recommend to find the right tool for your task.`
+            `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, plugin_create.`
           );
       }
     } catch (error) {
