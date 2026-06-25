@@ -76,7 +76,7 @@ export async function rundeckApiCall(params: {
   };
 
   if (params.body && (params.method === "POST" || params.method === "PUT" || params.method === "PATCH")) {
-    options.body = JSON.stringify(params.body);
+    options.body = typeof params.body === "string" ? params.body : JSON.stringify(params.body);
   }
 
   try {
@@ -162,9 +162,9 @@ export const rundeckApiCallSchema = z.object({
   body: z.union([z.record(z.unknown()), z.array(z.unknown()), z.string()])
     .optional()
     .describe(
-      "Request body for POST/PUT/PATCH requests. Can be a JSON object, a JSON array, or a pre-serialized JSON string. " +
-      "Example (run a job): { options: { 'option-name': 'value' }, nodeFilters: { name: 'web-*' } }. " +
-      "Example (import jobs): [ { id: '...', name: '...', ... }, { ... } ] — the jobs import endpoint requires a raw JSON array."
+      "Request body for POST/PUT/PATCH requests. Accepts a JSON object, a JSON array, or a pre-serialized JSON string (sent verbatim). " +
+      "Example (run a job): {\"options\": {\"option-name\": \"value\"}, \"nodeFilters\": {\"name\": \"web-*\"}}. " +
+      "Example (import jobs): [{\"name\": \"my-job\", \"project\": \"MyProject\", \"sequence\": {\"commands\": []}}] — the jobs import endpoint requires a JSON array."
     ),
   query_params: z.record(z.string())
     .optional()
