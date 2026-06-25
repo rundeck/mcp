@@ -1,5 +1,8 @@
 /**
  * Documentation search tools
+ *
+ * `rundeckGetExample` / `rundeckGetExampleSchema` are retained for possible reuse; they are
+ * not registered as an MCP `docs_example` tool in Phase 1 (use `docs_search` + resources).
  */
 
 import { z } from "zod";
