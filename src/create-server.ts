@@ -26,7 +26,7 @@ import {
   rundeckGenerateJobSchema,
   rundeckValidateJobSchema,
 } from "./tools/jobs.js";
-import { pluginCreate, pluginCreateSchema } from "./tools/plugins.js";
+import { rundeckSearchDocs, rundeckSearchDocsSchema } from "./tools/search.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
 import { z } from "zod";
@@ -34,7 +34,6 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import {
   getJobCreationGuidance,
   getApiCallGuidance,
-  getPluginCreationGuidance,
 } from "./utils/guidance.js";
 import { prompts, getPrompt } from "./prompts/index.js";
 
@@ -178,29 +177,21 @@ Call without required params for setup guidance.`,
         inputSchema: convertSchema(rundeckValidateJobSchema),
       },
       {
-        name: "plugin_create",
-        description: `Generate a Rundeck plugin code in Java or Groovy.
+        name: "docs_search",
+        description: `Search local Rundeck documentation (markdown under RUNDECK_DOCS_PATH) by keywords and phrases.
 
 **When to use:**
-- Creating new Rundeck plugins (node steps, workflow steps, file copiers, notifications)
-- Generating plugin code following Rundeck conventions
-- Building plugins programmatically
+- Finding where a topic, term, or feature is documented before opening a resource
+- Exploring the docs when you do not know the exact \`rundeck://\` URI
+- Getting ranked excerpts and file paths to narrow which resource to read next
 
 **When NOT to use:**
-- Reading plugin documentation (use resources instead: rundeck://docs/developer/*)
-- Creating job definitions (use job_create instead)
-- Making API calls (use api_call instead)
+- Reading a full document you already identified (use resources/read with the \`rundeck://...\` URI)
+- Making API calls to a Rundeck server (use api_call)
+- Generating jobs (use job_create)
 
-**Supported plugin types:**
-- node-step: Executes on each node in a workflow
-- workflow-step: Executes once per workflow
-- remote-script-node-step: Generates script/command for remote execution
-- file-copier: Copies files to nodes
-- notification: Sends notifications on job events
-
-**Guidance Mode:** Call without required params (plugin_type, name, class_name) to get step-by-step guidance on plugin creation.
-**Resources:** See rundeck://docs/developer/plugins for comprehensive plugin documentation.`,
-        inputSchema: convertSchema(pluginCreateSchema),
+**Follow-up:** Prefer \`resources/read\` on the best match for complete, authoritative content.`,
+        inputSchema: convertSchema(rundeckSearchDocsSchema),
       },
     ];
     logger.info(`Returning ${tools.length} tools`);
@@ -263,26 +254,16 @@ job_validate({
           const validation = rundeckValidateJob(args as any);
           return { content: [{ type: "text", text: JSON.stringify(validation, null, 2) }] };
 
-        case "plugin_create":
-          if (needsGuidance(args, ["plugin_type", "name", "class_name"])) {
-            logger.info("plugin_create called without required params - returning guidance");
-            return returnGuidance(getPluginCreationGuidance());
-          }
-          try {
-            const pluginResult = pluginCreate(args as any);
-            const responseText = pluginResult.warnings
-              ? `# Generated Plugin Code\n\n\`\`\`java\n${pluginResult.code}\n\`\`\`\n\n## Warnings\n${pluginResult.warnings.map((w: string) => `- ${w}`).join("\n")}`
-              : `# Generated Plugin Code\n\n\`\`\`java\n${pluginResult.code}\n\`\`\``;
-            return { content: [{ type: "text", text: responseText }] };
-          } catch (error) {
-            const errorMessage = error instanceof Error ? error.message : String(error);
-            throw new Error(`Plugin creation failed: ${errorMessage}`);
-          }
+        case "docs_search": {
+          const parsed = rundeckSearchDocsSchema.parse(args ?? {});
+          const searchHits = rundeckSearchDocs(parsed);
+          return { content: [{ type: "text", text: JSON.stringify(searchHits, null, 2) }] };
+        }
 
         default:
           logger.warn(`Unknown tool requested: ${name}`);
           throw new Error(
-            `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, plugin_create.`
+            `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, docs_search.`
           );
       }
     } catch (error) {
