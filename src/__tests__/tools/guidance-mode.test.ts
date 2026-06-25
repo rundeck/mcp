@@ -6,6 +6,7 @@
 import {
   getJobCreationGuidance,
   getApiCallGuidance,
+  getJobValidationGuidance,
   getAuthSetupGuidance,
 } from "../../utils/guidance.js";
 
@@ -43,6 +44,16 @@ describe("Guidance Mode", () => {
       expect(guidance).toContain("RUNDECK_URL");
       expect(guidance).toContain("RUNDECK_TOKEN");
       expect(guidance).toContain("environment variables");
+    });
+  });
+
+  describe("job_validate guidance", () => {
+    it("should describe required parameters", () => {
+      const guidance = getJobValidationGuidance();
+      expect(guidance).toContain("job_definition");
+      expect(guidance).toContain("format");
+      expect(guidance).toContain("yaml");
+      expect(guidance).toContain("rundeck://jobs/schema");
     });
   });
 

@@ -91,7 +91,7 @@ Jobs can be defined in YAML or JSON format. YAML is recommended for readability.
 
 ## Next Steps for "${jobType}" Job Type
 1. Review the job schema with \`rundeck://jobs/schema\` resource
-2. Use \`job_create\` tool to create your job definition (call without params for guidance)
+2. Use \`job_create\` with the required parameters (\`name\`, \`project\`, \`workflow_steps\`). For a guided walkthrough, open the MCP prompt \`create-job\`.
 3. Validate with \`job_validate\` before importing
 4. See examples at \`rundeck://docs/manual/jobs\`
 
@@ -102,7 +102,7 @@ Jobs can be defined in YAML or JSON format. YAML is recommended for readability.
 - Job Options: \`rundeck://jobs/options\`
 
 ## Tools
-- \`job_create\`: Generate job definition (call without params for guidance)
+- \`job_create\`: Generate job definition (use MCP prompt \`create-job\` if you need structured guidance)
 - \`job_validate\`: Validate job definition before importing`;
   },
 };
@@ -196,7 +196,7 @@ The API version is specified in the URL path (e.g., /api/46/...). Current defaul
 
 ## Tools
 - \`api_list\`: List available API endpoints (call with category to filter)
-- \`api_call\`: Execute API calls (call without params for guidance)
+- \`api_call\`: Execute API calls (provide \`endpoint\` and optional \`method\`; use MCP prompt \`call-api\` for a full walkthrough)
 
 ## Resources
 - API Documentation: \`rundeck://api\`
@@ -348,7 +348,7 @@ Tokens inherit the authorization roles of the user who created them. Ensure your
 
 ## Tools
 - \`api_call\`: Execute API calls (requires RUNDECK_URL and RUNDECK_TOKEN environment variables)
-- Call \`api_call\` without parameters for detailed setup guidance
+- If configuration errors occur, follow the steps above or open the MCP prompt \`setup-authentication\`
 
 ## Resources
 - Authentication Methods: \`rundeck://api/auth\`
@@ -560,7 +560,7 @@ Job > Project > System
 - Node Step Plugins: \`rundeck://docs/developer/plugins\`
 - Workflow Step Plugins: \`rundeck://docs/developer/plugins\`
 - Plugin Configuration: \`rundeck://docs/administration/configuration\`
-- Plugin Creation: Use \`plugin_create\` tool (when available) to generate plugin code`;
+- Plugin development: see resources above; plugin scaffolding is not an MCP tool in Phase 1`;
   },
 };
 

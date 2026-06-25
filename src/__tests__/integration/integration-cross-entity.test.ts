@@ -7,7 +7,6 @@
 import { pluginCreate } from "../../tools/plugins.js";
 import { handleResource } from "../../resources/index.js";
 import { getPrompt } from "../../prompts/index.js";
-import { toolRecommend } from "../../tools/recommend.js";
 
 describe("Integration: Cross-Entity Functionality", () => {
   it("should use resources to inform plugin creation", () => {
@@ -39,35 +38,8 @@ describe("Integration: Cross-Entity Functionality", () => {
     
     expect(content).toBeDefined();
     if (content) {
-      // Should reference plugin_create tool (Entity 4)
-      expect(content).toContain("plugin_create");
-      // Prompt may reference tools or resources
+      expect(content).toContain("rundeck://docs/developer");
       expect(content.length).toBeGreaterThan(0);
-    }
-  });
-
-  it("should use tool_recommend to discover plugin_create", () => {
-    const recommendation = toolRecommend({
-      intent: "I need to create a custom Rundeck plugin",
-    });
-    
-    expect(recommendation.recommendations).toBeDefined();
-    expect(recommendation.recommendations.length).toBeGreaterThan(0);
-    
-    // Check if plugin_create is in recommendations
-    const allTools = recommendation.recommendations.map(r => r.tool);
-    // Should recommend plugin_create for plugin creation intent
-    const hasPluginCreate = allTools.includes("plugin_create");
-    // If not found, check if it's because keywords don't match - that's acceptable
-    if (!hasPluginCreate) {
-      // Verify tool_recommend still works
-      expect(allTools.length).toBeGreaterThan(0);
-    } else {
-      const pluginRec = recommendation.recommendations.find(
-        (r) => r.tool === "plugin_create"
-      );
-      expect(pluginRec).toBeDefined();
-      expect(pluginRec?.confidence).toBeGreaterThan(0);
     }
   });
 
@@ -89,7 +61,7 @@ describe("Integration: Cross-Entity Functionality", () => {
     expect(plugin.code).toBeDefined();
   });
 
-  it("should integrate prompts with tool guidance", () => {
+  it("should integrate prompts with tools and resources", () => {
     const createJobPrompt = getPrompt("create-job");
     const content = createJobPrompt?.getContent({ job_type: "simple" });
     

@@ -387,7 +387,10 @@ export function listResources(): Array<{ uri: string; description: string }> {
     // Developer documentation (NEW - comprehensive)
     { uri: "rundeck://docs/developer", description: "Developer documentation index" },
     { uri: "rundeck://docs/developer/plugins", description: "Plugin development overview" },
-    { uri: "rundeck://docs/developer/plugin/{type}", description: "Specific plugin type documentation" },
+    { uri: "rundeck://docs/developer/plugin/step-plugins", description: "Step plugin development" },
+    { uri: "rundeck://docs/developer/plugin/node-execution-plugins", description: "Node execution plugins" },
+    { uri: "rundeck://docs/developer/plugin/file-copier-plugins", description: "File copier plugins" },
+    { uri: "rundeck://docs/developer/plugin/notification-plugins", description: "Notification plugins" },
     
     // RD CLI documentation (NEW - comprehensive)
     { uri: "rundeck://docs/rd-cli", description: "RD CLI documentation index" },

@@ -5,6 +5,7 @@
 import { z } from "zod";
 import { configManager } from "../config.js";
 import { listApiEndpoints } from "../resources/api.js";
+import { loadOpenApiDocument, validateOpenApiRequest } from "../utils/openapi-validate.js";
 
 /**
  * Execute a Rundeck API call
@@ -45,9 +46,25 @@ export async function rundeckApiCall(params: {
       errorMsg += `Note: ${envCheck.join("; ")}. The server may need to be restarted.\n\n`;
     }
     
-    errorMsg += "Or call api_call without parameters for detailed setup guidance.";
-    
+    errorMsg +=
+      "For a guided checklist, open the MCP prompt `setup-authentication` (or configure RUNDECK_URL and RUNDECK_TOKEN and retry).\n";
+
     throw new Error(errorMsg);
+  }
+
+  if (process.env.RUNDECK_SKIP_OPENAPI_VALIDATE !== "1") {
+    const openApiDoc = loadOpenApiDocument(config.docsPath);
+    if (openApiDoc) {
+      const check = validateOpenApiRequest(openApiDoc, {
+        method: params.method || "GET",
+        endpoint: params.endpoint,
+        query_params: params.query_params,
+        body: params.body,
+      });
+      if (!check.ok && check.message) {
+        throw new Error(`API request validation failed: ${check.message}`);
+      }
+    }
   }
 
   const apiBaseUrl = configManager.getApiBaseUrl();
@@ -162,13 +179,13 @@ export const rundeckApiCallSchema = z.object({
   body: z.unknown()
     .optional()
     .describe(
-      "Request body for POST/PUT/PATCH requests. Should be a JSON object. " +
-      "Example for running a job: { options: { 'option-name': 'value' }, nodeFilters: { name: 'web-*' } }"
+      "Request body for POST/PUT/PATCH requests (JSON object). When rundeck-api.yml is available under RUNDECK_DOCS_PATH, unknown top-level property names are rejected before the HTTP call. " +
+      "Example for running a job: { options: { 'option-name': 'value' } }"
     ),
   query_params: z.record(z.string())
     .optional()
     .describe(
-      "Query parameters as key-value pairs. " +
+      "Query parameters as key-value pairs. Names must match the OpenAPI definition for this route (validation uses docs/.vuepress/public/files/rundeck-api.yml). " +
       "Example: { max: '20', offset: '0' } for pagination"
     ),
 });

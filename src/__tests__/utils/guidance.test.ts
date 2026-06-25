@@ -5,6 +5,7 @@
 import {
   getJobCreationGuidance,
   getApiCallGuidance,
+  getJobValidationGuidance,
   getProjectConfigGuidance,
   getAuthSetupGuidance,
   getNodeFilterGuidance,
@@ -28,6 +29,15 @@ describe("Guidance Utility", () => {
       expect(guidance).toContain("Calling the Rundeck API");
       expect(guidance).toContain("endpoint");
       expect(guidance).toContain("method");
+    });
+  });
+
+  describe("getJobValidationGuidance", () => {
+    it("should return guidance content", () => {
+      const guidance = getJobValidationGuidance();
+      expect(guidance).toContain("Validating a Rundeck Job");
+      expect(guidance).toContain("job_definition");
+      expect(guidance).toContain("format");
     });
   });
 

@@ -1,5 +1,9 @@
 /**
  * Plugin creation tools
+ *
+ * Phase 1 (internal PRD scope): `plugin_create` is intentionally **not** registered as an
+ * MCP tool in `src/index.ts`. This module remains so Phase 2+ can re-enable the tool without
+ * rewriting generators.
  */
 
 import { z } from "zod";
