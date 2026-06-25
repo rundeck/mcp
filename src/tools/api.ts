@@ -159,11 +159,12 @@ export const rundeckApiCallSchema = z.object({
       "HTTP method. GET for retrieving data, POST for creating/triggering, PUT for updating, DELETE for removing, PATCH for partial updates. " +
       "Default: GET"
     ),
-  body: z.unknown()
+  body: z.union([z.record(z.unknown()), z.array(z.unknown()), z.string()])
     .optional()
     .describe(
-      "Request body for POST/PUT/PATCH requests. Should be a JSON object. " +
-      "Example for running a job: { options: { 'option-name': 'value' }, nodeFilters: { name: 'web-*' } }"
+      "Request body for POST/PUT/PATCH requests. Can be a JSON object, a JSON array, or a pre-serialized JSON string. " +
+      "Example (run a job): { options: { 'option-name': 'value' }, nodeFilters: { name: 'web-*' } }. " +
+      "Example (import jobs): [ { id: '...', name: '...', ... }, { ... } ] — the jobs import endpoint requires a raw JSON array."
     ),
   query_params: z.record(z.string())
     .optional()
