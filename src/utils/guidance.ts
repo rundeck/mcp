@@ -62,8 +62,10 @@ To actually create the job, pipe the output to \`api_call\`:
 \`\`\`
 
 ### Bulk import (N jobs at once)
-\`job_create\` always returns a YAML array. To import multiple jobs in one API call,
-call \`job_create\` for each job, concatenate the YAML arrays, then do a single \`api_call\`.
+\`job_create\` returns an array (YAML by default, JSON if \`format: "json"\` is set).
+To import multiple jobs in one API call, call \`job_create\` for each job using the same
+format, concatenate the arrays, then do a single \`api_call\` with the matching \`content_type\`
+(\`application/yaml\` or \`application/json\`).
 
 ## Required Parameters
 - **name** (string): Job name
