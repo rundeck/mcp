@@ -93,8 +93,19 @@ export async function rundeckApiCall(params: {
     headers,
   };
 
-  if (params.body && (params.method === "POST" || params.method === "PUT" || params.method === "PATCH")) {
-    options.body = typeof params.body === "string" ? params.body : JSON.stringify(params.body);
+  const method = (params.method || "GET").toUpperCase();
+  if (params.body && (method === "POST" || method === "PUT" || method === "PATCH")) {
+    const effectiveContentType = params.content_type || "application/json";
+    if (typeof params.body === "string") {
+      options.body = params.body;
+    } else if (effectiveContentType.includes("application/json")) {
+      options.body = JSON.stringify(params.body);
+    } else {
+      throw new Error(
+        `Non-JSON Content-Type '${effectiveContentType}' requires a pre-serialized string body. ` +
+        "Use job_create (format: 'yaml') to generate the YAML string, then pass it as the body."
+      );
+    }
   }
 
   try {
