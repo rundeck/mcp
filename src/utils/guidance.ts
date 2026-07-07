@@ -40,14 +40,32 @@ Define which nodes the job will target using node filter expressions.
 ### 4. Job Options (Optional)
 Allow users to provide input when running the job.
 
+### 5. Schedule (Optional)
+Use a Quartz cron expression or a structured time definition to run jobs on a schedule.
+
 ## Job Format
 Jobs can be defined in YAML or JSON format. YAML is recommended for readability.
 
-## Next Steps
-1. Review the job schema with \`rundeck://jobs/schema\` resource
-2. Review job examples at \`rundeck://docs/manual/jobs\`
-3. Use \`job_create\` with required parameters to create your job definition
-4. Validate with \`job_validate\` before importing
+## Importing Jobs into Rundeck
+
+\`job_create\` generates a YAML/JSON definition — it does NOT create the job in Rundeck.
+To actually create the job, pipe the output to \`api_call\`:
+
+\`\`\`
+1. job_create(name: "My Job", project: "myProject", ...)  → returns YAML string
+2. api_call(
+     endpoint: "project/myProject/jobs/import",
+     method: "POST",
+     body: "<yaml from step 1>",
+     content_type: "application/yaml"
+   )
+\`\`\`
+
+### Bulk import (N jobs at once)
+\`job_create\` returns an array (YAML by default, JSON if \`format: "json"\` is set).
+To import multiple jobs in one API call, call \`job_create\` for each job using the same
+format, concatenate the arrays, then do a single \`api_call\` with the matching \`content_type\`
+(\`application/yaml\` or \`application/json\`).
 
 ## Required Parameters
 - **name** (string): Job name
@@ -64,9 +82,19 @@ Jobs can be defined in YAML or JSON format. YAML is recommended for readability.
 - **timeout** (string): Job timeout (e.g., "1h", "30m")
 - **retry** (number | string): Number of retries
 - **multipleExecutions** (boolean): Allow multiple simultaneous executions
+- **schedule** (object): Schedule definition
+  - \`crontab\` (string): Quartz cron, e.g. \`"0 0 8 ? * MON-FRI"\` (8 AM weekdays)
+  - \`time\` (object): \`{ hour, minute, seconds? }\` — alternative to crontab
+  - \`month\`, \`year\`, \`weekday\`, \`day\`: additional structured fields
+
+## Next Steps
+1. Use \`job_create\` with required parameters to generate your job definition
+2. Validate with \`job_validate\` before importing
+3. Import with \`api_call\` as described above
 
 ## Resources
 - Job Schema: \`rundeck://jobs/schema\`
+- Job Examples: \`rundeck://docs/manual/jobs\`
 - Workflow Strategies: \`rundeck://jobs/workflows\`
 - Job Options: \`rundeck://jobs/options\``;
 }
