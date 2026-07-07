@@ -24,6 +24,19 @@ export interface WorkflowStep {
   description?: string;
 }
 
+export interface JobSchedule {
+  crontab?: string;
+  time?: {
+    hour: string;
+    minute: string;
+    seconds?: string;
+  };
+  month?: string;
+  year?: string;
+  weekday?: { day: string };
+  day?: { day: string };
+}
+
 export interface JobOption {
   name: string;
   description?: string;
@@ -55,6 +68,7 @@ export function rundeckGenerateJob(params: {
   timeout?: string;
   retry?: number | string;
   multipleExecutions?: boolean;
+  schedule?: JobSchedule;
 }): string {
   const format = params.format || "yaml";
   const loglevel = params.loglevel || "INFO";
@@ -139,6 +153,10 @@ export function rundeckGenerateJob(params: {
 
   if (params.multipleExecutions !== undefined) {
     job.multipleExecutions = params.multipleExecutions;
+  }
+
+  if (params.schedule) {
+    job.schedule = params.schedule;
   }
 
   if (format === "yaml") {
@@ -291,6 +309,30 @@ export function rundeckGetJobTemplate(params: {
 }
 
 // Zod schemas
+export const jobScheduleSchema = z.object({
+  crontab: z.string()
+    .optional()
+    .describe(
+      "Quartz cron expression (6-7 fields: sec min hour dayOfMonth month dayOfWeek [year]). " +
+      "Examples: '0 0 * * * ?' (every hour), '0 0/5 * * * ?' (every 5 min), '0 30 8 ? * MON-FRI' (8:30 weekdays)"
+    ),
+  time: z.object({
+    hour: z.string().describe("Hour (0-23)"),
+    minute: z.string().describe("Minute (0-59)"),
+    seconds: z.string().optional().describe("Seconds (0-59), defaults to '0'"),
+  }).optional().describe("Structured time (alternative to crontab)"),
+  month: z.string().optional().describe("Month pattern, e.g. '*', '1,6,12'"),
+  year: z.string().optional().describe("Year pattern, e.g. '*'"),
+  weekday: z.object({ day: z.string() }).optional().describe("Weekday pattern, e.g. { day: 'MON-FRI' }"),
+  day: z.object({ day: z.string() }).optional().describe("Day-of-month pattern, e.g. { day: '1' }"),
+}).refine(
+  (s) => s.crontab !== undefined || s.time !== undefined || s.month !== undefined || s.year !== undefined || s.weekday !== undefined || s.day !== undefined,
+  { message: "schedule must include at least one field (crontab, time, month, year, weekday, or day)" }
+).describe(
+  "Schedule definition. Use 'crontab' for a single Quartz expression, or the structured fields for a UI-style schedule. " +
+  "Only one approach is needed. Example crontab: '0 0 8 ? * MON-FRI' (8 AM weekdays)."
+);
+
 export const workflowStepSchema = z.object({
   type: z.enum(["command", "script", "jobref", "plugin"]),
   exec: z.string().optional(),
@@ -397,6 +439,7 @@ export const rundeckGenerateJobSchema = z.object({
       "Allow multiple simultaneous executions. " +
       "If true, the job can run multiple times concurrently. Default: false"
     ),
+  schedule: jobScheduleSchema.optional(),
 });
 
 export const rundeckValidateJobSchema = z.object({

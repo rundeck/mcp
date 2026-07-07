@@ -127,6 +127,61 @@ describe("Job Tools", () => {
 
       expect(result).toContain("script:");
     });
+
+    it("should include crontab schedule in YAML output", () => {
+      const result = rundeckGenerateJob({
+        name: "Scheduled Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo scheduled" }],
+        schedule: { crontab: "0 30 8 ? * MON-FRI" },
+      });
+
+      expect(result).toContain("schedule:");
+      expect(result).toContain("crontab: 0 30 8 ? * MON-FRI");
+    });
+
+    it("should include crontab schedule in JSON output", () => {
+      const result = rundeckGenerateJob({
+        name: "Scheduled Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo scheduled" }],
+        schedule: { crontab: "0 0 * * * ?" },
+        format: "json",
+      });
+
+      const parsed = JSON.parse(result);
+      expect(parsed[0].schedule).toBeDefined();
+      expect(parsed[0].schedule.crontab).toBe("0 0 * * * ?");
+    });
+
+    it("should include structured time schedule in YAML output", () => {
+      const result = rundeckGenerateJob({
+        name: "Structured Schedule Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo structured" }],
+        schedule: {
+          time: { hour: "8", minute: "30", seconds: "0" },
+          weekday: { day: "MON-FRI" },
+          month: "*",
+        },
+      });
+
+      expect(result).toContain("schedule:");
+      expect(result).toContain("hour: \"8\"");
+      expect(result).toContain("minute: \"30\"");
+      expect(result).toContain("day: MON-FRI");
+      expect(result).toContain("month: \"*\"");
+    });
+
+    it("should not include schedule block when schedule is omitted", () => {
+      const result = rundeckGenerateJob({
+        name: "No Schedule Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo no-schedule" }],
+      });
+
+      expect(result).not.toContain("schedule:");
+    });
   });
 
   describe("rundeckValidateJob", () => {
