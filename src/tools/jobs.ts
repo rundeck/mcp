@@ -325,7 +325,10 @@ export const jobScheduleSchema = z.object({
   year: z.string().optional().describe("Year pattern, e.g. '*'"),
   weekday: z.object({ day: z.string() }).optional().describe("Weekday pattern, e.g. { day: 'MON-FRI' }"),
   day: z.object({ day: z.string() }).optional().describe("Day-of-month pattern, e.g. { day: '1' }"),
-}).describe(
+}).refine(
+  (s) => s.crontab !== undefined || s.time !== undefined || s.month !== undefined || s.year !== undefined || s.weekday !== undefined || s.day !== undefined,
+  { message: "schedule must include at least one field (crontab, time, month, year, weekday, or day)" }
+).describe(
   "Schedule definition. Use 'crontab' for a single Quartz expression, or the structured fields for a UI-style schedule. " +
   "Only one approach is needed. Example crontab: '0 0 8 ? * MON-FRI' (8 AM weekdays)."
 );
