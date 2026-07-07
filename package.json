@@ -11,6 +11,8 @@
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "concurrently -n typescript,server -c blue,green \"tsc --watch --preserveWatchOutput\" \"nodemon\"",
+    "postinstall": "node scripts/download-docs.mjs",
+    "docs:update": "node scripts/download-docs.mjs --force",
     "test": "NODE_OPTIONS=--experimental-vm-modules jest",
     "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "validate": "npm run build && npm test && node dist/__tests__/run-all-validations.js",
