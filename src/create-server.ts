@@ -27,6 +27,7 @@ import {
   rundeckValidateJobSchema,
 } from "./tools/jobs.js";
 import { rundeckSearchDocs, rundeckSearchDocsSchema } from "./tools/search.js";
+import { rundeckCreateRunner, rundeckCreateRunnerSchema } from "./tools/runners.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
 import { z } from "zod";
@@ -34,6 +35,7 @@ import { zodToJsonSchema } from "zod-to-json-schema";
 import {
   getJobCreationGuidance,
   getApiCallGuidance,
+  getRunnerGuidance,
 } from "./utils/guidance.js";
 import { prompts, getPrompt } from "./prompts/index.js";
 
@@ -177,6 +179,24 @@ Call without required params for setup guidance.`,
         inputSchema: convertSchema(rundeckValidateJobSchema),
       },
       {
+        name: "runner_create",
+        description: `Create a Rundeck Runner at system or project scope.
+
+**When to use:**
+- Creating ephemeral Docker runners for a specific project
+- Creating global system runners to share across projects
+- Automating runner provisioning
+
+**Scopes:**
+- \`scope: "project"\` → POST project/{project}/runnerManagement/runners (recommended for isolation)
+- \`scope: "system"\` → POST runnerManagement/runners (global runner)
+
+**Important:** The response includes a one-time \`token\` and \`downloadTk\`. Store them — they cannot be retrieved again.
+
+**Guidance Mode:** Call without required params (name, scope) to get step-by-step guidance.`,
+        inputSchema: convertSchema(rundeckCreateRunnerSchema),
+      },
+      {
         name: "docs_search",
         description: `Search local Rundeck documentation (markdown under RUNDECK_DOCS_PATH) by keywords and phrases.
 
@@ -254,6 +274,14 @@ job_validate({
           const validation = rundeckValidateJob(args as any);
           return { content: [{ type: "text", text: JSON.stringify(validation, null, 2) }] };
 
+        case "runner_create":
+          if (needsGuidance(args, ["name", "scope"])) {
+            logger.info("runner_create called without required params - returning guidance");
+            return returnGuidance(getRunnerGuidance());
+          }
+          const runnerResult = await rundeckCreateRunner(args as any);
+          return { content: [{ type: "text", text: JSON.stringify(runnerResult, null, 2) }] };
+
         case "docs_search": {
           const parsed = rundeckSearchDocsSchema.parse(args ?? {});
           const searchHits = rundeckSearchDocs(parsed);
@@ -263,7 +291,7 @@ job_validate({
         default:
           logger.warn(`Unknown tool requested: ${name}`);
           throw new Error(
-            `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, docs_search.`
+            `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, runner_create, docs_search.`
           );
       }
     } catch (error) {
