@@ -98,4 +98,7 @@ export const rundeckCreateRunnerSchema = z.object({
       "Tags to assign to the runner. Used for filtering and targeting. " +
       "Example: ['DOCKER', 'PRODUCTION', 'US-EAST']"
     ),
-});
+}).refine(
+  (s) => s.scope !== "project" || s.project !== undefined,
+  { message: "'project' is required when scope is 'project'", path: ["project"] }
+);

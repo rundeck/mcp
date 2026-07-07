@@ -279,7 +279,8 @@ job_validate({
             logger.info("runner_create called without required params - returning guidance");
             return returnGuidance(getRunnerGuidance());
           }
-          const runnerResult = await rundeckCreateRunner(args as any);
+          const runnerParams = rundeckCreateRunnerSchema.parse(args);
+          const runnerResult = await rundeckCreateRunner(runnerParams);
           return { content: [{ type: "text", text: JSON.stringify(runnerResult, null, 2) }] };
 
         case "docs_search": {
