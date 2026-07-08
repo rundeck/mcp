@@ -406,6 +406,73 @@ You can also use the \`integrate-plugin\` prompt via \`prompts/get\`:
 - Plugin Configuration: \`rundeck://config/plugins\``;
 }
 
+export function getRunnerGuidance(): string {
+  return `# Creating a Rundeck Runner
+
+## Overview
+Runners execute jobs on remote infrastructure. They connect back to Rundeck and poll for work.
+Two creation scopes exist — choose based on whether the runner should be shared across projects or tied to one.
+
+## Scopes
+
+### Project scope (recommended for isolation)
+Creates a runner directly associated to a specific project.
+- Endpoint: \`POST project/{project}/runnerManagement/runners\`
+- Use \`runner_create(scope: "project", project: "my-project", ...)\`
+
+### System scope (global runner)
+Creates a global runner that can later be associated to multiple projects.
+- Endpoint: \`POST runnerManagement/runners\`
+- Use \`runner_create(scope: "system", ...)\`
+
+## Required Parameters
+- **name** (string): Runner name — must be unique within its scope
+- **scope** ("system" | "project"): Creation scope
+- **project** (string): Project name — required when scope is "project"
+
+## Optional Parameters
+- **description** (string): Human-readable description
+- **replica_type** ("ephemeral" | "manual"): Default "ephemeral" — short-lived Docker container
+- **installation_type** ("docker" | "jar"): Default "docker"
+- **tag_names** (string[]): Tags for filtering, e.g. ["DOCKER", "PRODUCTION"]
+
+## Response
+The response includes a **one-time token** and **downloadTk** — store these immediately:
+- \`token\`: used to authenticate the runner process on startup
+- \`downloadTk\`: used to download the runner JAR
+- \`runnerId\`: unique runner ID
+
+## Starting a Docker Runner
+After creation, start the runner with:
+\`\`\`bash
+docker run -e RUNNER_TOKEN=<token> rundeck/runner:latest
+\`\`\`
+
+## Examples
+
+### Create an ephemeral Docker runner for a project
+\`\`\`
+runner_create({
+  scope: "project",
+  project: "my-project",
+  name: "my-docker-runner",
+  replica_type: "ephemeral",
+  installation_type: "docker",
+  tag_names: ["DOCKER"]
+})
+\`\`\`
+
+### Create a global system runner
+\`\`\`
+runner_create({
+  scope: "system",
+  name: "shared-runner",
+  description: "Shared runner for all projects",
+  tag_names: ["SHARED"]
+})
+\`\`\``;
+}
+
 export function getPluginCreationGuidance(): string {
   return `# Creating a Rundeck Plugin
 
