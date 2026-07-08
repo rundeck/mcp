@@ -1,5 +1,5 @@
 {
-  "name": "rundeck-mcp",
+  "name": "@rundeck/mcp",
   "version": "1.0.0",
   "description": "MCP server for Rundeck documentation",
   "type": "module",
@@ -7,7 +7,15 @@
   "bin": {
     "rundeck-mcp": "./dist/index.js"
   },
+  "files": [
+    "dist",
+    "!dist/__tests__"
+  ],
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
+    "prepack": "npm run build",
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "concurrently -n typescript,server -c blue,green \"tsc --watch --preserveWatchOutput\" \"nodemon\"",
