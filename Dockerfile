@@ -5,7 +5,7 @@ WORKDIR /app
 # Install all deps (dev included — TypeScript compiler needed for build)
 # Skip postinstall to avoid downloading docs during image build
 COPY package*.json ./
-RUN npm install --ignore-scripts
+RUN npm ci --ignore-scripts
 
 # Compile TypeScript
 COPY tsconfig.json ./
@@ -20,7 +20,7 @@ FROM node:22-alpine AS production
 WORKDIR /app
 
 # curl is used by the entrypoint to download Rundeck docs on first start
-RUN apk add --no-cache curl
+RUN apk add --no-cache curl tar
 
 # Copy build artifacts and pruned production dependencies
 COPY --from=builder /app/dist            ./dist
@@ -40,7 +40,7 @@ ENV NODE_ENV=production \
 
 # Verify the server module loads correctly
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD node -e "import('./dist/index.js').catch(() => process.exit(1))" || exit 1
+    CMD node --input-type=module --eval "import('/app/dist/create-server.js').then(()=>process.exit(0)).catch(()=>process.exit(1))"
 
 # stdio transport — the MCP client launches this container and pipes stdin/stdout
 ENTRYPOINT ["./docker-entrypoint.sh"]
