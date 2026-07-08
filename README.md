@@ -23,6 +23,109 @@ npm run validate
 
 ---
 
+## Using with MCP Clients
+
+Once published, the server is available as the [`@rundeck/mcp`](https://www.npmjs.com/package/@rundeck/mcp) npm package, exposing the `rundeck-mcp` binary over stdio.
+
+### Cursor Integration
+
+You can configure this MCP server directly within Cursor's `settings.json` file, by following these steps:
+
+1.  Open Cursor settings (Cursor Settings > Tools > Add MCP, or `Cmd+,` on Mac, or `Ctrl+,` on Windows/Linux).
+2.  Add the following configuration:
+
+    ```json
+    {
+      "mcpServers": {
+        "rundeck-mcp": {
+          "command": "npx",
+          "args": ["-y", "@rundeck/mcp"],
+          "env": {
+            "RUNDECK_URL": "https://your-rundeck-instance.example.com",
+            "RUNDECK_TOKEN": "your-rundeck-api-token-here"
+          }
+        }
+      }
+    }
+    ```
+
+### VS Code Integration
+
+You can configure this MCP server directly within Visual Studio Code's `settings.json` file, allowing VS Code to manage the server lifecycle.
+
+1.  Open VS Code settings (File > Preferences > Settings, or `Cmd+,` on Mac, or `Ctrl+,` on Windows/Linux).
+2.  Search for "mcp" and ensure "Mcp: Enabled" is checked under Features > Chat.
+3.  Click "Edit in settings.json" under "Mcp > Discovery: Servers".
+4.  Add the following configuration:
+
+    ```json
+    {
+        "mcp": {
+            "inputs": [
+                {
+                    "type": "promptString",
+                    "id": "rundeck-url",
+                    "description": "Rundeck Instance URL"
+                },
+                {
+                    "type": "promptString",
+                    "id": "rundeck-token",
+                    "description": "Rundeck API Token",
+                    "password": true
+                }
+            ],
+            "servers": {
+                "rundeck-mcp": {
+                    "type": "stdio",
+                    "command": "npx",
+                    "args": ["-y", "@rundeck/mcp"],
+                    "env": {
+                        "RUNDECK_URL": "${input:rundeck-url}",
+                        "RUNDECK_TOKEN": "${input:rundeck-token}"
+                    }
+                }
+            }
+        }
+    }
+    ```
+
+### Claude Desktop Integration
+
+You can configure this MCP server to work with Claude Desktop by adding it to Claude's configuration file.
+
+1.  **Locate your Claude Desktop configuration file:**
+    -   **macOS:** `~/Library/Application Support/Claude/claude_desktop_config.json`
+    -   **Windows:** `%APPDATA%\Claude\claude_desktop_config.json`
+
+2.  **Create or edit the configuration file** and add the following configuration:
+
+    ```json
+    {
+      "mcpServers": {
+        "rundeck-mcp": {
+          "command": "npx",
+          "args": ["-y", "@rundeck/mcp"],
+          "env": {
+            "RUNDECK_URL": "https://your-rundeck-instance.example.com",
+            "RUNDECK_TOKEN": "your-rundeck-api-token-here"
+          }
+        }
+      }
+    }
+    ```
+
+3.  **Restart Claude Desktop** completely for the changes to take effect.
+
+### Claude Code Integration
+
+Add the server via the CLI:
+
+```bash
+claude mcp add rundeck-mcp -e RUNDECK_URL=https://your-rundeck-instance.example.com -e RUNDECK_TOKEN=your-rundeck-api-token-here -- npx -y @rundeck/mcp
+```
+
+---
+
 ## Overview
 
 The Rundeck Model Context Protocol (MCP) Server exposes Rundeck's documentation, APIs, and capabilities to AI assistants through the Model Context Protocol standard. This document covers technical capabilities, architecture, and features of the MCP server implementation.
