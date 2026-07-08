@@ -15,6 +15,7 @@
     "access": "public"
   },
   "scripts": {
+    "prepack": "npm run build",
     "build": "tsc",
     "start": "node dist/index.js",
     "dev": "concurrently -n typescript,server -c blue,green \"tsc --watch --preserveWatchOutput\" \"nodemon\"",
