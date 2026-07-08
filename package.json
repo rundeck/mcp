@@ -8,7 +8,8 @@
     "rundeck-mcp": "./dist/index.js"
   },
   "files": [
-    "dist"
+    "dist",
+    "!dist/__tests__"
   ],
   "publishConfig": {
     "access": "public"
