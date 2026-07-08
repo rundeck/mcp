@@ -1,0 +1,79 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-09-29/server.schema.json",
+  "name": "io.github.rundeckpro/rundeck-mcp",
+  "description": "Rundeck MCP server — exposes Rundeck documentation, API access, and job/runner management tools to AI assistants.",
+  "version": "1.0.0",
+  "repository": {
+    "url": "https://github.com/rundeckpro/rundeck_mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "npm",
+      "identifier": "@rundeck/mcp",
+      "version": "1.0.0",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "npx",
+      "environmentVariables": [
+        {
+          "name": "RUNDECK_URL",
+          "description": "Base URL of your Rundeck instance (e.g. https://rundeck.example.com)",
+          "required": true
+        },
+        {
+          "name": "RUNDECK_TOKEN",
+          "description": "Rundeck API token — generate from User Profile → API Tokens in the Rundeck UI",
+          "required": true
+        },
+        {
+          "name": "RUNDECK_API_VERSION",
+          "description": "Rundeck API version to use (default: 46)",
+          "required": false
+        },
+        {
+          "name": "SKIP_RUNDECK_DOCS_DOWNLOAD",
+          "description": "Set to 1 to skip automatic doc download on install",
+          "required": false
+        },
+        {
+          "name": "RUNDECK_DOCS_PATH",
+          "description": "Path to a local Rundeck docs directory (optional — docs are auto-downloaded if omitted)",
+          "required": false
+        }
+      ]
+    },
+    {
+      "registryType": "docker",
+      "identifier": "rundeck/rundeck-mcp",
+      "version": "latest",
+      "transport": {
+        "type": "stdio"
+      },
+      "runtimeHint": "docker",
+      "environmentVariables": [
+        {
+          "name": "RUNDECK_URL",
+          "description": "Base URL of your Rundeck instance (e.g. https://rundeck.example.com)",
+          "required": true
+        },
+        {
+          "name": "RUNDECK_TOKEN",
+          "description": "Rundeck API token — generate from User Profile → API Tokens in the Rundeck UI",
+          "required": true
+        },
+        {
+          "name": "RUNDECK_API_VERSION",
+          "description": "Rundeck API version to use (default: 46)",
+          "required": false
+        },
+        {
+          "name": "RUNDECK_DOCS_PATH",
+          "description": "Path to a pre-mounted Rundeck docs directory inside the container (skips download when set)",
+          "required": false
+        }
+      ]
+    }
+  ]
+}
