@@ -1,6 +1,6 @@
 ---
 name: rundeck-mcp-rebuild
-description: Recompile TypeScript and restart the Rundeck MCP HTTP server. Use after making source code changes in src/. Stops the running server, runs npm run build, and starts the server again.
+description: Install dependencies, recompile TypeScript, and restart the Rundeck MCP HTTP server. Use after making source code changes in src/ or updating package.json.
 user-invocable: true
 allowed-tools:
   - Bash
@@ -14,7 +14,7 @@ allowed-tools:
 
 **When to use:**
 - After editing any file in `src/`
-- After updating dependencies (`npm install`)
+- After adding or updating dependencies in `package.json`
 
 **When NOT to use:**
 - Only changed `.env` variables → use `/rundeck-mcp-restart` instead (faster, no build)
@@ -28,6 +28,7 @@ allowed-tools:
 ```
 TaskCreate "Verify repository"
 TaskCreate "Stop server"
+TaskCreate "Install dependencies"
 TaskCreate "Build TypeScript"
 TaskCreate "Start server"
 TaskCreate "Verify server"
@@ -72,7 +73,25 @@ TaskUpdate taskId=<stop_id> status="completed"
 
 ---
 
-### Step 3: Build
+### Step 3: Install Dependencies
+
+```
+TaskUpdate taskId=<install_id> status="in_progress"
+```
+
+```bash
+npm install
+```
+
+If this fails, show the error and stop.
+
+```
+TaskUpdate taskId=<install_id> status="completed"
+```
+
+---
+
+### Step 4: Build
 
 ```
 TaskUpdate taskId=<build_id> status="in_progress"
@@ -91,7 +110,7 @@ TaskUpdate taskId=<build_id> status="completed"
 
 ---
 
-### Step 4: Start the Server
+### Step 5: Start the Server
 
 ```
 TaskUpdate taskId=<start_id> status="in_progress"
@@ -107,7 +126,7 @@ TaskUpdate taskId=<start_id> status="completed"
 
 ---
 
-### Step 5: Verify
+### Step 6: Verify
 
 ```
 TaskUpdate taskId=<verify_server_id> status="in_progress"
