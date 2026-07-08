@@ -156,15 +156,18 @@ MCP_HTTP_PORT=3456
 
 ### Step 2: Build and start the server
 
+The server doesn't load `.env` itself (no `dotenv` dependency) — source it into the shell before starting the process, the same way `start.sh` does for `/rundeck-mcp-setup`:
+
 ```bash
 npm install
 npm run build
-MCP_HTTP_PORT=3456 node dist/http.js
+set -a && source .env && set +a
+node dist/http.js
 ```
 
 Using Claude Code? Run `/rundeck-mcp-setup` instead to automate this step.
 
-`.env` is read at process start — the server logs `Rundeck MCP HTTP server → http://localhost:3456/mcp` once it's up.
+Once running, the server logs `Rundeck MCP HTTP server → http://localhost:3456/mcp`.
 
 ### Step 3: Point `.mcp.json` at it
 
