@@ -10,7 +10,7 @@
   "packages": [
     {
       "registryType": "npm",
-      "identifier": "rundeck-mcp",
+      "identifier": "@rundeck/mcp",
       "version": "1.0.0",
       "transport": {
         "type": "stdio"
@@ -30,6 +30,11 @@
         {
           "name": "RUNDECK_API_VERSION",
           "description": "Rundeck API version to use (default: 46)",
+          "required": false
+        },
+        {
+          "name": "SKIP_RUNDECK_DOCS_DOWNLOAD",
+          "description": "Set to 1 to skip automatic doc download on install",
           "required": false
         },
         {
