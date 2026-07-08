@@ -1,11 +1,17 @@
 {
-  "name": "rundeck-mcp",
+  "name": "@rundeck/mcp",
   "version": "1.0.0",
   "description": "MCP server for Rundeck documentation",
   "type": "module",
   "main": "dist/index.js",
   "bin": {
     "rundeck-mcp": "./dist/index.js"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public"
   },
   "scripts": {
     "build": "tsc",
