@@ -1,0 +1,3 @@
+# Exclude downloaded Rundeck docs — vulnerabilities here belong to the
+# upstream rundeck/docs repo (VuePress build dependencies), not to rundeck-mcp.
+docs/

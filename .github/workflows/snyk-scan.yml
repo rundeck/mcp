@@ -58,7 +58,7 @@ jobs:
 
       - name: Run Snyk monitor (default branch only)
         if: github.event_name == 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
-        run: snyk monitor --all-projects
+        run: snyk monitor --all-projects --exclude=docs
 
       - name: Test for vulnerabilities
-        run: snyk test --all-projects --severity-threshold=high
+        run: snyk test --all-projects --exclude=docs --severity-threshold=high
