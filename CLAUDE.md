@@ -12,6 +12,18 @@ After cloning the repo, run the setup skill to install dependencies, configure y
 
 The skill will walk you through the full setup interactively.
 
+### Other local-dev skills
+
+| Skill | Use when |
+|---|---|
+| `/rundeck-mcp-rebuild` | You changed anything in `src/`, or ran `npm install` |
+| `/rundeck-mcp-restart` | You only changed `.env` (`RUNDECK_URL`, `RUNDECK_TOKEN`, `MCP_HTTP_PORT`, etc.) |
+| `/rundeck-mcp-stop` | You want to shut the HTTP server down without restarting it |
+| `/rundeck-mcp-docker-build` | You changed `src/`, `Dockerfile`, or `docker-entrypoint.sh` and want a local image |
+| `/rundeck-mcp-docker-setup` | You want to run the server via Docker without installing Node.js |
+
+See [SETUP.md](./SETUP.md#local-development-skills-reference) for full details on each.
+
 ## Commands
 
 ```bash
