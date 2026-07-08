@@ -124,6 +124,34 @@ Add the server via the CLI:
 claude mcp add rundeck-mcp -e RUNDECK_URL=https://your-rundeck-instance.example.com -e RUNDECK_TOKEN=your-rundeck-api-token-here -- npx -y @rundeck/mcp
 ```
 
+### Docker Integration
+
+No Node.js required — only Docker. The server is also published as the [`rundeck/mcp`](https://hub.docker.com/r/rundeck/mcp) image, exposed the same way over stdio.
+
+For Cursor, Claude Desktop, or any client using an `mcpServers` JSON block:
+
+```json
+{
+  "mcpServers": {
+    "rundeck-mcp": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-e", "RUNDECK_URL=https://your-rundeck-instance.example.com",
+        "-e", "RUNDECK_TOKEN=your-rundeck-api-token-here",
+        "rundeck/mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+For Claude Code, add via the CLI:
+
+```bash
+claude mcp add rundeck-mcp -- docker run -i --rm -e RUNDECK_URL=https://your-rundeck-instance.example.com -e RUNDECK_TOKEN=your-rundeck-api-token-here rundeck/mcp:latest
+```
+
 ---
 
 ## Overview
