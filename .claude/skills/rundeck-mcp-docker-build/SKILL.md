@@ -116,14 +116,6 @@ Run locally (docs downloaded on first start):
     -p 3456:3456 \
     rundeck-mcp:local
 
-Skip docs download (server only):
-  docker run --rm \
-    -e RUNDECK_URL=... \
-    -e RUNDECK_TOKEN=... \
-    -e SKIP_RUNDECK_DOCS_DOWNLOAD=1 \
-    -p 3456:3456 \
-    rundeck-mcp:local
-
 Mount pre-downloaded docs (fastest startup):
   docker run --rm \
     -e RUNDECK_URL=... \

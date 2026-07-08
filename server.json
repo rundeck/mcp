@@ -69,11 +69,6 @@
           "required": false
         },
         {
-          "name": "SKIP_RUNDECK_DOCS_DOWNLOAD",
-          "description": "Set to 1 to skip automatic doc download on container start",
-          "required": false
-        },
-        {
           "name": "RUNDECK_DOCS_PATH",
           "description": "Path to a pre-mounted Rundeck docs directory inside the container (skips download when set)",
           "required": false

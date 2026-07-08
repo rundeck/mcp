@@ -209,7 +209,6 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
   | docker run -i --rm \
       -e RUNDECK_URL=<RUNDECK_URL> \
       -e RUNDECK_TOKEN=<RUNDECK_TOKEN> \
-      -e SKIP_RUNDECK_DOCS_DOWNLOAD=1 \
       rundeck/rundeck-mcp:latest 2>/dev/null \
   | head -1
 ```
@@ -239,9 +238,6 @@ Reload Claude Code (Cmd+Shift+P → "Reload Window") to connect.
 
 To update the image later:
   docker pull rundeck/rundeck-mcp:latest
-
-To skip doc download on startup (faster):
-  Add "-e", "SKIP_RUNDECK_DOCS_DOWNLOAD=1" to the args in .mcp.json
 
 To use pre-downloaded docs:
   Add "-v", "/path/to/docs:/app/docs/docs:ro" to the args in .mcp.json
