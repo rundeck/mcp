@@ -18,9 +18,15 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const rootDir = join(__dirname, "..");
 
 const DOCS_REPO = "https://github.com/rundeck/docs";
-const DOCS_BRANCH = process.env.RUNDECK_DOCS_BRANCH || "4.0.x";
+const RAW_BRANCH = process.env.RUNDECK_DOCS_BRANCH || "4.0.x";
+if (!/^[a-zA-Z0-9._/-]+$/.test(RAW_BRANCH)) {
+  console.error(`[rundeck-mcp] Invalid RUNDECK_DOCS_BRANCH value: ${RAW_BRANCH}`);
+  process.exit(1);
+}
+const DOCS_BRANCH = RAW_BRANCH;
 const TARBALL_URL = `${DOCS_REPO}/archive/refs/heads/${DOCS_BRANCH}.tar.gz`;
 const DOCS_DEST = join(rootDir, "docs");
+const DOCS_CONTENT = join(DOCS_DEST, "docs");
 
 function log(msg) {
   console.log(`[rundeck-mcp] ${msg}`);
@@ -44,8 +50,8 @@ if (process.env.RUNDECK_DOCS_PATH) {
 
 const force = process.argv.includes("--force");
 
-if (!force && existsSync(DOCS_DEST)) {
-  log(`Docs already present at ${DOCS_DEST}, skipping download.`);
+if (!force && existsSync(DOCS_CONTENT)) {
+  log(`Docs already present at ${DOCS_CONTENT}, skipping download.`);
   log("To re-download run: npm run docs:update");
   process.exit(0);
 }
