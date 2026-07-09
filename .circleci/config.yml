@@ -163,9 +163,6 @@ jobs:
             - run:
                 name: Set package version from tag
                 command: npm version "${CIRCLE_TAG#v}" --no-git-tag-version --allow-same-version
-      - run:
-          name: Update npm for OIDC trusted publishing support
-          command: npm install -g npm@latest
       # The repo's own .npmrc points "registry" at the Cloudsmith mirror
       # (needed for npm ci above) and takes precedence over the default
       # registry, so the public registry must be forced explicitly below.
