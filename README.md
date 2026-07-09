@@ -1,28 +1,5 @@
 # Rundeck MCP Server
 
-## Quick Start
-
-```bash
-# Install dependencies
-npm install
-
-# Develop (runs server with auto-restart)
-npm run dev
-
-# Test with Inspector GUI
-npm run inspect
-
-# Run tests
-npm test
-
-# Full check (build + tests + MCP validation scripts)
-npm run validate
-```
-
-**See [SCRIPTS.md](./SCRIPTS.md) and [COMMANDS.md](./COMMANDS.md)** | **See [SETUP.md](./SETUP.md) for detailed setup**
-
----
-
 ## Using with MCP Clients
 
 Once published, the server is available as the [`@rundeck/mcp`](https://www.npmjs.com/package/@rundeck/mcp) npm package, exposing the `rundeck-mcp` binary over stdio.
@@ -151,6 +128,31 @@ For Claude Code, add via the CLI:
 ```bash
 claude mcp add rundeck-mcp -- docker run -i --rm -e RUNDECK_URL=https://your-rundeck-instance.example.com -e RUNDECK_TOKEN=your-rundeck-api-token-here rundeck/mcp:latest
 ```
+
+---
+
+## Local Development
+
+> **Note:** `npm install` authenticates against PagerDuty's private Cloudsmith npm mirror via the committed `.npmrc` (PagerDuty employees need a `CLOUDSMITH_NPM_TOKEN`). External contributors without Cloudsmith access should delete `.npmrc` and `package-lock.json` first — see [SETUP.md](./SETUP.md#local-development).
+
+```bash
+# Install dependencies
+npm install
+
+# Develop (runs server with auto-restart)
+npm run dev
+
+# Test with Inspector GUI
+npm run inspect
+
+# Run tests
+npm test
+
+# Full check (build + tests + MCP validation scripts)
+npm run validate
+```
+
+**See [SCRIPTS.md](./SCRIPTS.md) and [COMMANDS.md](./COMMANDS.md)** | **See [SETUP.md](./SETUP.md) for detailed setup**
 
 ---
 
