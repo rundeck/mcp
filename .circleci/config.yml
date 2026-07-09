@@ -20,7 +20,7 @@ commands:
     description: Fail the job if Docker Hub credentials aren't configured
     steps:
       - run:
-          name: Check required secrets
+          name: Check required secrets (DOCKERHUB_USERNAME/DOCKERHUB_TOKEN)
           command: |
             if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
               echo "DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not set — failing." >&2
@@ -31,7 +31,7 @@ commands:
     description: Fail the job if the npm token isn't configured
     steps:
       - run:
-          name: Check required secrets
+          name: Check required secrets (NPM_TOKEN)
           command: |
             if [ -z "$NPM_TOKEN" ]; then
               echo "NPM_TOKEN not set — failing." >&2
@@ -42,7 +42,7 @@ commands:
     description: Fail the job if the Cloudsmith npm token isn't configured
     steps:
       - run:
-          name: Check required secrets
+          name: Check required secrets (CLOUDSMITH_NPM_TOKEN)
           command: |
             if [ -z "$CLOUDSMITH_NPM_TOKEN" ]; then
               echo "CLOUDSMITH_NPM_TOKEN not set — failing." >&2
