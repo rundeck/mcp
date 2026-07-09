@@ -6,20 +6,23 @@ version: 2.1
 # anywhere): `circleci run oidc get` mints a short-lived NPM_ID_TOKEN that npm
 # exchanges for a publish token at request time. This requires a one-time,
 # out-of-band setup on npmjs.com — Package Settings -> Trusted Publisher ->
-# CircleCI, pointing at this org/project/workflow — and npm CLI >= 11.15.0
-# (installed explicitly in the job; Node's bundled npm may be older).
+# CircleCI, pointing at this org/project/workflow — and npm CLI >= 11.15.0,
+# which is why every job pins cimg/node:24.18 (bundles npm 11.16.0) via
+# .nvmrc/this file rather than relying on whatever npm an older Node bundles.
 #
 # DOCKERHUB_USERNAME/DOCKERHUB_TOKEN and CLOUDSMITH_NPM_TOKEN are NOT project
 # env vars — they come from org-level CircleCI contexts, attached below:
-#   - "Cloudsmith": build, test, and docker-build (every job running
-#     `npm ci`). .npmrc points the registry at a private Cloudsmith mirror
+#   - "Cloudsmith": build and docker-build (the only jobs running `npm ci`
+#     directly). .npmrc points the registry at a private Cloudsmith mirror
 #     (npm.artifacts.pd-internal.com) and package-lock.json's "resolved"
 #     URLs point there directly, so without it npm ci fails to authenticate
 #     — including inside the Dockerfile's builder stage, which is why
 #     docker-build also forwards $CLOUDSMITH_NPM_TOKEN into the image build
-#     via `docker buildx build --secret`. npm-publish doesn't run `npm ci`
-#     itself — it reuses build's node_modules/dist via workspace attach —
-#     so it doesn't need this context.
+#     via `docker buildx build --secret`. test and npm-publish don't run
+#     `npm ci` themselves — they reuse build's node_modules/dist via
+#     workspace attach (all three jobs now share the same cimg/node:24.18
+#     image, so the artifacts are ABI-compatible) — so neither needs this
+#     context.
 #   - "Dockerhub": docker-build, docker-release (docker login).
 
 commands:
@@ -47,11 +50,11 @@ commands:
 
 jobs:
   # Stage 1: compile TypeScript — fast fail before spending time on test/docker/npm
-  # Persists node_modules + dist so npm-publish (same Node version) can reuse
-  # them instead of re-installing/re-building from scratch.
+  # Persists node_modules + dist so test and npm-publish (same cimg/node:24.18
+  # image) can reuse them instead of re-installing/re-building from scratch.
   build:
     docker:
-      - image: cimg/node:26.5
+      - image: cimg/node:24.18
     steps:
       - checkout
       - check_cloudsmith_secret
@@ -67,17 +70,16 @@ jobs:
             - node_modules
             - dist
 
-  # Stage 2: unit tests — runs in parallel with build (ts-jest runs against src/
-  # directly, doesn't need build's dist/ output)
+  # Stage 2: unit tests — reuses build's node_modules via workspace attach
+  # instead of running its own npm ci (ts-jest runs against src/ directly, so
+  # build's dist/ output itself isn't needed, just the installed deps).
   test:
     docker:
-      - image: cimg/node:22.22
+      - image: cimg/node:24.18
     steps:
       - checkout
-      - check_cloudsmith_secret
-      - run:
-          name: Install dependencies
-          command: npm ci
+      - attach_workspace:
+          at: .
       - run:
           name: Run tests
           command: npm test
@@ -144,13 +146,13 @@ jobs:
   # PR builds, since a real `npm publish` requires a version bump and would
   # just fail otherwise.
   #
-  # Reuses node_modules + dist from the build job (same cimg/node:26.5) via
+  # Reuses node_modules + dist from the build job (same cimg/node:24.18) via
   # workspace attach instead of re-running `npm ci`/`npm run build`; tests
   # were already verified by the test job, which this workflow requires
   # before npm-publish runs — so we don't re-run `npm test` either.
   npm-publish:
     docker:
-      - image: cimg/node:26.5
+      - image: cimg/node:24.18
     steps:
       - checkout
       - attach_workspace:
@@ -178,8 +180,8 @@ workflows:
             tags:
               only: /.*/
       - test:
-          context:
-            - Cloudsmith
+          requires:
+            - build
           filters:
             tags:
               only: /.*/

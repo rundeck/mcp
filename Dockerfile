@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # ── Stage 1: build ────────────────────────────────────────────────────────────
-FROM node:22-alpine AS builder
+FROM node:24-alpine AS builder
 WORKDIR /app
 
 # Install all deps (dev included — TypeScript compiler needed for build)
@@ -22,7 +22,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Stage 2: production image ─────────────────────────────────────────────────
-FROM node:22-alpine AS production
+FROM node:24-alpine AS production
 WORKDIR /app
 
 # curl is used by the entrypoint to download Rundeck docs on first start
