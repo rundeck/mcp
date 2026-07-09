@@ -76,11 +76,18 @@ jobs:
           name: Compute tags and build
           command: |
             SHA_TAG="rundeck/mcp-ci:sha-${CIRCLE_SHA1}"
-            if [ -n "${CIRCLE_PULL_REQUEST:-}" ]; then
+            if [ -n "${CIRCLE_TAG:-}" ]; then
+              # Tag pipelines only need the sha tag for docker-release to promote —
+              # never touch the main/branch rolling tags here.
+              TAGS="${SHA_TAG}"
+            elif [ -n "${CIRCLE_PULL_REQUEST:-}" ]; then
               BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
               TAGS="${SHA_TAG},rundeck/mcp-ci:${BRANCH}"
-            else
+            elif [ "${CIRCLE_BRANCH}" = "main" ]; then
               TAGS="${SHA_TAG},rundeck/mcp-ci:main"
+            else
+              BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+              TAGS="${SHA_TAG},rundeck/mcp-ci:${BRANCH}"
             fi
             TAG_ARGS=$(echo "$TAGS" | sed 's/,/ -t /g; s/^/-t /')
             docker buildx build --platform linux/amd64,linux/arm64 --push $TAG_ARGS .

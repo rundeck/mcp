@@ -1,7 +1,10 @@
 name: Docker
 
 # Disabled: migrated to .circleci/config.yml (docker-build / docker-release jobs).
-# Kept here for reference — trigger manually via workflow_dispatch if needed.
+# Kept here for reference only — the release job only makes sense when
+# dispatched against a `vX.Y.Z` tag ref (Actions UI "Use workflow from" -> tag),
+# and it still depends on a matching rundeck/mcp-ci:sha-<sha> image already
+# existing from an earlier build.
 on:
   workflow_dispatch: {}
 

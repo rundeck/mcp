@@ -1,7 +1,10 @@
 name: Publish to npm
 
 # Disabled: migrated to .circleci/config.yml (npm-publish job).
-# Kept here for reference — trigger manually via workflow_dispatch if needed.
+# Kept here for reference only — if dispatched manually, it must be run
+# against a `vX.Y.Z` tag ref (Actions UI "Use workflow from" -> tag). The
+# version step parses GITHUB_REF_NAME as a tag and will fail/produce a
+# non-semver version if dispatched against a branch.
 on:
   workflow_dispatch: {}
 
