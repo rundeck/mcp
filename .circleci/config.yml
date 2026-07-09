@@ -1,8 +1,13 @@
 version: 2.1
 
 # Migrated from .github/workflows/docker-publish.yml and publish.yml.
-# Requires this Project Environment Variable to be set in CircleCI
-# (Project Settings -> Environment Variables): NPM_TOKEN.
+#
+# npm-publish authenticates via npm's OIDC trusted publishing (no NPM_TOKEN
+# anywhere): `circleci run oidc get` mints a short-lived NPM_ID_TOKEN that npm
+# exchanges for a publish token at request time. This requires a one-time,
+# out-of-band setup on npmjs.com — Package Settings -> Trusted Publisher ->
+# CircleCI, pointing at this org/project/workflow — and npm CLI >= 11.15.0
+# (installed explicitly in the job; Node's bundled npm may be older).
 #
 # DOCKERHUB_USERNAME/DOCKERHUB_TOKEN and CLOUDSMITH_NPM_TOKEN are NOT project
 # env vars — they come from org-level CircleCI contexts, attached below:
@@ -24,17 +29,6 @@ commands:
           command: |
             if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
               echo "DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not set — failing." >&2
-              exit 1
-            fi
-
-  check_npm_secret:
-    description: Fail the job if the npm token isn't configured
-    steps:
-      - run:
-          name: Check required secrets (NPM_TOKEN)
-          command: |
-            if [ -z "$NPM_TOKEN" ]; then
-              echo "NPM_TOKEN not set — failing." >&2
               exit 1
             fi
 
@@ -134,20 +128,25 @@ jobs:
               --tag "rundeck/mcp:latest" \
               "rundeck/mcp-ci:${CIRCLE_TAG}"
 
-  # Stage 4: publish to npm. Real releases only run on version tags (mirrors
-  # docker-release); every other push runs the same job with dry_run: true
-  # (mirrors docker-build's "CI image" role) so the registry/auth/packaging
-  # logic gets validated on every branch without touching the real registry.
+  # Stage 4: publish to npm via OIDC trusted publishing — no static NPM_TOKEN
+  # is ever written to disk; `circleci run oidc get` mints a short-lived
+  # NPM_ID_TOKEN that npm exchanges for a publish token at request time. Real
+  # releases only run on version tags (mirrors docker-release) and run
+  # `npm publish`; every other push runs the same job with stage: true
+  # (mirrors docker-build's "CI image" role) and runs `npm stage publish`
+  # instead — a real, OIDC-authenticated publish that stages the tarball on
+  # the registry without promoting/making it installable, so the whole
+  # auth/packaging/registry pipeline gets validated end-to-end on every PR
+  # without ever going live from a branch build.
   npm-publish:
     parameters:
-      dry_run:
+      stage:
         type: boolean
         default: false
     docker:
       - image: cimg/node:22.22
     steps:
       - checkout
-      - check_npm_secret
       - check_cloudsmith_secret
       - run:
           name: Install dependencies
@@ -159,29 +158,33 @@ jobs:
           name: Build
           command: npm run build
       - unless:
-          condition: <<parameters.dry_run>>
+          condition: <<parameters.stage>>
           steps:
             - run:
                 name: Set package version from tag
                 command: npm version "${CIRCLE_TAG#v}" --no-git-tag-version --allow-same-version
       - run:
-          name: Authenticate with npm
-          command: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+          name: Update npm for OIDC trusted publishing support
+          command: npm install -g npm@latest
       # The repo's own .npmrc points "registry" at the Cloudsmith mirror
-      # (needed for npm ci above) and takes precedence over ~/.npmrc, so
-      # the public registry must be forced explicitly on every publish below.
+      # (needed for npm ci above) and takes precedence over the default
+      # registry, so the public registry must be forced explicitly below.
       - when:
-          condition: <<parameters.dry_run>>
+          condition: <<parameters.stage>>
           steps:
             - run:
-                name: Publish to npm (dry run)
-                command: npm publish --access public --registry https://registry.npmjs.org/ --dry-run
+                name: Stage publish to npm (OIDC)
+                command: |
+                  export NPM_ID_TOKEN=$(circleci run oidc get --claims '{"aud": "npm:registry.npmjs.org"}')
+                  npm stage publish --registry=https://registry.npmjs.org/
       - unless:
-          condition: <<parameters.dry_run>>
+          condition: <<parameters.stage>>
           steps:
             - run:
-                name: Publish to npm
-                command: npm publish --access public --registry https://registry.npmjs.org/
+                name: Publish to npm (OIDC)
+                command: |
+                  export NPM_ID_TOKEN=$(circleci run oidc get --claims '{"aud": "npm:registry.npmjs.org"}')
+                  npm publish --registry=https://registry.npmjs.org/
 
 workflows:
   build-test-publish:
@@ -218,17 +221,21 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v.*/
-      # Validates the publish step (registry resolution, packaging, auth
-      # wiring) on every push via `npm publish --dry-run`, same role as
-      # docker-build's CI image — no tag/release required to exercise it.
+      # Validates the publish step (OIDC auth, registry resolution,
+      # packaging) on every push via `npm stage publish`, same role as
+      # docker-build's CI image. Explicitly excludes version tags so it never
+      # runs alongside — or duplicates — the real release job below.
       - npm-publish:
-          name: npm-publish-dry-run
-          dry_run: true
+          name: npm-publish-stage
+          stage: true
           context:
             - Cloudsmith
           requires:
             - build
             - test
+          filters:
+            tags:
+              ignore: /^v.*/
       - npm-publish:
           context:
             - Cloudsmith
