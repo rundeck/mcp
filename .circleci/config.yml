@@ -1,14 +1,16 @@
 version: 2.1
 
 # Migrated from .github/workflows/docker-publish.yml and publish.yml.
-# Requires these Project Environment Variables to be set in CircleCI
-# (Project Settings -> Environment Variables): DOCKERHUB_USERNAME,
-# DOCKERHUB_TOKEN, NPM_TOKEN, CLOUDSMITH_NPM_TOKEN.
+# Requires this Project Environment Variable to be set in CircleCI
+# (Project Settings -> Environment Variables): NPM_TOKEN.
 #
-# CLOUDSMITH_NPM_TOKEN is required by every `npm ci` (build, test,
-# npm-publish) because .npmrc points the registry at a private Cloudsmith
-# mirror (npm.artifacts.pd-internal.com) — without it, npm ci fails to
-# authenticate before the job does anything else.
+# DOCKERHUB_USERNAME/DOCKERHUB_TOKEN and CLOUDSMITH_NPM_TOKEN are NOT project
+# env vars — they come from org-level CircleCI contexts, attached below:
+#   - "Cloudsmith": build, test, npm-publish (every job running `npm ci`).
+#     .npmrc points the registry at a private Cloudsmith mirror
+#     (npm.artifacts.pd-internal.com), so without it npm ci fails to
+#     authenticate before the job does anything else.
+#   - "Dockerhub": docker-build, docker-release (docker login).
 
 commands:
   check_docker_secrets:
@@ -151,14 +153,20 @@ workflows:
   build-test-publish:
     jobs:
       - build:
+          context:
+            - Cloudsmith
           filters:
             tags:
               only: /.*/
       - test:
+          context:
+            - Cloudsmith
           filters:
             tags:
               only: /.*/
       - docker-build:
+          context:
+            - Dockerhub
           requires:
             - build
             - test
@@ -166,6 +174,8 @@ workflows:
             tags:
               only: /.*/
       - docker-release:
+          context:
+            - Dockerhub
           requires:
             - docker-build
           filters:
@@ -174,6 +184,8 @@ workflows:
             tags:
               only: /^v.*/
       - npm-publish:
+          context:
+            - Cloudsmith
           requires:
             - build
             - test
