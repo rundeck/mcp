@@ -1,12 +1,9 @@
 name: Docker
 
+# Disabled: migrated to .circleci/config.yml (docker-build / docker-release jobs).
+# Kept here for reference — trigger manually via workflow_dispatch if needed.
 on:
-  pull_request:
-    branches: [main]
-  push:
-    branches: [main]
-    tags:
-      - 'v*'
+  workflow_dispatch: {}
 
 jobs:
   check_secrets:
