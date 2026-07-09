@@ -120,8 +120,15 @@ jobs:
               --tag "rundeck/mcp:latest" \
               "rundeck/mcp-ci:${CIRCLE_TAG}"
 
-  # Stage 4: publish to npm. Only runs on version tags.
+  # Stage 4: publish to npm. Real releases only run on version tags (mirrors
+  # docker-release); every other push runs the same job with dry_run: true
+  # (mirrors docker-build's "CI image" role) so the registry/auth/packaging
+  # logic gets validated on every branch without touching the real registry.
   npm-publish:
+    parameters:
+      dry_run:
+        type: boolean
+        default: false
     docker:
       - image: cimg/node:22.22
     steps:
@@ -136,18 +143,30 @@ jobs:
       - run:
           name: Build
           command: npm run build
-      - run:
-          name: Set package version from tag
-          command: npm version "${CIRCLE_TAG#v}" --no-git-tag-version --allow-same-version
+      - unless:
+          condition: <<parameters.dry_run>>
+          steps:
+            - run:
+                name: Set package version from tag
+                command: npm version "${CIRCLE_TAG#v}" --no-git-tag-version --allow-same-version
       - run:
           name: Authenticate with npm
           command: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-      - run:
-          name: Publish to npm
-          # The repo's own .npmrc points "registry" at the Cloudsmith mirror
-          # (needed for npm ci above) and takes precedence over ~/.npmrc, so
-          # the public registry must be forced explicitly here.
-          command: npm publish --access public --registry https://registry.npmjs.org/
+      # The repo's own .npmrc points "registry" at the Cloudsmith mirror
+      # (needed for npm ci above) and takes precedence over ~/.npmrc, so
+      # the public registry must be forced explicitly on every publish below.
+      - when:
+          condition: <<parameters.dry_run>>
+          steps:
+            - run:
+                name: Publish to npm (dry run)
+                command: npm publish --access public --registry https://registry.npmjs.org/ --dry-run
+      - unless:
+          condition: <<parameters.dry_run>>
+          steps:
+            - run:
+                name: Publish to npm
+                command: npm publish --access public --registry https://registry.npmjs.org/
 
 workflows:
   build-test-publish:
@@ -184,6 +203,17 @@ workflows:
               ignore: /.*/
             tags:
               only: /^v.*/
+      # Validates the publish step (registry resolution, packaging, auth
+      # wiring) on every push via `npm publish --dry-run`, same role as
+      # docker-build's CI image — no tag/release required to exercise it.
+      - npm-publish:
+          name: npm-publish-dry-run
+          dry_run: true
+          context:
+            - Cloudsmith
+          requires:
+            - build
+            - test
       - npm-publish:
           context:
             - Cloudsmith
