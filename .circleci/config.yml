@@ -83,30 +83,22 @@ jobs:
             docker run --privileged --rm tonistiigi/binfmt --install all
             docker buildx create --use
       - run:
-          name: Compute tags and build
+          name: Compute tag and build
           command: |
-            SHA_TAG="rundeck/mcp-ci:sha-${CIRCLE_SHA1}"
+            # One tag per build: the git tag name on release pipelines
+            # (immutable, same as a sha), otherwise the sanitized branch name.
             if [ -n "${CIRCLE_TAG:-}" ]; then
-              # Tag pipelines only need the sha tag for docker-release to promote —
-              # never touch the main/branch rolling tags here.
-              TAGS="${SHA_TAG}"
-            elif [ -n "${CIRCLE_PULL_REQUEST:-}" ]; then
-              BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-              TAGS="${SHA_TAG},rundeck/mcp-ci:${BRANCH}"
-            elif [ "${CIRCLE_BRANCH}" = "main" ]; then
-              TAGS="${SHA_TAG},rundeck/mcp-ci:main"
+              IDENTIFIER="${CIRCLE_TAG}"
             else
-              BRANCH=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
-              TAGS="${SHA_TAG},rundeck/mcp-ci:${BRANCH}"
+              IDENTIFIER=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
             fi
-            TAG_ARGS=$(echo "$TAGS" | sed 's/,/ -t /g; s/^/-t /')
             docker buildx build --platform linux/amd64,linux/arm64 --push \
               --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
-              $TAG_ARGS .
+              -t "rundeck/mcp-ci:${IDENTIFIER}" .
 
   # Stage 3b: promote the CI image built above to the public release image.
   # Only runs on version tags — requires docker-build from the SAME pipeline
-  # run (tag pushes re-run docker-build too), so the sha-tagged image is
+  # run (tag pushes re-run docker-build too), so the tag-named image is
   # guaranteed to exist rather than depending on an earlier push to main.
   docker-release:
     machine:
@@ -126,7 +118,7 @@ jobs:
             docker buildx imagetools create \
               --tag "rundeck/mcp:${VERSION}" \
               --tag "rundeck/mcp:latest" \
-              "rundeck/mcp-ci:sha-${CIRCLE_SHA1}"
+              "rundeck/mcp-ci:${CIRCLE_TAG}"
 
   # Stage 4: publish to npm. Only runs on version tags.
   npm-publish:
