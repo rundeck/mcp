@@ -52,6 +52,9 @@ jobs:
   # Stage 1: compile TypeScript — fast fail before spending time on test/docker/npm
   # Persists node_modules + dist so test and npm-publish (same cimg/node:24.18
   # image) can reuse them instead of re-installing/re-building from scratch.
+  # Also persists docs/ — npm ci's postinstall (scripts/download-docs.mjs)
+  # downloads the Rundeck docs there, and integration tests that exercise
+  # resources/docs_search need them on disk to find anything.
   build:
     docker:
       - image: cimg/node:24.18
@@ -69,10 +72,12 @@ jobs:
           paths:
             - node_modules
             - dist
+            - docs
 
-  # Stage 2: unit tests — reuses build's node_modules via workspace attach
-  # instead of running its own npm ci (ts-jest runs against src/ directly, so
-  # build's dist/ output itself isn't needed, just the installed deps).
+  # Stage 2: unit tests — reuses build's node_modules + docs via workspace
+  # attach instead of running its own npm ci (ts-jest runs against src/
+  # directly, so build's dist/ output itself isn't needed, just the
+  # installed deps and downloaded docs).
   test:
     docker:
       - image: cimg/node:24.18
