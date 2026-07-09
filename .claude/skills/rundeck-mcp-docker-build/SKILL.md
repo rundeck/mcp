@@ -69,11 +69,14 @@ TaskUpdate taskId=<verify_id> status="completed"
 TaskUpdate taskId=<build_id> status="in_progress"
 ```
 
-Build with a `local` tag and today's date as a secondary tag:
+Build with a `local` tag and today's date as a secondary tag. `.npmrc` points npm at a private Cloudsmith mirror, so `CLOUDSMITH_NPM_TOKEN` must be set in your shell and forwarded in as a build secret (not a build-arg, to avoid leaking it into the image's layer history):
 
 ```bash
-docker build -t rundeck-mcp:local -t rundeck-mcp:$(date +%Y%m%d) . 2>&1
+docker build --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
+  -t rundeck-mcp:local -t rundeck-mcp:$(date +%Y%m%d) . 2>&1
 ```
+
+If `CLOUDSMITH_NPM_TOKEN` isn't set in the environment, the build will fail with an `npm ci` 401 error.
 
 If the build fails, show the full output and stop:
 > "Docker build failed — see errors above."

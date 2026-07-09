@@ -1,0 +1,194 @@
+version: 2.1
+
+# Migrated from .github/workflows/docker-publish.yml and publish.yml.
+# Requires this Project Environment Variable to be set in CircleCI
+# (Project Settings -> Environment Variables): NPM_TOKEN.
+#
+# DOCKERHUB_USERNAME/DOCKERHUB_TOKEN and CLOUDSMITH_NPM_TOKEN are NOT project
+# env vars — they come from org-level CircleCI contexts, attached below:
+#   - "Cloudsmith": build, test, npm-publish (every job running `npm ci`),
+#     and docker-build. .npmrc points the registry at a private Cloudsmith
+#     mirror (npm.artifacts.pd-internal.com) and package-lock.json's
+#     "resolved" URLs point there directly, so without it npm ci fails to
+#     authenticate — including inside the Dockerfile's builder stage, which
+#     is why docker-build also forwards $CLOUDSMITH_NPM_TOKEN into the
+#     image build via `docker buildx build --secret`.
+#   - "Dockerhub": docker-build, docker-release (docker login).
+
+commands:
+  check_docker_secrets:
+    description: Skip the rest of the job if Docker Hub credentials aren't configured
+    steps:
+      - run:
+          name: Check required secrets
+          command: |
+            if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
+              echo "DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not set — skipping."
+              circleci-agent step halt
+            fi
+
+  check_npm_secret:
+    description: Skip the rest of the job if the npm token isn't configured
+    steps:
+      - run:
+          name: Check required secrets
+          command: |
+            if [ -z "$NPM_TOKEN" ]; then
+              echo "NPM_TOKEN not set — skipping."
+              circleci-agent step halt
+            fi
+
+jobs:
+  # Stage 1: compile TypeScript — fast fail before spending time on test/docker/npm
+  build:
+    docker:
+      - image: cimg/node:22.22
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: npm ci
+      - run:
+          name: Build
+          command: npm run build
+
+  # Stage 2: unit tests — runs in parallel with build (ts-jest runs against src/
+  # directly, doesn't need build's dist/ output)
+  test:
+    docker:
+      - image: cimg/node:22.22
+    steps:
+      - checkout
+      - run:
+          name: Install dependencies
+          command: npm ci
+      - run:
+          name: Run tests
+          command: npm test
+
+  # Stage 3a: build + push the CI image on every push/PR (mirrors the old
+  # docker-publish.yml "build" job) — validates the Dockerfile before release.
+  docker-build:
+    machine:
+      image: ubuntu-2204:current
+    steps:
+      - checkout
+      - check_docker_secrets
+      - run:
+          name: Docker login
+          command: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+      - run:
+          name: Set up QEMU + Buildx
+          command: |
+            docker run --privileged --rm tonistiigi/binfmt --install all
+            docker buildx create --use
+      - run:
+          name: Compute tag and build
+          command: |
+            # One tag per build: the git tag name on release pipelines
+            # (immutable, same as a sha), otherwise the sanitized branch name.
+            if [ -n "${CIRCLE_TAG:-}" ]; then
+              IDENTIFIER="${CIRCLE_TAG}"
+            else
+              IDENTIFIER=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+            fi
+            docker buildx build --platform linux/amd64,linux/arm64 --push \
+              --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
+              -t "rundeck/mcp-ci:${IDENTIFIER}" .
+
+  # Stage 3b: promote the CI image built above to the public release image.
+  # Only runs on version tags — requires docker-build from the SAME pipeline
+  # run (tag pushes re-run docker-build too), so the tag-named image is
+  # guaranteed to exist rather than depending on an earlier push to main.
+  docker-release:
+    machine:
+      image: ubuntu-2204:current
+    steps:
+      - check_docker_secrets
+      - run:
+          name: Docker login
+          command: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+      - run:
+          name: Set up Buildx
+          command: docker buildx create --use
+      - run:
+          name: Promote CI image to release
+          command: |
+            VERSION="${CIRCLE_TAG#v}"
+            docker buildx imagetools create \
+              --tag "rundeck/mcp:${VERSION}" \
+              --tag "rundeck/mcp:latest" \
+              "rundeck/mcp-ci:${CIRCLE_TAG}"
+
+  # Stage 4: publish to npm. Only runs on version tags.
+  npm-publish:
+    docker:
+      - image: cimg/node:22.22
+    steps:
+      - checkout
+      - check_npm_secret
+      - run:
+          name: Install dependencies
+          command: npm ci
+      - run:
+          name: Run tests
+          command: npm test
+      - run:
+          name: Build
+          command: npm run build
+      - run:
+          name: Set package version from tag
+          command: npm version "${CIRCLE_TAG#v}" --no-git-tag-version --allow-same-version
+      - run:
+          name: Authenticate with npm
+          command: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
+      - run:
+          name: Publish to npm
+          command: npm publish --access public
+
+workflows:
+  build-test-publish:
+    jobs:
+      - build:
+          context:
+            - Cloudsmith
+          filters:
+            tags:
+              only: /.*/
+      - test:
+          context:
+            - Cloudsmith
+          filters:
+            tags:
+              only: /.*/
+      - docker-build:
+          context:
+            - Dockerhub
+            - Cloudsmith
+          requires:
+            - build
+            - test
+          filters:
+            tags:
+              only: /.*/
+      - docker-release:
+          context:
+            - Dockerhub
+          requires:
+            - docker-build
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/
+      - npm-publish:
+          context:
+            - Cloudsmith
+          requires:
+            - build
+            - test
+          filters:
+            branches:
+              ignore: /.*/
+            tags:
+              only: /^v.*/

@@ -1,11 +1,17 @@
+# syntax=docker/dockerfile:1
 # ── Stage 1: build ────────────────────────────────────────────────────────────
 FROM node:22-alpine AS builder
 WORKDIR /app
 
 # Install all deps (dev included — TypeScript compiler needed for build)
 # Skip postinstall to avoid downloading docs during image build
-COPY package*.json ./
-RUN npm ci --ignore-scripts
+# .npmrc points the registry at a private Cloudsmith mirror; package-lock.json's
+# "resolved" URLs point there too, so it must be present even though the
+# registry itself isn't referenced by name in most installs.
+COPY package*.json .npmrc ./
+RUN --mount=type=secret,id=cloudsmith_token \
+    CLOUDSMITH_NPM_TOKEN="$(cat /run/secrets/cloudsmith_token 2>/dev/null || true)" \
+    npm ci --ignore-scripts
 
 # Compile TypeScript
 COPY tsconfig.json ./
