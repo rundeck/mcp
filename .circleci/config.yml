@@ -3,7 +3,12 @@ version: 2.1
 # Migrated from .github/workflows/docker-publish.yml and publish.yml.
 # Requires these Project Environment Variables to be set in CircleCI
 # (Project Settings -> Environment Variables): DOCKERHUB_USERNAME,
-# DOCKERHUB_TOKEN, NPM_TOKEN.
+# DOCKERHUB_TOKEN, NPM_TOKEN, CLOUDSMITH_NPM_TOKEN.
+#
+# CLOUDSMITH_NPM_TOKEN is required by every `npm ci` (build, test,
+# npm-publish) because .npmrc points the registry at a private Cloudsmith
+# mirror (npm.artifacts.pd-internal.com) — without it, npm ci fails to
+# authenticate before the job does anything else.
 
 commands:
   check_docker_secrets:
