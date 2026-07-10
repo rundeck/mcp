@@ -1,6 +1,6 @@
 # Rundeck MCP Server: Technical Capabilities
 
-> **Beta software.** Tools, resources, and prompts documented here reflect the current release and are still subject to change.
+> **Alpha software.** Tools, resources, and prompts documented here reflect the current release and are still subject to change.
 
 ## Overview
 
