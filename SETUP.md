@@ -1,4 +1,6 @@
-# Setup Guide
+# Local Development Setup Guide
+
+> Looking to use the published server as an MCP client? See the "Using with MCP Clients" section in [README.md](./README.md) — no clone or build required.
 
 ## Prerequisites
 
@@ -6,7 +8,14 @@
 - npm or yarn
 - TypeScript 5.5+
 
-## Installation
+## Local Development
+
+> **PagerDuty employees**: `npm install`/`npm ci` authenticate against PagerDuty's private Cloudsmith npm mirror (see the committed `.npmrc`). You'll need a `CLOUDSMITH_NPM_TOKEN` — set it as an environment variable before installing.
+>
+> **External contributors**: you don't have Cloudsmith access, so delete `.npmrc` and `package-lock.json` first (both point at the private mirror) and let `npm install` regenerate a lockfile against the public registry:
+> ```bash
+> rm .npmrc package-lock.json
+> ```
 
 1. Install dependencies:
 ```bash

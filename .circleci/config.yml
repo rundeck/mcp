@@ -1,67 +1,90 @@
 version: 2.1
 
 # Migrated from .github/workflows/docker-publish.yml and publish.yml.
-# Requires this Project Environment Variable to be set in CircleCI
-# (Project Settings -> Environment Variables): NPM_TOKEN.
+#
+# npm-publish authenticates via npm's OIDC trusted publishing (no NPM_TOKEN
+# anywhere): `circleci run oidc get` mints a short-lived NPM_ID_TOKEN that npm
+# exchanges for a publish token at request time. This requires a one-time,
+# out-of-band setup on npmjs.com — Package Settings -> Trusted Publisher ->
+# CircleCI, pointing at this org/project/workflow — and npm CLI >= 11.15.0,
+# which is why every job pins cimg/node:24.18 (bundles npm 11.16.0) via
+# .nvmrc/this file rather than relying on whatever npm an older Node bundles.
 #
 # DOCKERHUB_USERNAME/DOCKERHUB_TOKEN and CLOUDSMITH_NPM_TOKEN are NOT project
 # env vars — they come from org-level CircleCI contexts, attached below:
-#   - "Cloudsmith": build, test, npm-publish (every job running `npm ci`),
-#     and docker-build. .npmrc points the registry at a private Cloudsmith
-#     mirror (npm.artifacts.pd-internal.com) and package-lock.json's
-#     "resolved" URLs point there directly, so without it npm ci fails to
-#     authenticate — including inside the Dockerfile's builder stage, which
-#     is why docker-build also forwards $CLOUDSMITH_NPM_TOKEN into the
-#     image build via `docker buildx build --secret`.
+#   - "Cloudsmith": build and docker-build (the only jobs running `npm ci`
+#     directly). .npmrc points the registry at a private Cloudsmith mirror
+#     (npm.artifacts.pd-internal.com) and package-lock.json's "resolved"
+#     URLs point there directly, so without it npm ci fails to authenticate
+#     — including inside the Dockerfile's builder stage, which is why
+#     docker-build also forwards $CLOUDSMITH_NPM_TOKEN into the image build
+#     via `docker buildx build --secret`. test and npm-publish don't run
+#     `npm ci` themselves — they reuse build's node_modules/dist via
+#     workspace attach (all three jobs now share the same cimg/node:24.18
+#     image, so the artifacts are ABI-compatible) — so neither needs this
+#     context.
 #   - "Dockerhub": docker-build, docker-release (docker login).
 
 commands:
   check_docker_secrets:
-    description: Skip the rest of the job if Docker Hub credentials aren't configured
+    description: Fail the job if Docker Hub credentials aren't configured
     steps:
       - run:
-          name: Check required secrets
+          name: Check required secrets (DOCKERHUB_USERNAME/DOCKERHUB_TOKEN)
           command: |
             if [ -z "$DOCKERHUB_USERNAME" ] || [ -z "$DOCKERHUB_TOKEN" ]; then
-              echo "DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not set — skipping."
-              circleci-agent step halt
+              echo "DOCKERHUB_USERNAME/DOCKERHUB_TOKEN not set — failing." >&2
+              exit 1
             fi
 
-  check_npm_secret:
-    description: Skip the rest of the job if the npm token isn't configured
+  check_cloudsmith_secret:
+    description: Fail the job if the Cloudsmith npm token isn't configured
     steps:
       - run:
-          name: Check required secrets
+          name: Check required secrets (CLOUDSMITH_NPM_TOKEN)
           command: |
-            if [ -z "$NPM_TOKEN" ]; then
-              echo "NPM_TOKEN not set — skipping."
-              circleci-agent step halt
+            if [ -z "$CLOUDSMITH_NPM_TOKEN" ]; then
+              echo "CLOUDSMITH_NPM_TOKEN not set — failing." >&2
+              exit 1
             fi
 
 jobs:
   # Stage 1: compile TypeScript — fast fail before spending time on test/docker/npm
+  # Persists node_modules + dist so test and npm-publish (same cimg/node:24.18
+  # image) can reuse them instead of re-installing/re-building from scratch.
+  # Also persists docs/ — npm ci's postinstall (scripts/download-docs.mjs)
+  # downloads the Rundeck docs there, and integration tests that exercise
+  # resources/docs_search need them on disk to find anything.
   build:
     docker:
-      - image: cimg/node:22.22
+      - image: cimg/node:24.18
     steps:
       - checkout
+      - check_cloudsmith_secret
       - run:
           name: Install dependencies
           command: npm ci
       - run:
           name: Build
           command: npm run build
+      - persist_to_workspace:
+          root: .
+          paths:
+            - node_modules
+            - dist
+            - docs
 
-  # Stage 2: unit tests — runs in parallel with build (ts-jest runs against src/
-  # directly, doesn't need build's dist/ output)
+  # Stage 2: unit tests — reuses build's node_modules + docs via workspace
+  # attach instead of running its own npm ci (ts-jest runs against src/
+  # directly, so build's dist/ output itself isn't needed, just the
+  # installed deps and downloaded docs).
   test:
     docker:
-      - image: cimg/node:22.22
+      - image: cimg/node:24.18
     steps:
       - checkout
-      - run:
-          name: Install dependencies
-          command: npm ci
+      - attach_workspace:
+          at: .
       - run:
           name: Run tests
           command: npm test
@@ -74,6 +97,7 @@ jobs:
     steps:
       - checkout
       - check_docker_secrets
+      - check_cloudsmith_secret
       - run:
           name: Docker login
           command: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
@@ -120,31 +144,36 @@ jobs:
               --tag "rundeck/mcp:latest" \
               "rundeck/mcp-ci:${CIRCLE_TAG}"
 
-  # Stage 4: publish to npm. Only runs on version tags.
+  # Stage 4: publish to npm via OIDC trusted publishing — no static NPM_TOKEN
+  # is ever written to disk; `circleci run oidc get` mints a short-lived
+  # NPM_ID_TOKEN that npm exchanges for a publish token at request time. Only
+  # runs on version tags (mirrors docker-release) — never on plain branch or
+  # PR builds, since a real `npm publish` requires a version bump and would
+  # just fail otherwise.
+  #
+  # Reuses node_modules + dist from the build job (same cimg/node:24.18) via
+  # workspace attach instead of re-running `npm ci`/`npm run build`; tests
+  # were already verified by the test job, which this workflow requires
+  # before npm-publish runs — so we don't re-run `npm test` either.
   npm-publish:
     docker:
-      - image: cimg/node:22.22
+      - image: cimg/node:24.18
     steps:
       - checkout
-      - check_npm_secret
-      - run:
-          name: Install dependencies
-          command: npm ci
-      - run:
-          name: Run tests
-          command: npm test
-      - run:
-          name: Build
-          command: npm run build
+      - attach_workspace:
+          at: .
       - run:
           name: Set package version from tag
           command: npm version "${CIRCLE_TAG#v}" --no-git-tag-version --allow-same-version
+      # The repo's own .npmrc points "registry" at the Cloudsmith mirror
+      # (needed for the build job's npm ci) and takes precedence over the
+      # default registry, so the public registry must be forced explicitly
+      # below.
       - run:
-          name: Authenticate with npm
-          command: echo "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" > ~/.npmrc
-      - run:
-          name: Publish to npm
-          command: npm publish --access public
+          name: Publish to npm (OIDC)
+          command: |
+            export NPM_ID_TOKEN=$(circleci run oidc get --claims '{"aud": "npm:registry.npmjs.org"}')
+            npm publish --registry=https://registry.npmjs.org/
 
 workflows:
   build-test-publish:
@@ -156,8 +185,8 @@ workflows:
             tags:
               only: /.*/
       - test:
-          context:
-            - Cloudsmith
+          requires:
+            - build
           filters:
             tags:
               only: /.*/
@@ -182,8 +211,6 @@ workflows:
             tags:
               only: /^v.*/
       - npm-publish:
-          context:
-            - Cloudsmith
           requires:
             - build
             - test

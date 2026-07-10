@@ -1,5 +1,7 @@
 # Rundeck MCP Server: Technical Capabilities
 
+> **Beta software.** Tools, resources, and prompts documented here reflect the current release and are still subject to change.
+
 ## Overview
 
 The Rundeck Model Context Protocol (MCP) Server is a comprehensive integration that exposes Rundeck's documentation, APIs, and capabilities to AI assistants through the Model Context Protocol standard. This document outlines the technical capabilities, architecture, and features of the MCP server implementation.
@@ -11,7 +13,7 @@ The MCP server is built using TypeScript and follows the [MCP TypeScript SDK](ht
 ### Core Components
 
 1. **Resource Handlers** - Expose documentation as accessible resources
-2. **Tools** - Enable AI assistants to perform actions (API calls, job generation, validation)
+2. **Tools** - Enable AI assistants to perform actions (API calls, job generation, validation, runner provisioning)
 3. **Prompts** - Provide guided workflows for common Rundeck tasks
 4. **Guidance System** - Interactive help when tools are called without required parameters
 
@@ -73,7 +75,7 @@ Resources provide AI assistants with read-only access to Rundeck documentation. 
 
 ## Tools
 
-Tools enable AI assistants to perform actions beyond reading documentation. All tools support "guidance mode" - when called without required parameters, they return step-by-step guidance instead of executing.
+Tools enable AI assistants to perform actions beyond reading documentation. Inputs are validated with Zod. For **`api_call`**, **`job_create`**, **`job_validate`**, and **`runner_create`**, omitting required arguments (or leaving string fields blank) returns **markdown guidance** in the normal tool response so the agent can steer the user; malformed types, enums, and other invalid input still return **validation errors**. Use MCP **prompts** for full guided workflows.
 
 ### API Tools
 
@@ -142,44 +144,40 @@ Tools enable AI assistants to perform actions beyond reading documentation. All 
 
 **Guidance Mode**: Call without required parameters (`job_definition`, `format`) for validation guidance.
 
-### Plugin Tools
+### Runner Tools
 
-#### `plugin_create`
-**Purpose**: Generate Rundeck plugin code in Java or Groovy.
-
-**Capabilities**:
-- Support for 5 plugin types:
-  - `node-step`: Executes on each node in a workflow
-  - `workflow-step`: Executes once per workflow
-  - `remote-script-node-step`: Generates script/command for remote execution
-  - `file-copier`: Copies files to nodes
-  - `notification`: Sends notifications on job events
-- Code generation following Rundeck conventions
-- Configuration property definition
-- Input validation and warnings
-
-**When to use**:
-- Creating new Rundeck plugins
-- Generating plugin code following best practices
-- Building plugins programmatically
-
-**Guidance Mode**: Call without required parameters (`plugin_type`, `name`, `class_name`) for step-by-step guidance.
-
-### Utility Tools
-
-#### `tool_recommend`
-**Purpose**: Recommend which tool to use based on user intent or goal.
+#### `runner_create`
+**Purpose**: Create a Rundeck Runner at system or project scope.
 
 **Capabilities**:
-- Intent-based tool recommendation
-- Ranked list of recommended tools
-- Reasoning for each recommendation
-- Guidance on when to use each tool
+- Project-scoped runners (`POST project/{project}/runnerManagement/runners`) for isolation
+- System-scoped runners (`POST runnerManagement/runners`) shared across projects
+- Ephemeral or manual replica types; Docker or JAR installation types
 
 **When to use**:
-- Unsure which tool to use for a task
-- Want to discover available tools for a specific goal
-- Need guidance on tool selection
+- Creating ephemeral Docker runners for a specific project
+- Creating global system runners to share across projects
+- Automating runner provisioning
+
+**Important**: The response includes a one-time `token` and `downloadTk` — they cannot be retrieved again, so surface them to the user immediately.
+
+**Guidance Mode**: Call without required parameters (`name`, `scope`) for step-by-step guidance.
+
+### Documentation Tools
+
+#### `docs_search`
+**Purpose**: Search local Rundeck markdown documentation (`RUNDECK_DOCS_PATH`) by keywords and phrases, with optional category filters.
+
+**When to use**:
+- Finding where a topic, term, or feature is documented before opening a resource
+- Exploring the docs when the exact `rundeck://` URI is unknown
+- Getting ranked excerpts and file paths to narrow which resource to read next
+
+**Follow-up**: Prefer `resources/read` on the best match for complete, authoritative content.
+
+### Not Yet Exposed
+
+A plugin code generator (Java/Groovy scaffolding for node-step, workflow-step, file-copier, and notification plugins) exists in the codebase but is **not** currently wired up as an MCP tool. Use `resources/read` (`rundeck://docs/developer/*`) and `docs_search` for plugin documentation and examples in the meantime.
 
 ## Prompts
 
@@ -238,13 +236,13 @@ The guidance system provides interactive help when tools are called without requ
 - `api_call` - API usage and authentication setup guidance
 - `job_create` - Job creation workflow guidance
 - `job_validate` - Validation process guidance
-- `plugin_create` - Plugin development guidance
+- `runner_create` - Runner provisioning guidance
 
 ## Technical Specifications
 
 ### Dependencies
 
-- **@modelcontextprotocol/sdk**: ^1.0.4 - MCP protocol implementation
+- **@modelcontextprotocol/sdk**: MCP protocol implementation (see `package.json` for the pinned version)
 - **marked**: ^12.0.0 - Markdown parsing
 - **yaml**: ^2.4.2 - YAML parsing and generation
 - **zod**: ^3.23.8 - Schema validation
@@ -254,7 +252,7 @@ The guidance system provides interactive help when tools are called without requ
 
 The server is configured via environment variables:
 
-- `RUNDECK_DOCS_PATH`: Path to documentation directory (default: `./docs`)
+- `RUNDECK_DOCS_PATH`: Path to documentation directory (default: `./docs/docs`, auto-detected relative to cwd)
 - `RUNDECK_URL`: Default Rundeck instance URL
 - `RUNDECK_TOKEN`: Default API token (optional, can be set via environment)
 - `RUNDECK_API_VERSION`: Default API version (default: "46")
@@ -269,45 +267,29 @@ The server is configured via environment variables:
 
 ### Testing
 
-- **Unit Tests**: 131 tests covering all components
-- **Integration Tests**: 21 tests validating cross-component functionality
-- **MCP Inspector Validation**: Protocol compliance testing
-- **Browser Validation**: Client integration testing
-- **Subagent Validation**: Real-world AI assistant testing
+- **Jest**: `npm test` — unit and integration tests (see `src/__tests__/`)
+- **Full pipeline**: `npm run validate` — build, Jest, then `run-all-validations.js` (browser / tools / inspector / subagent scripts under `dist/__tests__/`)
+- Coverage thresholds enforced at 70% for branches, functions, lines, and statements
 
 ### Deployment
 
 The server can be deployed in multiple ways:
 
 - **Local Development**: Direct Node.js execution
-- **Claude Desktop**: Via MCP configuration file
-- **Docker**: Containerized deployment
+- **Claude Desktop / Cursor / VS Code / Claude Code**: Via MCP configuration file or CLI
+- **Docker**: Containerized deployment (`rundeck/mcp` image)
 - **Systemd/PM2**: Production service deployment
 
 ## Integration Points
 
 ### MCP Protocol Integration
 
-The server implements the MCP protocol specification and communicates via stdio transport:
+The server implements the MCP protocol specification and communicates via stdio transport (or Streamable HTTP for local Claude Code development):
 
 - **Protocol**: MCP (Model Context Protocol) standard
-- **Transport**: stdio (standard input/output)
+- **Transport**: stdio (standard input/output), with a Streamable HTTP entry point for local development
 - **Communication**: JSON-RPC 2.0 messages
 - **Compatibility**: Works with any MCP-compatible client
-
-### Client Integration Options
-
-#### 1. Direct MCP Client Integration
-Any MCP-compatible client can connect to the server:
-- **Claude Desktop**: Configure via MCP settings file
-- **Custom MCP Clients**: Use MCP SDK to connect via stdio transport
-- **Command-Line Clients**: Direct stdio communication
-
-#### 2. Rundeck Plugin Integration
-A Rundeck UI plugin provides native integration:
-- **Plugin**: Rundeck UI plugin that embeds MCP client functionality
-- **Bridge Connection**: Plugin connects to bridge server for MCP communication
-- **User Interface**: Chat widget within Rundeck UI for AI-assisted operations
 
 ### Rundeck API Integration
 
@@ -327,37 +309,20 @@ The server provides comprehensive access to Rundeck documentation:
 - **Resource Structure**: Hierarchical URI-based access to documentation sections
 - **Content Optimization**: Summarization and context optimization for AI consumption
 
-## Current Status
+## Status
 
-### Completed Features ✅
+This project is in **beta**. The tool set, resource structure, and prompts documented above reflect the current release but should be expected to change — including additions, removals, and breaking changes to tool schemas — as the project matures.
 
-- ✅ Comprehensive resource structure (all documentation categories)
-- ✅ 6 tools (API, job, plugin, utility)
-- ✅ 6 prompts (guided workflows)
-- ✅ Guidance system (interactive help)
-- ✅ Input validation and error handling
-- ✅ Testing infrastructure (131 unit tests, 21 integration tests)
-- ✅ Documentation and onboarding guides
-- ✅ MCP protocol compliance
-- ✅ Multiple deployment options
-
-### In Development 🔄
-
-- 🔄 Further testing and iteration for production readiness
-- 🔄 Performance optimization
-- 🔄 Enhanced error messages
-- 🔄 Additional use case validation
-
-### Possible Future Enhancements 🚀
+### Possible Future Enhancements
 
 *Note: These are potential enhancements that may be considered based on user feedback and requirements. No commitment to these features at this time.*
 
-- 🚀 Caching for frequently accessed documentation
-- 🚀 Vector search for semantic documentation search
-- 🚀 Support for multiple Rundeck instances
-- 🚀 Job execution monitoring tools
-- 🚀 Project management tools
-- 🚀 Enhanced plugin discovery
+- Wiring up the plugin code generator as an MCP tool
+- Caching for frequently accessed documentation
+- Vector search for semantic documentation search
+- Support for multiple Rundeck instances
+- Job execution monitoring tools
+- Project management tools
 
 ## Use Cases
 
@@ -376,8 +341,3 @@ The server provides comprehensive access to Rundeck documentation:
 - **Market Positioning**: Official MCP integration establishes leadership
 - **Competitive Differentiation**: First-mover advantage in MCP ecosystem
 - **Foundation**: Base for future AI-powered features and capabilities
-
-## Conclusion
-
-The Rundeck MCP Server provides a comprehensive integration that enables AI assistants to effectively work with Rundeck. With extensive documentation resources, powerful tools, and guided workflows, it serves as a foundation for AI-enhanced Rundeck operations across internal teams, customers, and the broader Rundeck ecosystem.
-
