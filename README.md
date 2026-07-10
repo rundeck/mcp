@@ -1,6 +1,6 @@
 # Rundeck MCP Server
 
-> **⚠️ Beta software.** This project is under active development and its tools, resources, and prompts are still changing release to release. Expect breaking changes between versions — pin a version in production and check the changelog before upgrading.
+> **⚠️ Alpha software.** This project is under active development and its tools, resources, and prompts are still changing release to release. Expect breaking changes between versions — pin a version in production and check the changelog before upgrading.
 
 Give any MCP-compatible AI assistant (Claude Desktop, Claude Code, Cursor, VS Code, and others) direct, authenticated access to your Rundeck instance. Point it at your Rundeck URL and API token, and your assistant can:
 
