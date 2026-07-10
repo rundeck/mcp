@@ -118,7 +118,8 @@ jobs:
             fi
             docker buildx build --platform linux/amd64,linux/arm64 --push \
               --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
-              -t "rundeck/mcp-ci:${IDENTIFIER}" .
+              -t "rundeck/mcp-ci:${IDENTIFIER}" \
+              -t "rundeck/mcp-ci:latest" .
 
   # Stage 3b: promote the CI image built above to the public release image.
   # Only runs on version tags — requires docker-build from the SAME pipeline
