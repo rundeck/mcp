@@ -116,10 +116,16 @@ jobs:
             else
               IDENTIFIER=$(echo "${CIRCLE_BRANCH}" | sed 's/[^a-zA-Z0-9._-]/-/g')
             fi
+            TAG_ARGS=(-t "rundeck/mcp-ci:${IDENTIFIER}")
+            # Only main builds move the `latest` tag — Runlayer pulls
+            # mcp-ci:latest to run the MCP server internally, so PR/feature
+            # branch builds must not be able to overwrite it.
+            if [ "${CIRCLE_BRANCH:-}" = "main" ]; then
+              TAG_ARGS+=(-t "rundeck/mcp-ci:latest")
+            fi
             docker buildx build --platform linux/amd64,linux/arm64 --push \
               --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
-              -t "rundeck/mcp-ci:${IDENTIFIER}" \
-              -t "rundeck/mcp-ci:latest" .
+              "${TAG_ARGS[@]}" .
 
   # Stage 3b: promote the CI image built above to the public release image.
   # Only runs on version tags — requires docker-build from the SAME pipeline
