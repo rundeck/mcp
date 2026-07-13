@@ -42,6 +42,7 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 import {
   getJobCreationGuidance,
+  getJobValidationGuidance,
   getApiCallGuidance,
   getRunnerGuidance,
   getAclValidateGuidance,
@@ -59,12 +60,16 @@ function convertSchema(schema: any): any {
   }
 }
 
+function missingRequiredScalar(value: unknown): boolean {
+  if (value === undefined || value === null) return true;
+  if (typeof value === "string" && value.trim() === "") return true;
+  return false;
+}
+
 function needsGuidance(params: unknown, requiredFields: string[]): boolean {
   if (!params || typeof params !== "object") return true;
   const args = params as Record<string, unknown>;
-  return requiredFields.some(
-    (field) => !(field in args) || args[field] === undefined || args[field] === null
-  );
+  return requiredFields.some((field) => missingRequiredScalar(args[field]));
 }
 
 function returnGuidance(guidanceContent: string) {
@@ -269,54 +274,43 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
   try {
     switch (name) {
-      case "api_call":
+      case "api_call": {
         if (needsGuidance(args, ["endpoint"])) {
           logger.info("api_call called without required params - returning guidance");
           return returnGuidance(getApiCallGuidance());
         }
-        const apiResult = await rundeckApiCall(args as any);
+        const parsed = rundeckApiCallSchema.parse(args ?? {});
+        const apiResult = await rundeckApiCall(parsed);
         return { content: [{ type: "text", text: JSON.stringify(apiResult, null, 2) }] };
+      }
 
-      case "api_list":
-        const endpoints = rundeckListEndpoints(args as any);
+      case "api_list": {
+        const parsed = rundeckListEndpointsSchema.parse(args ?? {});
+        const endpoints = rundeckListEndpoints(parsed);
         return { content: [{ type: "text", text: JSON.stringify(endpoints, null, 2) }] };
+      }
 
-      case "job_create":
+      case "job_create": {
         if (needsGuidance(args, ["name", "project", "workflow_steps"])) {
           logger.info("job_create called without required params - returning guidance");
           return returnGuidance(getJobCreationGuidance());
         }
-        const jobDef = rundeckGenerateJob(args as any);
+        const parsed = rundeckGenerateJobSchema.parse(args ?? {});
+        const jobDef = rundeckGenerateJob(parsed);
         return { content: [{ type: "text", text: jobDef }] };
+      }
 
-      case "job_validate":
+      case "job_validate": {
         if (needsGuidance(args, ["job_definition", "format"])) {
           logger.info("job_validate called without required params - returning guidance");
-          return returnGuidance(`# Validating a Rundeck Job
-
-## Overview
-Validate a Rundeck job definition to ensure it follows the correct schema and format.
-
-## Required Parameters
-- **job_definition** (string): The job definition as a YAML or JSON string
-- **format** ("yaml" | "json"): The format of the job definition
-
-## Usage Example
-\`\`\`
-job_validate({
-  job_definition: "name: My Job\\nproject: my-project\\n...",
-  format: "yaml"
-})
-\`\`\`
-
-## Resources
-- Job Schema: \`rundeck://jobs/schema\`
-- Job Creation Guide: Call \`job_create\` without parameters`);
+          return returnGuidance(getJobValidationGuidance());
         }
-        const validation = rundeckValidateJob(args as any);
+        const parsed = rundeckValidateJobSchema.parse(args ?? {});
+        const validation = rundeckValidateJob(parsed);
         return { content: [{ type: "text", text: JSON.stringify(validation, null, 2) }] };
+      }
 
-      case "runner_create":
+      case "runner_create": {
         if (needsGuidance(args, ["name", "scope"])) {
           logger.info("runner_create called without required params - returning guidance");
           return returnGuidance(getRunnerGuidance());
@@ -324,14 +318,17 @@ job_validate({
         const runnerParams = rundeckCreateRunnerSchema.parse(args);
         const runnerResult = await rundeckCreateRunner(runnerParams);
         return { content: [{ type: "text", text: JSON.stringify(runnerResult, null, 2) }] };
+      }
 
-      case "acl_validate":
+      case "acl_validate": {
         if (needsGuidance(args, ["acl_definition"])) {
           logger.info("acl_validate called without required params - returning guidance");
           return returnGuidance(getAclValidateGuidance());
         }
-        const aclValidation = rundeckValidateAcl(args as any);
+        const parsed = rundeckValidateAclSchema.parse(args ?? {});
+        const aclValidation = rundeckValidateAcl(parsed);
         return { content: [{ type: "text", text: JSON.stringify(aclValidation, null, 2) }] };
+      }
 
       case "acl_manage":
         if (needsGuidance(args, ["action", "scope"])) {
@@ -355,7 +352,12 @@ job_validate({
         );
     }
   } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
+    const errorMessage =
+      error instanceof z.ZodError
+        ? error.issues.map((e) => `${e.path.join(".") || "(root)"}: ${e.message}`).join("; ")
+        : error instanceof Error
+          ? error.message
+          : String(error);
     logger.error(`Tool error for ${name}`, error);
     return {
       content: [{ type: "text", text: `Error executing tool '${name}': ${errorMessage}` }],

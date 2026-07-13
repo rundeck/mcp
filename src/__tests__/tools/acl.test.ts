@@ -93,6 +93,29 @@ describe("rundeckValidateAcl", () => {
     expect(result.valid).toBe(true);
     expect(result.policyCount).toBe(2);
   });
+
+  it("warns when an allow/deny action is a typo not valid for that resource type/scope", () => {
+    const result = rundeckValidateAcl({
+      acl_definition: `description: typo action\ncontext:\n  application: rundeck\nfor:\n  resource:\n    - equals:\n        kind: runner\n      allow: [raed]\nby:\n  group: qa`,
+    });
+    expect(result.valid).toBe(true);
+    expect(result.warnings.some((w) => /'raed'.*not a recognized action/.test(w))).toBe(true);
+  });
+
+  it("does not warn when the allow/deny action is valid for that resource type/scope", () => {
+    const result = rundeckValidateAcl({
+      acl_definition: `description: valid runner action\ncontext:\n  application: rundeck\nfor:\n  resource:\n    - equals:\n        kind: runner\n      allow: [read]\nby:\n  group: qa`,
+    });
+    expect(result.warnings.some((w) => /not a recognized action/.test(w))).toBe(false);
+  });
+
+  it("rejects a non-string, non-array allow value", () => {
+    const result = rundeckValidateAcl({
+      acl_definition: `description: bad allow type\ncontext:\n  project: '.*'\nfor:\n  job:\n    - allow: 123\nby:\n  group: admin`,
+    });
+    expect(result.valid).toBe(false);
+    expect(result.errors.some((e) => /must be a string or a list of strings/.test(e))).toBe(true);
+  });
 });
 
 describe("rundeckManageAcl", () => {

@@ -86,9 +86,12 @@ const RESOURCE_KIND_ACTIONS: Partial<Record<string, Partial<Record<PolicyScope, 
   system: { app: ["read", "enable_executions", "disable_executions", "admin", "app_admin", "ops_admin"] },
 };
 
+/** Returns the action list if `value` is a string or an array of strings; null otherwise (including mixed-type arrays). */
 function normalizeActions(value: unknown): string[] | null {
   if (typeof value === "string") return [value];
-  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
+  if (Array.isArray(value) && value.every((v): v is string => typeof v === "string")) {
+    return value;
+  }
   return null;
 }
 
@@ -251,6 +254,11 @@ export function rundeckValidateAcl(params: {
           const r = rule as Record<string, unknown>;
           if (r.allow === undefined && r.deny === undefined) {
             errors.push(`${label}: 'for.${typeName}[${ruleIndex}]' must declare 'allow' and/or 'deny'`);
+          }
+          for (const key of ["allow", "deny"] as const) {
+            if (r[key] !== undefined && normalizeActions(r[key]) === null) {
+              errors.push(`${label}: 'for.${typeName}[${ruleIndex}].${key}' must be a string or a list of strings, got ${Array.isArray(r[key]) ? "a list with non-string entries" : typeof r[key]}`);
+            }
           }
           const hasMatch = MATCH_KEYS.some((k) => r[k] !== undefined);
           if (!hasMatch) {
