@@ -17,8 +17,6 @@ The skill will walk you through the full setup interactively.
 | Skill | Use when |
 |---|---|
 | `/rundeck-mcp-rebuild` | You changed anything in `src/`, or ran `npm install` |
-| `/rundeck-mcp-restart` | You only changed `.env` (`RUNDECK_URL`, `RUNDECK_TOKEN`, `MCP_HTTP_PORT`, etc.) |
-| `/rundeck-mcp-stop` | You want to shut the HTTP server down without restarting it |
 | `/rundeck-mcp-docker-build` | You changed `src/`, `Dockerfile`, or `docker-entrypoint.sh` and want a local image |
 | `/rundeck-mcp-docker-setup` | You want to run the server via Docker without installing Node.js |
 
@@ -56,20 +54,11 @@ npm run inspect
 
 This is a **Model Context Protocol (MCP) server** that exposes Rundeck documentation and APIs to AI assistants. The server registers three MCP feature types: **resources**, **tools**, and **prompts**.
 
-### Entry points
+### Entry point
 
-| File | Transport | Use |
-|---|---|---|
-| `src/index.ts` | stdio | Default — used by Claude Desktop and stdio-based clients |
-| `src/http.ts` | Streamable HTTP | Local HTTP server on `http://localhost:<MCP_HTTP_PORT>/mcp` for Claude Code via `.mcp.json` |
+`src/index.ts` is the sole entry point, communicating via stdio. It creates the MCP `Server` and registers handlers for all six MCP request types (`ListResources`, `ReadResource`, `ListTools`, `CallTool`, `ListPrompts`, `GetPrompt`) directly. All tool dispatch lives in the `CallToolRequestSchema` handler's `switch` statement.
 
-Both entry points call `createRundeckMcpServer()` from `src/create-server.ts`, which owns all handler registration.
-
-### Request lifecycle (`src/create-server.ts`)
-
-`create-server.ts` creates the MCP `Server` and registers handlers for all six MCP request types (`ListResources`, `ReadResource`, `ListTools`, `CallTool`, `ListPrompts`, `GetPrompt`). All tool dispatch lives in the `CallToolRequestSchema` handler's `switch` statement.
-
-**Guidance mode**: Tools called without their required parameters return markdown help text instead of executing. The `needsGuidance()` helper checks for missing required fields; `returnGuidance()` wraps the text in an MCP content response. Guidance content lives in `src/utils/guidance.ts`.
+**Guidance mode**: Tools called without their required parameters return markdown help text instead of executing. The `needsGuidance()` helper checks for missing required fields; `returnGuidanceMarkdown()` wraps the text in an MCP content response. Guidance content lives in `src/utils/guidance.ts`.
 
 ### Resources (`src/resources/`)
 
@@ -96,10 +85,11 @@ Resources that read from the filesystem use `configManager.getConfig().docsPath`
 |---|---|
 | `api.ts` | `api_call`, `api_list` |
 | `jobs.ts` | `job_create`, `job_validate` |
-| `plugins.ts` | `plugin_create` |
-| `recommend.ts` | `tool_recommend` |
+| `search.ts` | `docs_search` |
 
-Each tool exports its handler function and a Zod schema. Schemas are converted to JSON Schema via `zod-to-json-schema` in `create-server.ts` when responding to `ListTools`.
+`plugins.ts` (`plugin_create`) and `recommend.ts` (`tool_recommend`) exist in the codebase but are **not** currently registered as MCP tools — deliberately excluded per the Phase 1 comment at the top of `index.ts`.
+
+Each tool exports its handler function and a Zod schema. Schemas are converted to JSON Schema via `zod-to-json-schema` in `index.ts` when responding to `ListTools`.
 
 `api_call` reads `RUNDECK_URL` and `RUNDECK_TOKEN` from `configManager` (which lazily refreshes from environment). The base URL is constructed as `{RUNDECK_URL}/api/{RUNDECK_API_VERSION}`.
 
@@ -109,7 +99,7 @@ Each tool exports its handler function and a Zod schema. Schemas are converted t
 
 ### Prompts (`src/prompts/index.ts`)
 
-Prompts are static objects with `name`, `description`, `arguments`, optional `argumentSchema` (Zod), and a `getContent(args)` function. Argument validation and missing-required-arg checks happen in `create-server.ts` before calling `getContent`.
+Prompts are static objects with `name`, `description`, `arguments`, optional `argumentSchema` (Zod), and a `getContent(args)` function. Argument validation and missing-required-arg checks happen in `index.ts` before calling `getContent`.
 
 ## Environment Variables
 

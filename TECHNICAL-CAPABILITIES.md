@@ -284,10 +284,10 @@ The server can be deployed in multiple ways:
 
 ### MCP Protocol Integration
 
-The server implements the MCP protocol specification and communicates via stdio transport (or Streamable HTTP for local Claude Code development):
+The server implements the MCP protocol specification and communicates via stdio transport:
 
 - **Protocol**: MCP (Model Context Protocol) standard
-- **Transport**: stdio (standard input/output), with a Streamable HTTP entry point for local development
+- **Transport**: stdio (standard input/output)
 - **Communication**: JSON-RPC 2.0 messages
 - **Compatibility**: Works with any MCP-compatible client
 

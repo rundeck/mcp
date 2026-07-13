@@ -147,47 +147,21 @@ npm run dev
 npm run inspect
 ```
 
-## Running the MCP Server Locally over HTTP
+## Running the MCP Server Locally
 
-For local development with Claude Code, the server can run as a persistent local HTTP process instead of being spawned per-session over stdio. Claude Code then connects to it as a plain URL.
-
-### Step 1: Configure `.env`
-
-Create a `.env` file in the repo root (git-ignored) with your Rundeck credentials and the port the HTTP server should listen on:
-
-```bash
-# .env
-RUNDECK_URL=http://localhost:4440
-RUNDECK_TOKEN=your-rundeck-api-token
-RUNDECK_API_VERSION=46
-MCP_HTTP_PORT=3456
-```
-
-### Step 2: Build and start the server
-
-The server doesn't load `.env` itself (no `dotenv` dependency) — source it into the shell before starting the process, the same way `start.sh` does for `/rundeck-mcp-setup`:
-
-```bash
-npm install
-npm run build
-set -a && source .env && set +a
-node dist/http.js
-```
-
-Using Claude Code? Run `/rundeck-mcp-setup` instead to automate this step.
-
-Once running, the server logs `Rundeck MCP HTTP server → http://localhost:3456/mcp`.
-
-### Step 3: Point `.mcp.json` at it
-
-Add this entry to `.mcp.json` in the repo root (or wherever your MCP client reads it from). Unlike the stdio configs (`docker run`, `npx`, `node dist/index.js`), the client doesn't spawn the process or pass env vars here — it just connects to the already-running server, which got its credentials from `.env` in Step 1:
+For local development with Claude Code, point `.mcp.json` at the stdio entry point directly — the client spawns `node dist/index.js` per session and passes credentials as environment variables, no persistent process to manage:
 
 ```json
 {
   "mcpServers": {
     "rundeck-mcp": {
-      "type": "http",
-      "url": "http://localhost:3456/mcp"
+      "command": "node",
+      "args": ["/path/to/rundeck-mcp/dist/index.js"],
+      "env": {
+        "RUNDECK_URL": "http://localhost:4440",
+        "RUNDECK_TOKEN": "your-rundeck-api-token",
+        "RUNDECK_API_VERSION": "46"
+      }
     }
   }
 }
@@ -197,9 +171,9 @@ Reload Claude Code (or your MCP client) to connect.
 
 ### Day-to-day loop
 
-- Changed `.env` (URL, token, port)? Restart the server so it picks up the new values — see `/rundeck-mcp-restart` below.
-- Changed anything in `src/`? Rebuild first — see `/rundeck-mcp-rebuild` below.
-- The `/rundeck-mcp-setup` skill automates all three steps above end-to-end (installs deps, builds, prompts for credentials into `.env`, writes `.mcp.json`, starts the server via `start.sh`).
+- Changed anything in `src/`? Rebuild — see `/rundeck-mcp-rebuild` below.
+- Changed credentials? Edit the `env` block in `.mcp.json` directly and reload Claude Code — there's no separate process to restart.
+- The `/rundeck-mcp-setup` skill automates first-time setup end-to-end (installs deps, builds, prompts for credentials, writes `.mcp.json`).
 
 ## Local Development Skills Reference
 
@@ -207,14 +181,12 @@ These Claude Code skills (`.claude/skills/`) wrap the day-to-day local dev loop.
 
 | Skill | Use when | What it does |
 |---|---|---|
-| `/rundeck-mcp-setup` | First time cloning the repo, or the server shows as disconnected in `claude mcp list` | Installs deps, builds, prompts for Rundeck credentials into `.env`, registers `.mcp.json`, starts the HTTP server |
-| `/rundeck-mcp-rebuild` | You changed anything in `src/`, or ran `npm install` | Stops the server, runs `npm run build`, starts it again |
-| `/rundeck-mcp-restart` | You only changed `.env` (`RUNDECK_URL`, `RUNDECK_TOKEN`, `MCP_HTTP_PORT`, etc.) | Stops and starts the server without rebuilding — faster than rebuild |
-| `/rundeck-mcp-stop` | You want to shut the server down without restarting it | Stops the running HTTP server |
+| `/rundeck-mcp-setup` | First time cloning the repo, or the server shows as disconnected in `claude mcp list` | Installs deps, builds, prompts for Rundeck credentials, writes `.mcp.json` (stdio) |
+| `/rundeck-mcp-rebuild` | You changed anything in `src/`, or ran `npm install` | Runs `npm install` and `npm run build` |
 | `/rundeck-mcp-docker-build` | You changed `src/`, `Dockerfile`, or `docker-entrypoint.sh` and want a local image | Multi-stage Docker build producing a production-ready `rundeck-mcp` image |
 | `/rundeck-mcp-docker-setup` | You want to run the server via Docker without installing Node.js | Pulls the published image, collects credentials, wires it into `.mcp.json` over stdio |
 
-Rule of thumb: **`.env` change → `/rundeck-mcp-restart`**, **`src/` change → `/rundeck-mcp-rebuild`**, **Docker-related file change → `/rundeck-mcp-docker-build`**.
+Rule of thumb: **`src/` change → `/rundeck-mcp-rebuild`**, **Docker-related file change → `/rundeck-mcp-docker-build`**.
 
 ## Troubleshooting
 
