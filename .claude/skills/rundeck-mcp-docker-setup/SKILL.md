@@ -15,27 +15,26 @@ allowed-tools:
 
 **Purpose:** Get the Rundeck MCP server running via Docker and wired into Claude Code — without cloning the repo or installing Node.js.
 
-> **Alpha software:** `rundeck/mcp-ci` ([tags](https://hub.docker.com/r/rundeck/mcp-ci/tags)) is the current published image for local/internal use. Final releases will move to `rundeck/mcp` instead — check README.md if that hasn't landed in this skill yet. If `docker pull` fails with "repository does not exist" rather than a network error, use `/rundeck-mcp-setup` (local Node.js build) instead.
-
 **When to use:**
 - User wants to use the MCP server without installing Node.js
 - Setting up on a new machine with Docker already available
 - On-premise client installing from the published Docker image
 
 **When NOT to use:**
-- Developing or modifying the MCP server source → use `/rundeck-mcp-setup` instead
+- Developing or modifying the MCP server source itself (editing `src/`, testing `Dockerfile` changes) → use `/rundeck-mcp-docker-build` or `/rundeck-mcp-setup` instead
 - Docker is not available
 
 ---
 
 ## What This Skill Does
 
-1. Verifies Docker is running
-2. Pulls `rundeck/mcp-ci:latest` from Docker Hub
-3. Asks for Rundeck URL and API token
-4. Writes the `rundeck-mcp` entry into `.mcp.json` (stdio transport via `docker run`)
-5. Registers the server in `~/.claude/settings.json`
-6. Verifies the connection with a smoke test
+1. Asks whether this is for local development/testing or just using the server, to pick the right image
+2. Verifies Docker is running
+3. Pulls the image
+4. Asks for Rundeck URL and API token
+5. Writes the `rundeck-mcp` entry into `.mcp.json` (stdio transport via `docker run`)
+6. Registers the server in `~/.claude/settings.json`
+7. Verifies the connection with a smoke test
 
 ---
 
@@ -44,6 +43,7 @@ allowed-tools:
 ### Before Starting: Create Task List
 
 ```
+TaskCreate "Determine image"
 TaskCreate "Verify Docker"
 TaskCreate "Pull image"
 TaskCreate "Collect credentials"
@@ -56,7 +56,27 @@ Store all returned task IDs.
 
 ---
 
-### Step 1: Verify Docker
+### Step 1: Determine Which Image to Use
+
+```
+TaskUpdate taskId=<image_id> status="in_progress"
+```
+
+Ask the user:
+> "Is this for local development/testing, or just to use the Rundeck MCP server day-to-day?
+>
+> 1. **Local development/testing** — pulls `rundeck/mcp-ci:latest` (the CI-built internal image)
+> 2. **Just using it** — pulls `rundeck/mcp:latest` (the public release image)"
+
+Store the answer as `IMAGE`: `rundeck/mcp-ci:latest` for option 1, `rundeck/mcp:latest` for option 2. Use `IMAGE` in place of every image reference in the steps below.
+
+```
+TaskUpdate taskId=<image_id> status="completed"
+```
+
+---
+
+### Step 2: Verify Docker
 
 ```
 TaskUpdate taskId=<verify_id> status="in_progress"
@@ -75,23 +95,23 @@ TaskUpdate taskId=<verify_id> status="completed"
 
 ---
 
-### Step 2: Pull the Image
+### Step 3: Pull the Image
 
 ```
 TaskUpdate taskId=<pull_id> status="in_progress"
 ```
 
 ```bash
-docker pull rundeck/mcp-ci:latest 2>&1
+docker pull <IMAGE> 2>&1
 ```
 
 If the pull fails, stop and tell the user:
-> "Could not pull `rundeck/mcp-ci:latest`. Check your internet connection or confirm the image is published to Docker Hub."
+> "Could not pull `<IMAGE>`. Check your internet connection or confirm the image is published to Docker Hub."
 
 Show the image size:
 
 ```bash
-docker image inspect rundeck/mcp-ci:latest --format '{{.Size}}' 2>/dev/null | awk '{printf "Image size: %.0f MB\n", $1/1024/1024}'
+docker image inspect <IMAGE> --format '{{.Size}}' 2>/dev/null | awk '{printf "Image size: %.0f MB\n", $1/1024/1024}'
 ```
 
 ```
@@ -100,7 +120,7 @@ TaskUpdate taskId=<pull_id> status="completed"
 
 ---
 
-### Step 3: Collect Credentials
+### Step 4: Collect Credentials
 
 ```
 TaskUpdate taskId=<creds_id> status="in_progress"
@@ -122,7 +142,7 @@ TaskUpdate taskId=<creds_id> status="completed"
 
 ---
 
-### Step 4: Configure `.mcp.json`
+### Step 5: Configure `.mcp.json`
 
 ```
 TaskUpdate taskId=<mcp_json_id> status="in_progress"
@@ -138,7 +158,7 @@ Use whichever exists. If neither exists, create it in the current directory.
 test -f .mcp.json && echo "found: $(pwd)/.mcp.json" || (test -f ~/.mcp.json && echo "found: $HOME/.mcp.json" || echo "will create: $(pwd)/.mcp.json")
 ```
 
-**If the file does not exist**, create it:
+**If the file does not exist**, create it (substituting `<IMAGE>` with the value from Step 1):
 
 ```json
 {
@@ -149,7 +169,7 @@ test -f .mcp.json && echo "found: $(pwd)/.mcp.json" || (test -f ~/.mcp.json && e
         "run", "-i", "--rm",
         "-e", "RUNDECK_URL=<RUNDECK_URL>",
         "-e", "RUNDECK_TOKEN=<RUNDECK_TOKEN>",
-        "rundeck/mcp-ci:latest"
+        "<IMAGE>"
       ]
     }
   }
@@ -158,7 +178,7 @@ test -f .mcp.json && echo "found: $(pwd)/.mcp.json" || (test -f ~/.mcp.json && e
 
 **If the file exists**, Read it and use Edit to add (or update) the `rundeck-mcp` key inside `mcpServers` with the same structure above.
 
-Replace `<RUNDECK_URL>` and `<RUNDECK_TOKEN>` with the values from Step 3.
+Replace `<RUNDECK_URL>` and `<RUNDECK_TOKEN>` with the values from Step 4.
 
 ```
 TaskUpdate taskId=<mcp_json_id> status="completed"
@@ -166,7 +186,7 @@ TaskUpdate taskId=<mcp_json_id> status="completed"
 
 ---
 
-### Step 5: Register in `~/.claude/settings.json`
+### Step 6: Register in `~/.claude/settings.json`
 
 ```
 TaskUpdate taskId=<settings_id> status="in_progress"
@@ -181,7 +201,7 @@ claude mcp list 2>/dev/null | grep -q "rundeck-mcp" && echo "registered" || echo
 If not registered:
 
 ```bash
-claude mcp add rundeck-mcp --transport stdio -- docker run -i --rm -e RUNDECK_URL=<RUNDECK_URL> -e RUNDECK_TOKEN=<RUNDECK_TOKEN> rundeck/mcp-ci:latest
+claude mcp add rundeck-mcp --transport stdio -- docker run -i --rm -e RUNDECK_URL=<RUNDECK_URL> -e RUNDECK_TOKEN=<RUNDECK_TOKEN> <IMAGE>
 ```
 
 Check `enabledMcpjsonServers`:
@@ -198,7 +218,7 @@ TaskUpdate taskId=<settings_id> status="completed"
 
 ---
 
-### Step 6: Smoke Test
+### Step 7: Smoke Test
 
 ```
 TaskUpdate taskId=<smoke_id> status="in_progress"
@@ -211,7 +231,7 @@ echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":
   | docker run -i --rm \
       -e RUNDECK_URL=<RUNDECK_URL> \
       -e RUNDECK_TOKEN=<RUNDECK_TOKEN> \
-      rundeck/mcp-ci:latest 2>/dev/null \
+      <IMAGE> 2>/dev/null \
   | head -1
 ```
 
@@ -231,7 +251,7 @@ TaskUpdate taskId=<smoke_id> status="completed"
 ```
 Rundeck MCP server configured via Docker.
 
-  Image:     rundeck/mcp-ci:latest
+  Image:     <IMAGE>
   Transport: stdio (docker run -i --rm)
   Rundeck:   <RUNDECK_URL>
   Config:    .mcp.json → "rundeck-mcp"
@@ -239,5 +259,5 @@ Rundeck MCP server configured via Docker.
 Reload Claude Code (Cmd+Shift+P → "Reload Window") to connect.
 
 To update the image later:
-  docker pull rundeck/mcp-ci:latest
+  docker pull <IMAGE>
 ```
