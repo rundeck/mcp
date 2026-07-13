@@ -486,9 +486,10 @@ create or update a policy via \`acl_manage\`.
 
 ## What is checked
 - **context**: must declare exactly one of \`project\` (regex) or \`application: rundeck\`
-- **for**: must declare at least one resource type (job, node, adhoc, project, resource, storage, project_acl, system_acl, user), each with rules that declare \`allow\` and/or \`deny\`
+- **for**: must declare at least one resource type (job, node, adhoc, project, resource, storage, project_acl, system_acl, user, runner, apitoken, plugin, event, webhook, system), each with rules that declare \`allow\` and/or \`deny\`
 - **by** / **notBy**: at least one must be present, declaring \`username\`, \`group\`, or \`urn\`
 - Warns (does not error) when a rule has no \`match\`/\`equals\`/\`contains\`/\`subset\` clause, since that means the rule applies to ALL resources of that type — often unintentional
+- Warns when an \`allow\`/\`deny\` action isn't recognized for that resource type/kind and scope (project vs application) — catches typos like \`raed\` instead of \`read\`, which otherwise pass silently and just mean the permission is never granted. Only checked where the action vocabulary is confirmed; unrecognized type/kind/scope combinations are skipped rather than guessed.
 
 ## Note
 This is a local, offline structural check. Only Rundeck itself is authoritative — a policy that
@@ -562,6 +563,16 @@ acl_manage({
 ### Delete a system-scoped policy
 \`\`\`
 acl_manage({ action: "delete", scope: "system", name: "old-policy" })
+\`\`\`
+
+### Create a read-only Runner Management policy for a group
+\`\`\`
+acl_manage({
+  action: "create",
+  scope: "system",
+  name: "qa-runner-readonly",
+  content: "description: Read-only access to Runner Management\\ncontext:\\n  application: 'rundeck'\\nfor:\\n  resource:\\n    - equals:\\n        kind: runner\\n      allow: [read]\\nby:\\n  group: qa"
+})
 \`\`\`
 
 ## Resources

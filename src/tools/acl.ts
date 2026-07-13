@@ -24,9 +24,119 @@ const KNOWN_FOR_TYPES = [
   "project_acl",
   "system_acl",
   "user",
+  "runner",
+  "apitoken",
+  "plugin",
+  "event",
+  "webhook",
+  "system",
 ];
 
 const MATCH_KEYS = ["match", "equals", "contains", "subset"];
+
+type PolicyScope = "project" | "app";
+
+/**
+ * Valid `allow`/`deny` actions for direct `for.<type>` rules, keyed by type then
+ * scope (which `context` declares: `project` or `application`). Sourced from
+ * Rundeck's AuthResources.java action constants. A type/scope combination that's
+ * absent here means we don't have a confirmed action list for it (e.g. it may
+ * only be reachable via `resource: kind:`, or only exist in the other scope) —
+ * absence is intentional so we never guess and risk a false-positive warning.
+ */
+const FOR_TYPE_ACTIONS: Partial<Record<string, Partial<Record<PolicyScope, string[]>>>> = {
+  adhoc: { project: ["read", "view", "run", "runAs", "kill", "killAs"] },
+  job: {
+    project: [
+      "read", "view", "update", "delete", "run", "runAs", "kill", "killAs",
+      "create", "toggle_execution", "toggle_schedule",
+      "scm_update", "scm_create", "scm_delete", "view_history",
+    ],
+  },
+  node: { project: ["read", "run"] },
+  storage: { project: ["create", "read", "update", "delete"], app: ["create", "read", "update", "delete"] },
+  project_acl: { app: ["read", "create", "update", "delete", "admin", "app_admin"] },
+  runner: {
+    project: ["read", "create", "update", "delete", "ping", "regenerate_credentials"],
+    app: ["read", "create", "update", "delete", "ping", "regenerate_credentials"],
+  },
+  apitoken: { app: ["create"] },
+};
+
+/**
+ * Valid `allow`/`deny` actions for `resource: - equals: {kind: <kind>}` rules,
+ * keyed by kind then scope. Same provenance and absence-is-intentional rule as
+ * `FOR_TYPE_ACTIONS` above. `resource` itself (the bare type, no `kind`) has no
+ * action vocabulary in Rundeck — it's a container key, not an actionable type.
+ */
+const RESOURCE_KIND_ACTIONS: Partial<Record<string, Partial<Record<PolicyScope, string[]>>>> = {
+  job: { project: ["create", "delete"], app: ["admin", "app_admin", "ops_admin"] },
+  node: { project: ["read", "create", "update", "refresh"] },
+  project: { app: ["create"] },
+  system_acl: { app: ["read", "create", "update", "delete", "admin", "app_admin", "ops_admin"] },
+  user: { app: ["admin", "app_admin"] },
+  runner: { project: ["read", "admin"], app: ["read", "admin"] },
+  apitoken: { app: ["admin", "app_admin", "generate_user_token", "generate_service_token"] },
+  plugin: { app: ["read", "install", "uninstall", "admin", "app_admin", "ops_admin"] },
+  event: { project: ["read", "create"] },
+  webhook: {
+    project: ["read", "create", "update", "delete", "admin", "app_admin", "post"],
+    app: ["read", "create", "update", "delete", "post", "admin", "app_admin"],
+  },
+  system: { app: ["read", "enable_executions", "disable_executions", "admin", "app_admin", "ops_admin"] },
+};
+
+function normalizeActions(value: unknown): string[] | null {
+  if (typeof value === "string") return [value];
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === "string");
+  return null;
+}
+
+/** Best-effort extraction of a rule's `kind` from its match/equals/contains/subset clause. */
+function extractKind(rule: Record<string, unknown>): string | undefined {
+  for (const key of MATCH_KEYS) {
+    const clause = rule[key];
+    if (clause && typeof clause === "object" && !Array.isArray(clause)) {
+      const kind = (clause as Record<string, unknown>).kind;
+      if (typeof kind === "string") return kind;
+    }
+  }
+  return undefined;
+}
+
+function checkRuleActions(
+  label: string,
+  typeName: string,
+  ruleIndex: number,
+  rule: Record<string, unknown>,
+  scope: PolicyScope | undefined,
+  warnings: string[]
+): void {
+  if (!scope) return;
+
+  const kind = typeName === "resource" ? extractKind(rule) : undefined;
+  const actionSet =
+    typeName === "resource"
+      ? (kind ? RESOURCE_KIND_ACTIONS[kind]?.[scope] : undefined)
+      : FOR_TYPE_ACTIONS[typeName]?.[scope];
+  if (!actionSet) return;
+
+  const subject = typeName === "resource" ? `resource kind '${kind}'` : `'for.${typeName}'`;
+
+  for (const key of ["allow", "deny"] as const) {
+    const actions = normalizeActions(rule[key]);
+    if (!actions) continue;
+    for (const action of actions) {
+      if (action === "*") continue;
+      if (!actionSet.includes(action)) {
+        warnings.push(
+          `${label}: 'for.${typeName}[${ruleIndex}].${key}' action '${action}' is not a recognized action for ${subject} in ${scope} scope ` +
+          `(known: ${actionSet.join(", ")}). This may be a typo, or valid on newer Rundeck versions.`
+        );
+      }
+    }
+  }
+}
 
 export interface AclValidationResult {
   valid: boolean;
@@ -89,6 +199,7 @@ export function rundeckValidateAcl(params: {
     }
 
     // context
+    let scope: PolicyScope | undefined;
     if (!p.context || typeof p.context !== "object") {
       errors.push(`${label}: missing required 'context' section (must declare 'project' or 'application')`);
     } else {
@@ -103,6 +214,8 @@ export function rundeckValidateAcl(params: {
         errors.push(`${label}: 'context.application' must be 'rundeck', got '${String(context.application)}'`);
       } else if (hasProject && typeof context.project !== "string") {
         errors.push(`${label}: 'context.project' must be a string (regex pattern)`);
+      } else {
+        scope = hasProject ? "project" : "app";
       }
     }
 
@@ -143,6 +256,7 @@ export function rundeckValidateAcl(params: {
           if (!hasMatch) {
             warnings.push(`${label}: 'for.${typeName}[${ruleIndex}]' has no match/equals/contains/subset clause — it applies to ALL resources of this type`);
           }
+          checkRuleActions(label, typeName, ruleIndex, r, scope, warnings);
         });
       }
     }
