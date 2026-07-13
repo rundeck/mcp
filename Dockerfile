@@ -47,7 +47,7 @@ ENV NODE_ENV=production \
 
 # Verify the stdio server process is still running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD pgrep -f "dist/index.js" || exit 1
+    CMD pgrep -f "[d]ist/index\\.js" || exit 1
 
 # stdio transport — the MCP client launches this container and pipes stdin/stdout
 ENTRYPOINT ["./docker-entrypoint.sh"]
