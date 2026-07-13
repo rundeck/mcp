@@ -238,7 +238,4 @@ Reload Claude Code (Cmd+Shift+P → "Reload Window") to connect.
 
 To update the image later:
   docker pull rundeck/rundeck-mcp:latest
-
-To use pre-downloaded docs:
-  Add "-v", "/path/to/docs:/app/docs/docs:ro" to the args in .mcp.json
 ```

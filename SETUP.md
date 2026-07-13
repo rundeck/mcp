@@ -31,6 +31,17 @@ npm run build
    - For a complete guide to all npm scripts, see [SCRIPTS.md](./SCRIPTS.md)
    - Quick reference: `npm run build`, `npm start`, `npm run dev`, `npm test`, `npm run validate`
 
+### Building the Internal Docker Image (`rundeck/mcp-ci`)
+
+**PagerDuty employees**: to build the same image CircleCI publishes (the one Runlayer pulls as `rundeck/mcp-ci:latest` to run the MCP server internally), build locally with:
+
+```bash
+docker build --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
+  -t rundeck/mcp-ci:latest -t rundeck/mcp-ci:$(date +%Y%m%d) .
+```
+
+`CLOUDSMITH_NPM_TOKEN` must be set in your shell — it's forwarded in as a build secret (not a build-arg) so it never lands in the image's layer history.
+
 ## Configuration
 
 The server supports the following environment variables:
