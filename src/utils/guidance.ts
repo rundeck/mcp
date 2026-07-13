@@ -473,6 +473,102 @@ runner_create({
 \`\`\``;
 }
 
+export function getAclValidateGuidance(): string {
+  return `# Validating a Rundeck ACL Policy
+
+## Overview
+Checks the structure of an ACL Policy YAML document (or multi-document file) against the
+aclpolicy v1.0 format, catching the most common authoring mistakes offline before you
+create or update a policy via \`acl_manage\`.
+
+## Required Parameters
+- **acl_definition** (string): ACL policy YAML contents. May contain multiple \`---\`-separated documents.
+
+## What is checked
+- **context**: must declare exactly one of \`project\` (regex) or \`application: rundeck\`
+- **for**: must declare at least one resource type (job, node, adhoc, project, resource, storage, project_acl, system_acl, user), each with rules that declare \`allow\` and/or \`deny\`
+- **by** / **notBy**: at least one must be present, declaring \`username\`, \`group\`, or \`urn\`
+- Warns (does not error) when a rule has no \`match\`/\`equals\`/\`contains\`/\`subset\` clause, since that means the rule applies to ALL resources of that type — often unintentional
+
+## Note
+This is a local, offline structural check. Only Rundeck itself is authoritative — a policy that
+passes here can still be rejected by the server (e.g. for actions that don't exist for a given
+resource type). \`acl_manage\` with action \`create\`/\`update\` surfaces Rundeck's own validation
+errors when that happens.
+
+## Usage Example
+\`\`\`
+acl_validate({
+  acl_definition: "description: Admin\\ncontext:\\n  application: rundeck\\nfor:\\n  resource:\\n    - equals:\\n        kind: system\\n      allow: [read, admin]\\nby:\\n  group: admin"
+})
+\`\`\`
+
+## Resources
+- ACL Policy format: \`rundeck://docs/manual\` (see aclpolicy-v10.md)
+- ACL Policy administration: \`rundeck://docs/administration\` (see acl-policy-editor.md)`;
+}
+
+export function getAclManageGuidance(): string {
+  return `# Managing Rundeck ACL Policies
+
+## Overview
+ACL Policies control who can do what in Rundeck. This tool wraps the CRUD endpoints Rundeck
+exposes for **stored** ACL policy files — it does not touch policy files on the server's local
+filesystem (those can only be managed by editing them directly on disk).
+
+## Scopes
+- \`scope: "system"\` → \`system/acl/*\` — applies instance/cluster-wide
+- \`scope: "project"\` → \`project/{project}/acl/*\` — applies to a single project only (requires \`project\`)
+
+## Actions
+- **list**: \`GET .../acl/\` — list policy file names in scope
+- **get**: \`GET .../acl/{name}\` — fetch a policy's YAML contents
+- **create**: \`POST .../acl/{name}\` — create a new policy (requires \`content\`); fails with 409 if it already exists
+- **update**: \`PUT .../acl/{name}\` — replace an existing policy (requires \`content\`); fails with 404 if it doesn't exist
+- **delete**: \`DELETE .../acl/{name}\` — remove a policy
+
+## Required Parameters
+- **action** ("list" | "get" | "create" | "update" | "delete")
+- **scope** ("system" | "project")
+- **project** (string): required when scope is "project"
+- **name** (string): required for all actions except "list". The \`.aclpolicy\` suffix is added automatically if omitted.
+- **content** (string): required for "create"/"update" — the ACL policy YAML
+
+## Recommended workflow
+1. Draft the policy YAML.
+2. Call \`acl_validate({ acl_definition })\` to catch structural mistakes offline.
+3. Call \`acl_manage({ action: "create" | "update", ... , content })\`.
+4. If Rundeck rejects it (HTTP 400), the response body includes a \`policies\` list with per-document
+   validation errors straight from the server — fix and retry.
+
+## Examples
+
+### List system-scoped policies
+\`\`\`
+acl_manage({ action: "list", scope: "system" })
+\`\`\`
+
+### Create a project-scoped policy
+\`\`\`
+acl_manage({
+  action: "create",
+  scope: "project",
+  project: "my-project",
+  name: "read-only",
+  content: "description: Read-only access\\ncontext:\\n  project: 'my-project'\\nfor:\\n  job:\\n    - allow: read\\n  node:\\n    - allow: read\\nby:\\n  group: readonly"
+})
+\`\`\`
+
+### Delete a system-scoped policy
+\`\`\`
+acl_manage({ action: "delete", scope: "system", name: "old-policy" })
+\`\`\`
+
+## Resources
+- ACL Policy format: \`rundeck://docs/manual\` (see aclpolicy-v10.md)
+- ACL Policy administration: \`rundeck://docs/administration\` (see acl-policy-editor.md)`;
+}
+
 export function getPluginCreationGuidance(): string {
   return `# Creating a Rundeck Plugin
 

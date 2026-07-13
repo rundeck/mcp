@@ -28,6 +28,12 @@ import {
 } from "./tools/jobs.js";
 import { rundeckSearchDocs, rundeckSearchDocsSchema } from "./tools/search.js";
 import { rundeckCreateRunner, rundeckCreateRunnerSchema } from "./tools/runners.js";
+import {
+  rundeckValidateAcl,
+  rundeckManageAcl,
+  rundeckValidateAclSchema,
+  rundeckManageAclSchema,
+} from "./tools/acl.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
 import { z } from "zod";
@@ -36,6 +42,8 @@ import {
   getJobCreationGuidance,
   getApiCallGuidance,
   getRunnerGuidance,
+  getAclValidateGuidance,
+  getAclManageGuidance,
 } from "./utils/guidance.js";
 import { prompts, getPrompt } from "./prompts/index.js";
 
@@ -197,6 +205,42 @@ Call without required params for setup guidance.`,
         inputSchema: convertSchema(rundeckCreateRunnerSchema),
       },
       {
+        name: "acl_validate",
+        description: `Validate a Rundeck ACL Policy YAML document offline against the aclpolicy v1.0 format.
+
+**When to use:**
+- Checking ACL policy structure (context, for, by/notBy, allow/deny) before creating or updating it
+- Debugging why a policy might be silently rejecting access (missing match clause, missing by/notBy, etc.)
+
+**When NOT to use:**
+- Actually creating/updating/deleting a policy on the server (use acl_manage instead)
+- Making generic API calls (use api_call instead)
+
+**Guidance Mode:** Call without required params (acl_definition) to get guidance.
+**Note:** This is a local structural check, not a substitute for Rundeck's own server-side validation.`,
+        inputSchema: convertSchema(rundeckValidateAclSchema),
+      },
+      {
+        name: "acl_manage",
+        description: `List, get, create, update, or delete a Rundeck ACL Policy file at system or project scope.
+
+**When to use:**
+- Managing stored ACL policies (system/acl/* or project/{project}/acl/*) without hand-building api_call requests
+- Auditing which ACL policies exist in a scope, or reading one's current contents
+- Creating/updating a policy after validating it with acl_validate
+
+**When NOT to use:**
+- Editing ACL policy files on the server's local filesystem (not supported by this or any Rundeck API)
+- Validating policy structure only, without submitting it (use acl_validate instead)
+
+**Scopes:**
+- \`scope: "system"\` → system/acl/* (instance/cluster-wide)
+- \`scope: "project"\` → project/{project}/acl/* (single project, requires 'project')
+
+**Guidance Mode:** Call without required params (action, scope) to get step-by-step guidance.`,
+        inputSchema: convertSchema(rundeckManageAclSchema),
+      },
+      {
         name: "docs_search",
         description: `Search local Rundeck documentation (markdown under RUNDECK_DOCS_PATH) by keywords and phrases.
 
@@ -283,6 +327,23 @@ job_validate({
           const runnerResult = await rundeckCreateRunner(runnerParams);
           return { content: [{ type: "text", text: JSON.stringify(runnerResult, null, 2) }] };
 
+        case "acl_validate":
+          if (needsGuidance(args, ["acl_definition"])) {
+            logger.info("acl_validate called without required params - returning guidance");
+            return returnGuidance(getAclValidateGuidance());
+          }
+          const aclValidation = rundeckValidateAcl(args as any);
+          return { content: [{ type: "text", text: JSON.stringify(aclValidation, null, 2) }] };
+
+        case "acl_manage":
+          if (needsGuidance(args, ["action", "scope"])) {
+            logger.info("acl_manage called without required params - returning guidance");
+            return returnGuidance(getAclManageGuidance());
+          }
+          const aclParams = rundeckManageAclSchema.parse(args);
+          const aclResult = await rundeckManageAcl(aclParams);
+          return { content: [{ type: "text", text: JSON.stringify(aclResult, null, 2) }] };
+
         case "docs_search": {
           const parsed = rundeckSearchDocsSchema.parse(args ?? {});
           const searchHits = rundeckSearchDocs(parsed);
@@ -292,7 +353,7 @@ job_validate({
         default:
           logger.warn(`Unknown tool requested: ${name}`);
           throw new Error(
-            `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, runner_create, docs_search.`
+            `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, runner_create, acl_validate, acl_manage, docs_search.`
           );
       }
     } catch (error) {
