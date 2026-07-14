@@ -72,7 +72,7 @@ if command -v node >/dev/null 2>&1; then
       process.exit(1);
     }
     const { default: def, instances } = registry;
-    if (!instances || typeof instances !== "object") {
+    if (!instances || typeof instances !== "object" || Array.isArray(instances)) {
       console.error(`${path} is missing an "instances" object.`);
       process.exit(1);
     }
@@ -82,8 +82,19 @@ if command -v node >/dev/null 2>&1; then
       process.exit(1);
     }
     for (const name of names) {
+      // Matches the loadInstanceRegistry() validation in src/config.ts
+      // exactly, so a registry this script calls valid is never later
+      // silently rejected (and multi-instance mode silently disabled).
       const entry = instances[name];
-      if (!entry || !entry.url || !entry.token) {
+      if (
+        !name ||
+        !entry ||
+        typeof entry !== "object" ||
+        typeof entry.url !== "string" ||
+        !entry.url ||
+        typeof entry.token !== "string" ||
+        !entry.token
+      ) {
         console.error(`Instance "${name}" is missing "url" or "token".`);
         process.exit(1);
       }

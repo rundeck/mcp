@@ -123,9 +123,21 @@ class ConfigManager {
     }
 
     const entries = instances as Record<string, unknown>;
-    const validated: Record<string, RundeckInstanceEntry> = {};
+    // A null-prototype object, and an explicit reject-list for dangerous
+    // keys: instance names come straight from JSON keys, and assigning into
+    // a plain `{}` via `validated[name] = ...` for a name like "__proto__"
+    // would pollute Object.prototype rather than add an own property.
+    const validated: Record<string, RundeckInstanceEntry> = Object.create(null);
+    const unsafeKeys = new Set(["__proto__", "constructor", "prototype"]);
     for (const [name, entry] of Object.entries(entries)) {
+      if (unsafeKeys.has(name)) {
+        logger.error(
+          `RUNDECK_INSTANCES entry name "${name}" is not allowed — ignoring RUNDECK_INSTANCES`
+        );
+        return;
+      }
       if (
+        !name ||
         !entry ||
         typeof entry !== "object" ||
         typeof (entry as RundeckInstanceEntry).url !== "string" ||
@@ -163,7 +175,7 @@ class ConfigManager {
 
     this.instanceRegistry = { default: defaultName, instances: validated };
 
-    if (defaultName) {
+    if (defaultName !== undefined) {
       this.setRundeckConnection(validated[defaultName].url, validated[defaultName].token);
       logger.info(`Connected to default Rundeck instance "${defaultName}" from RUNDECK_INSTANCES`);
     } else {

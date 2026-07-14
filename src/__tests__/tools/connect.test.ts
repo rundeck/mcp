@@ -34,6 +34,14 @@ describe("rundeckConnect", () => {
     expect(() => rundeckConnectSchema.parse({ instance: { name: "prod" } })).toThrow();
   });
 
+  it("rejects an empty-string instance value", () => {
+    // Direct callers of the schema/handler (not just the index.ts guidance
+    // path, which treats blank as "missing" before ever reaching this
+    // schema) must also be stopped from producing a confusing
+    // `No such instance ""` error.
+    expect(() => rundeckConnectSchema.parse({ instance: "" })).toThrow();
+  });
+
   it("strips unknown fields instead of passing them through to the handler", () => {
     // Guards the tool's "name-only, never a url/token" design intent: even if
     // a caller stuffs extra fields into the call, parsing produces a value

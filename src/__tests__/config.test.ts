@@ -251,6 +251,39 @@ describe("Config Manager", () => {
 
       expect(configManager.hasInstanceRegistry()).toBe(false);
     });
+
+    it("falls back to no registry when an instance name is a dangerous prototype key", () => {
+      // Built as a raw JSON string rather than JSON.stringify(objectLiteral):
+      // `{ __proto__: {...} }` as a JS object-literal key sets the
+      // prototype instead of creating an own property, so JSON.stringify
+      // would silently drop it before it ever reached JSON.parse in
+      // loadInstanceRegistry() — masking the exact case being tested.
+      process.env.RUNDECK_INSTANCES =
+        '{"default":"prod","instances":{"__proto__":{"url":"https://evil.example.com","token":"evil-token"},"prod":{"url":"https://prod.example.com","token":"prod-token"}}}';
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+      // The rejected registry must not have polluted Object.prototype.
+      expect(({} as Record<string, unknown>).url).toBeUndefined();
+      expect(({} as Record<string, unknown>).token).toBeUndefined();
+    });
+
+    it("connects to a default that is present but an empty string only if it names a registered instance", () => {
+      // An empty-string "default" that doesn't match any registered
+      // instance must reject the whole registry, same as any other bad
+      // default — not silently fall through to "no default" behavior.
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+    });
   });
 });
 

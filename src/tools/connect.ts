@@ -7,7 +7,7 @@ import { z } from "zod";
 import { configManager } from "../config.js";
 
 export const rundeckConnectSchema = z.object({
-  instance: z.string(),
+  instance: z.string().min(1, "instance must be a non-empty name"),
 });
 
 export async function rundeckConnect(params: {
