@@ -235,6 +235,22 @@ describe("Config Manager", () => {
 
       expect(configManager.hasInstanceRegistry()).toBe(false);
     });
+
+    it("falls back to no registry when an instance entry has an empty url/token", () => {
+      // scripts/rundeck-connect.sh's own validation already rejects an empty
+      // string the same way it rejects a missing field — this keeps
+      // config.ts's in-process validation just as strict.
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+    });
   });
 });
 

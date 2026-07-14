@@ -129,7 +129,9 @@ class ConfigManager {
         !entry ||
         typeof entry !== "object" ||
         typeof (entry as RundeckInstanceEntry).url !== "string" ||
-        typeof (entry as RundeckInstanceEntry).token !== "string"
+        !(entry as RundeckInstanceEntry).url ||
+        typeof (entry as RundeckInstanceEntry).token !== "string" ||
+        !(entry as RundeckInstanceEntry).token
       ) {
         logger.error(
           `RUNDECK_INSTANCES entry "${name}" is missing "url"/"token" — ignoring RUNDECK_INSTANCES`
