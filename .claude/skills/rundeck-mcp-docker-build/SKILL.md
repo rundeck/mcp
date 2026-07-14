@@ -69,11 +69,11 @@ TaskUpdate taskId=<verify_id> status="completed"
 TaskUpdate taskId=<build_id> status="in_progress"
 ```
 
-Build with a `local` tag and today's date as a secondary tag. `.npmrc` points npm at a private Cloudsmith mirror, so `CLOUDSMITH_NPM_TOKEN` must be set in your shell and forwarded in as a build secret (not a build-arg, to avoid leaking it into the image's layer history):
+Build with the same tag CircleCI publishes (`rundeck/mcp-ci`) plus today's date as a secondary tag. `.npmrc` points npm at a private Cloudsmith mirror, so `CLOUDSMITH_NPM_TOKEN` must be set in your shell and forwarded in as a build secret (not a build-arg, to avoid leaking it into the image's layer history):
 
 ```bash
 docker build --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
-  -t rundeck-mcp:local -t rundeck-mcp:$(date +%Y%m%d) . 2>&1
+  -t rundeck/mcp-ci:latest -t rundeck/mcp-ci:$(date +%Y%m%d) . 2>&1
 ```
 
 If `CLOUDSMITH_NPM_TOKEN` isn't set in the environment, the build will fail with an `npm ci` 401 error.
@@ -94,7 +94,7 @@ TaskUpdate taskId=<verify_image_id> status="in_progress"
 ```
 
 ```bash
-docker image inspect rundeck-mcp:local --format 'Size: {{.Size}} bytes | Created: {{.Created}}'
+docker image inspect rundeck/mcp-ci:latest --format 'Size: {{.Size}} bytes | Created: {{.Created}}'
 ```
 
 Print usage instructions:
@@ -110,23 +110,14 @@ TaskUpdate taskId=<verify_image_id> status="completed"
 ```
 Docker image built successfully.
 
-  Image:   rundeck-mcp:local
-  
-Run locally (docs downloaded on first start):
-  docker run --rm \
-    -e RUNDECK_URL=https://your-rundeck.example.com \
-    -e RUNDECK_TOKEN=your-token \
-    -p 3456:3456 \
-    rundeck-mcp:local
+  Image:   rundeck/mcp-ci:latest
 
-Mount pre-downloaded docs (fastest startup):
-  docker run --rm \
-    -e RUNDECK_URL=... \
-    -e RUNDECK_TOKEN=... \
-    -v /path/to/docs:/app/docs/docs:ro \
-    -p 3456:3456 \
-    rundeck-mcp:local
-
-Then add to .mcp.json:
-  "rundeck-mcp": { "type": "http", "url": "http://localhost:3456/mcp" }
+Add to .mcp.json (stdio transport — docs downloaded on first start):
+  "rundeck-mcp": {
+    "command": "docker",
+    "args": ["run", "-i", "--rm",
+      "-e", "RUNDECK_URL=https://your-rundeck.example.com",
+      "-e", "RUNDECK_TOKEN=your-token",
+      "rundeck/mcp-ci:latest"]
+  }
 ```
