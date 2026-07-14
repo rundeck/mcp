@@ -244,8 +244,12 @@ class ConfigManager {
    * If token or URL is missing, refresh from environment first
    */
   getConfig(): Readonly<RundeckConfig> {
-    // Refresh from environment if token or URL is missing
-    if (!this.config.apiToken || !this.config.rundeckUrl) {
+    // Refresh from environment if token or URL is missing. Skipped once a
+    // RUNDECK_INSTANCES registry is loaded: refreshFromEnvironment()'s `||`
+    // fallback would otherwise resurrect stale RUNDECK_URL/RUNDECK_TOKEN env
+    // vars after clearConnection(), undermining the fail-closed guarantee
+    // that a failed rundeck_connect leaves no instance connected.
+    if ((!this.config.apiToken || !this.config.rundeckUrl) && !this.instanceRegistry) {
       this.refreshFromEnvironment();
     }
     return { ...this.config };

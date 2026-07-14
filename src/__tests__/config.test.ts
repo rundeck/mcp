@@ -162,6 +162,30 @@ describe("Config Manager", () => {
       expect(config.apiToken).toBeUndefined();
     });
 
+    it("does not resurrect stale RUNDECK_URL/RUNDECK_TOKEN after a failed switch", () => {
+      // A user who already had single-instance env vars exported, then also
+      // set RUNDECK_INSTANCES, is a real scenario the launcher script doesn't
+      // prevent (it only ever adds RUNDECK_INSTANCES, never unsets these).
+      process.env.RUNDECK_URL = "https://old.example.com";
+      process.env.RUNDECK_TOKEN = "old-token";
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+        },
+      });
+      configManager.initialize();
+
+      const result = configManager.connectToInstance("does-not-exist");
+      expect(result.ok).toBe(false);
+
+      // getConfig()'s lazy refreshFromEnvironment() fallback must not
+      // repopulate rundeckUrl/apiToken from the still-exported env vars.
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBeUndefined();
+      expect(config.apiToken).toBeUndefined();
+    });
+
     it("falls back to no registry on malformed JSON without throwing", () => {
       process.env.RUNDECK_INSTANCES = "{not valid json";
 
