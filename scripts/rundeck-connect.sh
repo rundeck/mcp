@@ -30,6 +30,12 @@ if [ ! -f "$INSTANCES_FILE" ]; then
   exit 1
 fi
 
+# Read the file's content exactly once and reuse it for both validation and
+# export below, instead of re-opening the path multiple times — so whatever
+# gets validated is guaranteed to be the exact same bytes that get exported,
+# with no window for the file to change underneath this script.
+REGISTRY_CONTENT="$(cat "$INSTANCES_FILE")"
+
 # Warn (don't block) if the registry is readable by anyone other than its
 # owner — it holds live API tokens. `stat` flags differ between BSD/macOS
 # and GNU/Linux, so try both instead of assuming one.
@@ -49,12 +55,12 @@ esac
 # names (only names — never url/token values) on success so the notice below
 # can report how many tokens are about to be bundled into one env var.
 if command -v node >/dev/null 2>&1; then
-  NAMES_LIST="$(node --input-type=module -e '
+  NAMES_LIST="$(printf '%s' "$REGISTRY_CONTENT" | node --input-type=module -e '
     import { readFileSync } from "fs";
     const path = process.argv[1];
     let registry;
     try {
-      registry = JSON.parse(readFileSync(path, "utf8"));
+      registry = JSON.parse(readFileSync(0, "utf8"));
     } catch {
       // Deliberately not printing the parser error message: it can quote a
       // fragment of the malformed input, which may contain a token.
@@ -101,7 +107,7 @@ fi
 
 # Content only ever lands in this shell's exported env, never printed,
 # never echoed — it's inherited by `claude` and whatever it spawns.
-RUNDECK_INSTANCES="$(cat "$INSTANCES_FILE")"
+RUNDECK_INSTANCES="$REGISTRY_CONTENT"
 export RUNDECK_INSTANCES
 
 if ! command -v claude >/dev/null 2>&1; then

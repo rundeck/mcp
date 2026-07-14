@@ -28,6 +28,23 @@ describe("rundeckConnect", () => {
     });
   });
 
+  it("rejects a non-string instance value", () => {
+    expect(() => rundeckConnectSchema.parse({ instance: 42 })).toThrow();
+    expect(() => rundeckConnectSchema.parse({ instance: null })).toThrow();
+    expect(() => rundeckConnectSchema.parse({ instance: { name: "prod" } })).toThrow();
+  });
+
+  it("strips unknown fields instead of passing them through to the handler", () => {
+    // Guards the tool's "name-only, never a url/token" design intent: even if
+    // a caller stuffs extra fields into the call, parsing produces a value
+    // with only `instance` on it.
+    const parsed = rundeckConnectSchema.parse({
+      instance: "staging",
+      token: "should-not-survive-parsing",
+    });
+    expect(parsed).toEqual({ instance: "staging" });
+  });
+
   it("switches the active instance and reports available instances", async () => {
     const result = await rundeckConnect({ instance: "staging" });
 
