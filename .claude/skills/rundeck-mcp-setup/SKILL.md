@@ -1,6 +1,6 @@
 ---
 name: rundeck-mcp-setup
-description: Set up and start the Rundeck MCP HTTP server locally. Installs dependencies, builds the project, configures .env with Rundeck credentials, registers the server in .mcp.json, and starts it. Use when a user clones this repo and wants to run the MCP server for the first time, or when restarting after a reboot.
+description: Set up the Rundeck MCP server locally over stdio. Installs dependencies, builds the project, configures .mcp.json with Rundeck credentials, and registers it with Claude Code. Use when a user clones this repo and wants to run the MCP server for the first time.
 user-invocable: true
 allowed-tools:
   - Bash
@@ -13,15 +13,14 @@ allowed-tools:
 
 # Rundeck MCP — Local Setup Skill
 
-**Purpose:** Get the Rundeck MCP HTTP server running on the user's machine, fully wired into Claude Code.
+**Purpose:** Get the Rundeck MCP server built and wired into Claude Code over stdio.
 
 **When to use:**
 - After cloning the repo for the first time
-- When the server is not running and `claude mcp list` shows `rundeck-mcp` as disconnected
-- When the user wants to restart the server
+- When the server is not registered, or `claude mcp list` shows `rundeck-mcp` as disconnected
 
 **When NOT to use:**
-- If the server is already running (`claude mcp list` shows `rundeck-mcp` as connected)
+- If the server is already registered and connected (`claude mcp list` shows `rundeck-mcp` as connected)
 
 ---
 
@@ -30,10 +29,9 @@ allowed-tools:
 1. Checks Node.js is available
 2. Installs npm dependencies (if needed)
 3. Builds TypeScript → `dist/`
-4. Prompts for Rundeck credentials and configures `.env`
-5. Creates `.mcp.json` in the repo root (registers the server with Claude Code)
+4. Prompts for Rundeck credentials
+5. Creates `.mcp.json` in the repo root with a stdio entry (`command`/`args`/`env`)
 6. Adds `rundeck-mcp` to `enabledMcpjsonServers` in `~/.claude/settings.json`
-7. Starts the HTTP server via `start.sh`
 
 ---
 
@@ -51,10 +49,9 @@ Create all tasks upfront so the user can track progress. Use TaskCreate for each
 TaskCreate "Verify environment"
 TaskCreate "Install dependencies"
 TaskCreate "Build project"
-TaskCreate "Verify .env"
+TaskCreate "Collect credentials"
 TaskCreate "Configure .mcp.json"
 TaskCreate "Register in ~/.claude/settings.json"
-TaskCreate "Start server"
 ```
 
 ---
@@ -77,7 +74,7 @@ Store the result as `REPO`. If the command fails, stop:
 Confirm it is the correct repo:
 
 ```bash
-ls $REPO/package.json $REPO/src/http.ts $REPO/.claude/skills/rundeck-mcp-setup/start.sh 2>/dev/null
+ls $REPO/package.json $REPO/src/index.ts 2>/dev/null
 ```
 
 If any file is missing, stop:
@@ -135,10 +132,10 @@ TaskUpdate taskId=<build_id> status="in_progress"
 ```
 
 ```bash
-test -f dist/http.js && echo "built" || echo "needs build"
+test -f dist/index.js && echo "built" || echo "needs build"
 ```
 
-If `dist/http.js` does not exist:
+If `dist/index.js` does not exist:
 
 ```bash
 npm run build
@@ -152,43 +149,16 @@ TaskUpdate taskId=<build_id> status="completed"
 
 ---
 
-### Step 4: Verify `.env`
+### Step 4: Collect Credentials
 
 ```
-TaskUpdate taskId=<verify_env_file_id> status="in_progress"
+TaskUpdate taskId=<credentials_id> status="in_progress"
 ```
 
-```bash
-test -f .env && echo "exists" || echo "missing"
-```
-
-**If `.env` does not exist**, stop and tell the user:
-
-> "`.env` not found. Create it from the template before continuing:
->
-> ```bash
-> cp .env.example .env
-> ```
->
-> Then open `.env` and fill in your `RUNDECK_URL` and `RUNDECK_TOKEN`. When done, run `/rundeck-mcp-setup` again."
-
-**If `.env` exists**, verify required variables are not placeholder values:
-
-```bash
-grep -E "^RUNDECK_URL|^RUNDECK_TOKEN" .env
-```
-
-If either is empty or still contains `your-` placeholder text, stop:
-> "`.env` has unfilled values. Open `.env` and set `RUNDECK_URL` and `RUNDECK_TOKEN`, then run `/rundeck-mcp-setup` again."
-
-Show the non-secret config to confirm:
-
-```bash
-grep -E "^RUNDECK_URL|^MCP_HTTP_PORT|^RUNDECK_API_VERSION" .env
-```
+Ask the user for their Rundeck instance URL and API token (generated from their Rundeck user profile). Never echo the token back or log it.
 
 ```
-TaskUpdate taskId=<verify_env_file_id> status="completed"
+TaskUpdate taskId=<credentials_id> status="completed"
 ```
 
 ---
@@ -199,37 +169,35 @@ TaskUpdate taskId=<verify_env_file_id> status="completed"
 TaskUpdate taskId=<mcp_json_id> status="in_progress"
 ```
 
-Get the port:
-
-```bash
-grep "MCP_HTTP_PORT" .env | cut -d= -f2
-```
-
-Store as `PORT` (default `3456`).
-
 ```bash
 test -f .mcp.json && echo "exists" || echo "missing"
 ```
 
-**If missing**, create it:
+**If missing**, create it (use `Write`), filling in the absolute path to `dist/index.js` and the credentials collected in Step 4:
 
 ```json
 {
   "mcpServers": {
     "rundeck-mcp": {
-      "url": "http://localhost:<PORT>/mcp"
+      "command": "node",
+      "args": ["<REPO>/dist/index.js"],
+      "env": {
+        "RUNDECK_URL": "<RUNDECK_URL>",
+        "RUNDECK_TOKEN": "<RUNDECK_TOKEN>",
+        "RUNDECK_API_VERSION": "46"
+      }
     }
   }
 }
 ```
 
-**If exists**, check if entry is present:
+**If exists**, check if the entry is present:
 
 ```bash
 grep -q "rundeck-mcp" .mcp.json && echo "present" || echo "missing"
 ```
 
-If missing, use Edit to add `"rundeck-mcp": { "url": "http://localhost:<PORT>/mcp" }` inside `mcpServers`.
+If missing, use Edit to add the `"rundeck-mcp"` entry above inside `mcpServers`. If present, use Edit to update its `env` values with the credentials from Step 4.
 
 ```
 TaskUpdate taskId=<mcp_json_id> status="completed"
@@ -243,36 +211,6 @@ TaskUpdate taskId=<mcp_json_id> status="completed"
 TaskUpdate taskId=<settings_id> status="in_progress"
 ```
 
-This step does two things: registers the server globally (so it's available in **any** project) and enables it via `enabledMcpjsonServers`.
-
-**6a — Global `mcpServers` registration:**
-
-Check if already registered:
-
-```bash
-claude mcp list 2>/dev/null | grep -q "rundeck-mcp" && echo "registered" || echo "not registered"
-```
-
-If not registered, add it using the CLI (replace `<PORT>` with the value from `.env`):
-
-```bash
-claude mcp add rundeck-mcp --transport http http://localhost:<PORT>/mcp
-```
-
-If the `claude mcp add` command fails or is unavailable, fall back to editing `~/.claude/settings.json` directly: Read the file, then use Edit to add the following inside the top-level JSON object:
-
-```json
-"mcpServers": {
-  "rundeck-mcp": {
-    "url": "http://localhost:<PORT>/mcp"
-  }
-}
-```
-
-If `mcpServers` already exists, add `"rundeck-mcp"` inside it.
-
-**6b — `enabledMcpjsonServers`:**
-
 ```bash
 grep -q "rundeck-mcp" ~/.claude/settings.json && echo "enabled" || echo "not enabled"
 ```
@@ -285,62 +223,19 @@ TaskUpdate taskId=<settings_id> status="completed"
 
 ---
 
-### Step 7: Start the Server
-
-```
-TaskUpdate taskId=<start_id> status="in_progress"
-```
-
-```bash
-pgrep -f "dist/http.js" && echo "running" || echo "not running"
-```
-
-If running, stop the old instance first:
-
-```bash
-pkill -f "dist/http.js" 2>/dev/null; sleep 1
-```
-
-Start in the background:
-
-```bash
-bash .claude/skills/rundeck-mcp-setup/start.sh
-```
-
-Verify it started:
-
-```bash
-sleep 2 && curl -s -o /dev/null -w "%{http_code}" http://localhost:<PORT>/mcp -X POST -H "Content-Type: application/json" -d '{}' 2>/dev/null || echo "unreachable"
-```
-
-A `400` response confirms the server is listening. Any connection error means it failed — tell the user to check `.env` and run `bash .claude/skills/rundeck-mcp-setup/start.sh` manually.
-
-```
-TaskUpdate taskId=<start_id> status="completed"
-```
-
----
-
 ### Final Report
 
 ```
-Rundeck MCP server is running.
+Rundeck MCP server is configured.
 
-  URL:      http://localhost:<PORT>/mcp
   Rundeck:  <RUNDECK_URL>
   Config:   .mcp.json  →  "rundeck-mcp"
   Settings: ~/.claude/settings.json  →  enabledMcpjsonServers
 
-To stop:     /rundeck-mcp-stop
-To restart:  /rundeck-mcp-restart
-To rebuild:  /rundeck-mcp-rebuild
+Reload Claude Code (or restart your session) to connect.
+
+To rebuild after source changes:  /rundeck-mcp-rebuild
 ```
-
----
-
-## Notes for the MCP Server to Persist Across Reboots
-
-The server process is not daemonized. After a system restart, the user must run this skill again (or `bash .claude/skills/rundeck-mcp-setup/start.sh` manually) to restart it.
 
 ---
 
@@ -350,5 +245,4 @@ The server process is not daemonized. After a system restart, the user must run 
 |---|---|---|
 | `npm install` fails | Missing Node.js or network issues | Check `node --version`; fix npm registry if behind proxy |
 | `npm run build` fails | TypeScript errors | Check `src/` for recent edits; run `npm run build` manually |
-| Server not reachable | Wrong port or `.env` not loaded | Check `MCP_HTTP_PORT` in `.env`; check `start.sh` output |
-| `rundeck-mcp` not showing in Claude | Not in `enabledMcpjsonServers` | Re-run Step 7; restart Claude Code |
+| `rundeck-mcp` not showing in Claude | Not in `enabledMcpjsonServers`, or `.mcp.json` path wrong | Re-run Step 5/6; restart Claude Code |
