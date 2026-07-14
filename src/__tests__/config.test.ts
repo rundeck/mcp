@@ -97,6 +97,104 @@ describe("Config Manager", () => {
       );
     });
   });
+
+  describe("RUNDECK_INSTANCES registry", () => {
+    afterEach(() => {
+      delete process.env.RUNDECK_INSTANCES;
+    });
+
+    it("has no registry when RUNDECK_INSTANCES is unset", () => {
+      configManager.initialize();
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+      expect(configManager.listInstanceNames()).toEqual([]);
+    });
+
+    it("connects to the default instance on initialize", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+          staging: { url: "https://staging.example.com", token: "staging-token" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(true);
+      expect(configManager.listInstanceNames().sort()).toEqual(["prod", "staging"]);
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBe("https://prod.example.com");
+      expect(config.apiToken).toBe("prod-token");
+    });
+
+    it("switches the active connection on a matching instance name", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+          staging: { url: "https://staging.example.com", token: "staging-token" },
+        },
+      });
+      configManager.initialize();
+
+      const result = configManager.connectToInstance("staging");
+
+      expect(result).toEqual({ ok: true });
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBe("https://staging.example.com");
+      expect(config.apiToken).toBe("staging-token");
+    });
+
+    it("clears the connection instead of leaving the previous instance active on a miss", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+        },
+      });
+      configManager.initialize();
+
+      const result = configManager.connectToInstance("does-not-exist");
+
+      expect(result.ok).toBe(false);
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBeUndefined();
+      expect(config.apiToken).toBeUndefined();
+    });
+
+    it("falls back to no registry on malformed JSON without throwing", () => {
+      process.env.RUNDECK_INSTANCES = "{not valid json";
+
+      expect(() => configManager.initialize()).not.toThrow();
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+    });
+
+    it("falls back to no registry when default does not match a registered instance", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "missing",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+    });
+
+    it("falls back to no registry when an instance entry is missing url/token", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+    });
+  });
 });
 
 

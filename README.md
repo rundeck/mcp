@@ -118,6 +118,8 @@ claude mcp add rundeck-mcp -e RUNDECK_URL=https://your-rundeck-instance.example.
 
 No Node.js required — only Docker. The server is also published as the [`rundeck/mcp`](https://hub.docker.com/r/rundeck/mcp) image, exposed the same way over stdio.
 
+> **Prerequisite:** the Docker daemon needs to be running (Docker Desktop, Rancher Desktop, etc.) — not just installed — since your MCP client starts a container on demand each time it connects.
+
 For Cursor, Claude Desktop, or any client using an `mcpServers` JSON block:
 
 ```json

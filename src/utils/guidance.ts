@@ -99,6 +99,29 @@ format, concatenate the arrays, then do a single \`api_call\` with the matching 
 - Job Options: \`rundeck://jobs/options\``;
 }
 
+export function getRundeckConnectGuidance(instanceNames: string[]): string {
+  const list =
+    instanceNames.length > 0
+      ? instanceNames.map((name) => `- \`${name}\``).join("\n")
+      : "(none registered)";
+
+  return `# Switching Rundeck Instances
+
+## Usage
+Call \`rundeck_connect\` with an \`instance\` argument naming a registered instance:
+
+\`\`\`json
+{ "instance": "staging" }
+\`\`\`
+
+## Registered instances
+${list}
+
+## Notes
+- This tool only takes a **name** — never a URL or token.
+- If the name doesn't match a registered instance, the connection is cleared rather than left pointing at whatever was active before, so a follow-up \`api_call\` fails closed instead of silently hitting the wrong instance.`;
+}
+
 export function getApiCallGuidance(): string {
   return `# Calling the Rundeck API
 

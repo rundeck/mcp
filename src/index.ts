@@ -33,9 +33,14 @@ import {
   rundeckSearchDocsSchema,
 } from "./tools/search.js";
 import {
+  rundeckConnect,
+  rundeckConnectSchema,
+} from "./tools/connect.js";
+import {
   getApiCallGuidance,
   getJobCreationGuidance,
   getJobValidationGuidance,
+  getRundeckConnectGuidance,
 } from "./utils/guidance.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
@@ -126,6 +131,7 @@ const apiListInputSchema = convertSchema(rundeckListEndpointsSchema);
 const jobCreateInputSchema = convertSchema(rundeckGenerateJobSchema);
 const jobValidateInputSchema = convertSchema(rundeckValidateJobSchema);
 const docsSearchInputSchema = convertSchema(rundeckSearchDocsSchema);
+const rundeckConnectInputSchema = convertSchema(rundeckConnectSchema);
 
 // List tools
 server.setRequestHandler(ListToolsRequestSchema, async (request) => {
@@ -222,6 +228,28 @@ For a guided authoring flow, open the MCP prompt \`create-job\`.
       inputSchema: docsSearchInputSchema,
     },
   ];
+
+  // Only exposed when RUNDECK_INSTANCES defines a multi-instance registry.
+  // Without it, RUNDECK_URL/RUNDECK_TOKEN are the only connection and there's
+  // nothing to switch between, so the tool would just be confusing clutter.
+  if (configManager.hasInstanceRegistry()) {
+    tools.push({
+      name: "rundeck_connect",
+      description: `Switch the active Rundeck instance by name, when multiple instances are registered via RUNDECK_INSTANCES.
+
+**When to use:**
+- The user asks to use a different registered Rundeck instance (e.g. "switch to staging")
+
+**When NOT to use:**
+- Only one Rundeck instance is configured (this tool won't be available in that case)
+- Making API calls (use api_call instead — it uses whichever instance is currently active)
+
+**Input:** Only a registered instance **name** — never a URL or token.
+**Guidance:** Omit \`instance\` to see the list of registered instance names.`,
+      inputSchema: rundeckConnectInputSchema,
+    });
+  }
+
   logger.info(`Returning ${tools.length} tools`);
   const result = {
     tools,
@@ -316,11 +344,38 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
-      default:
+      case "rundeck_connect": {
+        if (!configManager.hasInstanceRegistry()) {
+          throw new Error(
+            "rundeck_connect is unavailable: no RUNDECK_INSTANCES registry is configured."
+          );
+        }
+        if (needsGuidance(args, ["instance"])) {
+          logger.info("rundeck_connect missing instance — returning guidance");
+          return returnGuidanceMarkdown(
+            getRundeckConnectGuidance(configManager.listInstanceNames())
+          );
+        }
+        const parsed = rundeckConnectSchema.parse(args ?? {});
+        const connectResult = await rundeckConnect(parsed);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(connectResult, null, 2),
+            },
+          ],
+        };
+      }
+
+      default: {
         logger.warn(`Unknown tool requested: ${name}`);
-        throw new Error(
-          `Unknown tool: ${name}. Available tools: api_call, api_list, job_create, job_validate, docs_search.`
-        );
+        const available = ["api_call", "api_list", "job_create", "job_validate", "docs_search"];
+        if (configManager.hasInstanceRegistry()) {
+          available.push("rundeck_connect");
+        }
+        throw new Error(`Unknown tool: ${name}. Available tools: ${available.join(", ")}.`);
+      }
     }
   } catch (error) {
     const errorMessage =
