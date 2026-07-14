@@ -98,8 +98,10 @@ class ConfigManager {
     let parsed: unknown;
     try {
       parsed = JSON.parse(raw);
-    } catch (err) {
-      logger.error("RUNDECK_INSTANCES is not valid JSON — ignoring it", err);
+    } catch {
+      // Deliberately don't log the parser's error message: it can quote a
+      // fragment of the malformed input, which may contain a token.
+      logger.error("RUNDECK_INSTANCES is not valid JSON — ignoring it");
       return;
     }
 
@@ -162,6 +164,13 @@ class ConfigManager {
     if (defaultName) {
       this.setRundeckConnection(validated[defaultName].url, validated[defaultName].token);
       logger.info(`Connected to default Rundeck instance "${defaultName}" from RUNDECK_INSTANCES`);
+    } else {
+      // No default means no instance should be active until the user picks
+      // one explicitly — clear rather than leave whatever RUNDECK_URL/
+      // RUNDECK_TOKEN happened to already be in the environment looking
+      // like a deliberately connected instance.
+      this.clearConnection();
+      logger.info("RUNDECK_INSTANCES has no \"default\" — no instance connected until rundeck_connect is called");
     }
   }
 

@@ -35,7 +35,8 @@ fi
 # and GNU/Linux, so try both instead of assuming one.
 PERM_BITS="$(stat -f '%Lp' "$INSTANCES_FILE" 2>/dev/null || stat -c '%a' "$INSTANCES_FILE" 2>/dev/null || true)"
 case "$PERM_BITS" in
-  ?[0-7][0-7])
+  # 3 digits (e.g. 644) or 4 (e.g. 4755, when setuid/setgid/sticky bits are set).
+  [0-7][0-7][0-7] | [0-7][0-7][0-7][0-7])
     GROUP_OTHER="$(printf '%s' "$PERM_BITS" | tail -c 2)"
     if [ "$GROUP_OTHER" != "00" ]; then
       echo "Warning: $INSTANCES_FILE is readable by group/other (mode $PERM_BITS)." >&2
@@ -54,8 +55,10 @@ if command -v node >/dev/null 2>&1; then
     let registry;
     try {
       registry = JSON.parse(readFileSync(path, "utf8"));
-    } catch (err) {
-      console.error(`Invalid JSON in ${path}: ${err.message}`);
+    } catch {
+      // Deliberately not printing the parser error message: it can quote a
+      // fragment of the malformed input, which may contain a token.
+      console.error(`Invalid JSON in ${path}.`);
       process.exit(1);
     }
     if (typeof registry !== "object" || registry === null || Array.isArray(registry)) {
@@ -91,6 +94,9 @@ if command -v node >/dev/null 2>&1; then
     echo "Note: $INSTANCES_FILE bundles $NAME_COUNT instances into one token blob ($NAMES_LIST)." >&2
     echo "A single leak of RUNDECK_INSTANCES (e.g. via 'docker inspect' or process env) exposes all $NAME_COUNT tokens at once, not just one — keep only instances you're comfortable bundling that way in this file." >&2
   fi
+else
+  echo "Warning: 'node' not found on PATH — skipping shape validation of $INSTANCES_FILE." >&2
+  echo "The file will be exported to RUNDECK_INSTANCES as-is; a malformed registry will only surface as an error once Claude connects." >&2
 fi
 
 # Content only ever lands in this shell's exported env, never printed,

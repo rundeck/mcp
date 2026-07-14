@@ -127,6 +127,23 @@ describe("Config Manager", () => {
       expect(config.apiToken).toBe("prod-token");
     });
 
+    it("clears any stray env-var connection when the registry has no default", () => {
+      process.env.RUNDECK_URL = "https://old.example.com";
+      process.env.RUNDECK_TOKEN = "old-token";
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(true);
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBeUndefined();
+      expect(config.apiToken).toBeUndefined();
+    });
+
     it("switches the active connection on a matching instance name", () => {
       process.env.RUNDECK_INSTANCES = JSON.stringify({
         default: "prod",
