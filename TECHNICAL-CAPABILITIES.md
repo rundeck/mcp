@@ -75,7 +75,7 @@ Resources provide AI assistants with read-only access to Rundeck documentation. 
 
 ## Tools
 
-Tools enable AI assistants to perform actions beyond reading documentation. Inputs are validated with Zod. For **`api_call`**, **`job_create`**, **`job_validate`**, and **`runner_create`**, omitting required arguments (or leaving string fields blank) returns **markdown guidance** in the normal tool response so the agent can steer the user; malformed types, enums, and other invalid input still return **validation errors**. Use MCP **prompts** for full guided workflows.
+Tools enable AI assistants to perform actions beyond reading documentation. Inputs are validated with Zod. For **`api_call`**, **`job_create`**, **`job_validate`**, **`runner_create`**, and **`rundeck_connect`**, omitting required arguments (or leaving string fields blank) returns **markdown guidance** in the normal tool response so the agent can steer the user; malformed types, enums, and other invalid input still return **validation errors**. Use MCP **prompts** for full guided workflows.
 
 ### API Tools
 
@@ -175,6 +175,24 @@ Tools enable AI assistants to perform actions beyond reading documentation. Inpu
 
 **Follow-up**: Prefer `resources/read` on the best match for complete, authoritative content.
 
+### Connection Tools
+
+#### `rundeck_connect`
+**Purpose**: Switch the active Rundeck instance by name, when multiple instances are registered via `RUNDECK_INSTANCES`.
+
+**Availability**: Only listed/callable when a `RUNDECK_INSTANCES` registry is configured — with a single `RUNDECK_URL`/`RUNDECK_TOKEN` setup, this tool doesn't exist. See [SETUP.md](./SETUP.md#multiple-rundeck-instances-optional).
+
+**When to use**:
+- The user asks to use a different registered Rundeck instance (e.g. "switch to staging")
+
+**When NOT to use**:
+- Only one Rundeck instance is configured (the tool won't be available)
+- Making API calls (use `api_call` — it uses whichever instance is currently active)
+
+**Input**: Only a registered instance **name** — never a URL or token.
+
+**Guidance Mode**: Call without `instance` to see the list of registered instance names.
+
 ### Not Yet Exposed
 
 A plugin code generator (Java/Groovy scaffolding for node-step, workflow-step, file-copier, and notification plugins) exists in the codebase but is **not** currently wired up as an MCP tool. Use `resources/read` (`rundeck://docs/developer/*`) and `docs_search` for plugin documentation and examples in the meantime.
@@ -237,6 +255,7 @@ The guidance system provides interactive help when tools are called without requ
 - `job_create` - Job creation workflow guidance
 - `job_validate` - Validation process guidance
 - `runner_create` - Runner provisioning guidance
+- `rundeck_connect` - Lists registered instance names when called without `instance` (only available when `RUNDECK_INSTANCES` is set)
 
 ## Technical Specifications
 
@@ -244,7 +263,7 @@ The guidance system provides interactive help when tools are called without requ
 
 - **@modelcontextprotocol/sdk**: MCP protocol implementation (see `package.json` for the pinned version)
 - **marked**: ^12.0.0 - Markdown parsing
-- **yaml**: ^2.4.2 - YAML parsing and generation
+- **yaml**: 2.8.3 - YAML parsing and generation
 - **zod**: ^3.23.8 - Schema validation
 - **TypeScript**: ^5.5.0 - Type safety and modern JavaScript features
 
@@ -256,8 +275,9 @@ The server is configured via environment variables:
 - `RUNDECK_TOKEN`: Default API token (optional, can be set via environment)
 - `RUNDECK_API_VERSION`: Default API version (default: "46")
 - `RUNDECK_INSTANCES`: JSON registry for switching between multiple Rundeck instances mid-session (optional — most setups don't need this; see [SETUP.md](./SETUP.md#multiple-rundeck-instances-optional))
-- `RUNDECK_DOCS_PATH`: Path to a documentation directory on disk. Auto-detected relative to cwd (or auto-downloaded at container startup in the Docker image) when launched from inside the repo — but required when launched by an MCP client (Claude Desktop, Cursor, etc.), since their working directory isn't the repo. See [SETUP.md](./SETUP.md#available-environment-variables).
-- `RUNDECK_DOCS_BRANCH`: Docs branch to auto-download at container startup (Docker only, default: `4.0.x`)
+- `RUNDECK_DOCS_PATH`: Path to a documentation directory on disk. Auto-detected relative to cwd when launched from inside the repo — but required when launched by an MCP client (Claude Desktop, Cursor, etc.), since their working directory isn't the repo and docs auto-downloaded via `npm install` or Docker startup won't be found by cwd-relative auto-detection. See [SETUP.md](./SETUP.md#available-environment-variables).
+- `RUNDECK_DOCS_BRANCH`: Docs branch to auto-download when none is present (default: `4.0.x`) — applies to both the npm `postinstall` download and the Docker container-startup download
+- `SKIP_RUNDECK_DOCS_DOWNLOAD`: Set to `1` to skip the npm-install-time docs download (no effect on Docker)
 - `MCP_DEBUG`: Enable verbose logging ("1" or "true")
 
 ### Security
@@ -314,17 +334,6 @@ The server provides comprehensive access to Rundeck documentation:
 ## Status
 
 This project is in **beta**. The tool set, resource structure, and prompts documented above reflect the current release but should be expected to change — including additions, removals, and breaking changes to tool schemas — as the project matures.
-
-### Possible Future Enhancements
-
-*Note: These are potential enhancements that may be considered based on user feedback and requirements. No commitment to these features at this time.*
-
-- Wiring up the plugin code generator as an MCP tool
-- Caching for frequently accessed documentation
-- Vector search for semantic documentation search
-- Support for multiple Rundeck instances
-- Job execution monitoring tools
-- Project management tools
 
 ## Use Cases
 

@@ -4,7 +4,7 @@
 
 ## Prerequisites
 
-- Node.js 18+ 
+- Node.js 24+ (matches the version CI and the Docker image build against)
 - npm or yarn
 - TypeScript 5.5+
 
@@ -28,7 +28,7 @@ npm run build
 ```
 
 3. See available commands:
-   - For a complete guide to all npm scripts, see [SCRIPTS.md](./SCRIPTS.md)
+   - For the full list of npm scripts, see the `"scripts"` block in `package.json`
    - Quick reference: `npm run build`, `npm start`, `npm run dev`, `npm test`, `npm run validate`
 
 ### Building the Internal Docker Image (`rundeck/mcp-ci`)
@@ -64,13 +64,16 @@ The server supports the following environment variables:
 - **`RUNDECK_INSTANCES`** (optional): JSON registry of multiple named Rundeck instances, for switching between them (e.g. prod/staging) mid-session without restarting the server. Most users only ever talk to one Rundeck instance and don't need this — see [Multiple Rundeck Instances](#multiple-rundeck-instances-optional) below if you do.
 
 - **`RUNDECK_DOCS_PATH`** (optional): Path to a Rundeck documentation directory on disk.
-  - Auto-detection (`./docs/docs`, `../docs/docs`, `./docs`, `../docs` relative to the process's working directory) only works when the server is launched *from inside the repo* — e.g. `npm start`/`npm run dev`, or the Docker image, which downloads a docs checkout automatically at container startup if none is present (see `RUNDECK_DOCS_BRANCH` below).
-  - **MCP clients (Claude Desktop, Cursor, VS Code, etc.) don't run the process from inside the repo — auto-detection will not find the docs there, so you need to set this explicitly** in that client's `env` config (see [README.md](./README.md#using-with-mcp-clients) for client config examples; for local dev, point at your locally built `dist/index.js` or the `rundeck/mcp-ci:latest` image instead of the published package/image).
+  - Auto-detection (`./docs/docs`, `../docs/docs`, `./docs`, `../docs` relative to the process's working directory) only works when the server is launched *from inside the repo* — e.g. `npm start`/`npm run dev`.
+  - Docs are also downloaded automatically, independent of `RUNDECK_DOCS_PATH`/auto-detection, in two places: as an npm `postinstall` step (`scripts/download-docs.mjs`, runs on `npm install`, downloads into `<package root>/docs/docs`), and at Docker container startup (`docker-entrypoint.sh`, downloads into `/app/docs/docs` if not already present). See `RUNDECK_DOCS_BRANCH` and `SKIP_RUNDECK_DOCS_DOWNLOAD` below for controlling that download.
+  - **Important:** the npm `postinstall` download lands relative to the *installed package's own directory*, not the process's working directory at runtime — so when an MCP client (Claude Desktop, Cursor, VS Code, etc.) spawns the server from its own working directory, cwd-relative auto-detection will **not** find those downloaded docs. Set `RUNDECK_DOCS_PATH` explicitly in that client's `env` config in this case (see [README.md](./README.md#using-with-mcp-clients) for client config examples; for local dev, point at your locally built `dist/index.js` or the `rundeck/mcp-ci:latest` image instead of the published package/image).
   - Example: `/path/to/rundeck/docs`
 
-- **`RUNDECK_DOCS_BRANCH`** (optional, Docker only): Branch of [rundeck/docs](https://github.com/rundeck/docs) to download at container startup, when no docs are already present.
+- **`RUNDECK_DOCS_BRANCH`** (optional): Branch of [rundeck/docs](https://github.com/rundeck/docs) to download, when no docs are already present. Applies to both the npm `postinstall` download and the Docker container-startup download.
   - Default: `4.0.x`
-  - Has no effect if `RUNDECK_DOCS_PATH` is set, or if a docs checkout already exists (e.g. via a mounted volume).
+  - Has no effect if `RUNDECK_DOCS_PATH` is set, or if a docs checkout already exists (e.g. via a mounted volume, or a previous download).
+
+- **`SKIP_RUNDECK_DOCS_DOWNLOAD`** (optional, npm install only): Set to `1` to skip the automatic docs download during `npm install`/`npm ci` (e.g. for a CI job that doesn't need docs, or an offline install). Has no effect on the Docker image's startup download.
 
 - **`RUNDECK_SKIP_OPENAPI_VALIDATE`** (optional): When set to `1`, disables pre-request validation of `api_call` query keys and JSON body top-level keys against the OpenAPI file shipped with the docs tree (`RUNDECK_DOCS_PATH/.vuepress/public/files/rundeck-api.yml`). Useful if you intentionally send parameters not yet documented in that spec.
 

@@ -86,9 +86,10 @@ Resources that read from the filesystem use `configManager.getConfig().docsPath`
 | `api.ts` | `api_call`, `api_list` |
 | `jobs.ts` | `job_create`, `job_validate` |
 | `search.ts` | `docs_search` |
+| `runners.ts` | `runner_create` |
 | `connect.ts` | `rundeck_connect` — only listed/reachable when `configManager.hasInstanceRegistry()` is true (i.e. `RUNDECK_INSTANCES` is set) |
 
-`plugins.ts` (`plugin_create`) exist in the codebase but is **not** currently registered as MCP tools — deliberately excluded per the Phase 1 comment at the top of `index.ts`.
+`plugins.ts` (`plugin_create`) exists in the codebase but is **not** currently registered as an MCP tool — deliberately excluded per the Phase 1 comment at the top of `index.ts`.
 
 Each tool exports its handler function and a Zod schema. Schemas are converted to JSON Schema via `zod-to-json-schema` in `index.ts` when responding to `ListTools`.
 
@@ -110,8 +111,9 @@ Prompts are static objects with `name`, `description`, `arguments`, optional `ar
 | `RUNDECK_TOKEN` | — | API token (required for `api_call`) |
 | `RUNDECK_API_VERSION` | `46` | API version appended to base URL |
 | `RUNDECK_INSTANCES` | — | JSON registry of multiple named instances; when set, enables the `rundeck_connect` tool for mid-session switching (see `src/config.ts`'s `loadInstanceRegistry()`) |
-| `RUNDECK_DOCS_PATH` | auto-detected | Path to Rundeck docs directory |
-| `RUNDECK_DOCS_BRANCH` | `4.0.x` | Docker image only — branch of `rundeck/docs` downloaded by `docker-entrypoint.sh` at container startup when no docs are already present |
+| `RUNDECK_DOCS_PATH` | auto-detected | Path to Rundeck docs directory. Auto-detection is `process.cwd()`-relative only (see `findDocsPath()`), so it won't find docs downloaded by either mechanism below unless cwd happens to line up |
+| `RUNDECK_DOCS_BRANCH` | `4.0.x` | Branch of `rundeck/docs` to download when no docs are present — read by both `scripts/download-docs.mjs` (npm `postinstall`, downloads to `<package root>/docs/docs`) and `docker-entrypoint.sh` (container startup, downloads to `/app/docs/docs`) |
+| `SKIP_RUNDECK_DOCS_DOWNLOAD` | — | Set to `1` to skip `scripts/download-docs.mjs`'s npm-install-time docs download; no effect on the Docker image |
 | `RUNDECK_SKIP_OPENAPI_VALIDATE` | — | Set to `1` to skip validating `api_call` params against the shipped OpenAPI spec |
 | `MCP_DEBUG` | — | Set to `1` or `true` for verbose logging |
 

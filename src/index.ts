@@ -37,10 +37,15 @@ import {
   rundeckConnectSchema,
 } from "./tools/connect.js";
 import {
+  rundeckCreateRunner,
+  rundeckCreateRunnerSchema,
+} from "./tools/runners.js";
+import {
   getApiCallGuidance,
   getJobCreationGuidance,
   getJobValidationGuidance,
   getRundeckConnectGuidance,
+  getRunnerGuidance,
 } from "./utils/guidance.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
@@ -132,6 +137,7 @@ const jobCreateInputSchema = convertSchema(rundeckGenerateJobSchema);
 const jobValidateInputSchema = convertSchema(rundeckValidateJobSchema);
 const docsSearchInputSchema = convertSchema(rundeckSearchDocsSchema);
 const rundeckConnectInputSchema = convertSchema(rundeckConnectSchema);
+const runnerCreateInputSchema = convertSchema(rundeckCreateRunnerSchema);
 
 // List tools
 server.setRequestHandler(ListToolsRequestSchema, async (request) => {
@@ -226,6 +232,24 @@ For a guided authoring flow, open the MCP prompt \`create-job\`.
 
 **Follow-up:** Prefer \`resources/read\` on the best match for complete, authoritative content.`,
       inputSchema: docsSearchInputSchema,
+    },
+    {
+      name: "runner_create",
+      description: `Create a Rundeck Runner at system or project scope.
+
+**When to use:**
+- Creating ephemeral Docker runners for a specific project
+- Creating global system runners to share across projects
+- Automating runner provisioning
+
+**Scopes:**
+- \`scope: "project"\` → POST project/{project}/runnerManagement/runners (recommended for isolation)
+- \`scope: "system"\` → POST runnerManagement/runners (global runner)
+
+**Important:** The response includes a one-time \`token\` and \`downloadTk\`. Store them — they cannot be retrieved again.
+
+**Guidance:** Omit \`name\` or \`scope\` to receive step-by-step runner-provisioning instructions in the tool result.`,
+      inputSchema: runnerCreateInputSchema,
     },
   ];
 
@@ -344,6 +368,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "runner_create": {
+        if (needsGuidance(args, ["name", "scope"])) {
+          logger.info("runner_create missing required params — returning guidance");
+          return returnGuidanceMarkdown(getRunnerGuidance());
+        }
+        const runnerParams = rundeckCreateRunnerSchema.parse(args ?? {});
+        const runnerResult = await rundeckCreateRunner(runnerParams);
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify(runnerResult, null, 2),
+            },
+          ],
+        };
+      }
+
       case "rundeck_connect": {
         if (!configManager.hasInstanceRegistry()) {
           throw new Error(
@@ -370,7 +411,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       default: {
         logger.warn(`Unknown tool requested: ${name}`);
-        const available = ["api_call", "api_list", "job_create", "job_validate", "docs_search"];
+        const available = ["api_call", "api_list", "job_create", "job_validate", "docs_search", "runner_create"];
         if (configManager.hasInstanceRegistry()) {
           available.push("rundeck_connect");
         }

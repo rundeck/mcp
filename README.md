@@ -15,9 +15,77 @@ For the full breakdown of resources, tools, and prompts exposed by the server, s
 
 ## Using with MCP Clients
 
-Once published, the server is available as the [`@rundeck/mcp`](https://www.npmjs.com/package/@rundeck/mcp) npm package, exposing the `rundeck-mcp` binary over stdio.
+### Docker Integration (Recommended)
 
-### Cursor Integration
+Docker required. The server is published as the [`rundeck/mcp`](https://hub.docker.com/r/rundeck/mcp) image, exposed over stdio. This is the preferred way to install for any client: no Node.js version to manage, and — unlike the npx path below — no `RUNDECK_DOCS_PATH` gotcha, since the container downloads docs to a fixed path its own working directory already resolves.
+
+> **Prerequisite:** the Docker daemon needs to be running (Docker Desktop, Rancher Desktop, etc.) — not just installed — since your MCP client starts a container on demand each time it connects.
+
+For Cursor, Claude Desktop, or any client using an `mcpServers` JSON block:
+
+```json
+{
+  "mcpServers": {
+    "rundeck-mcp": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm",
+        "-e", "RUNDECK_URL=https://your-rundeck-instance.example.com",
+        "-e", "RUNDECK_TOKEN=your-rundeck-api-token-here",
+        "rundeck/mcp:latest"
+      ]
+    }
+  }
+}
+```
+
+For VS Code's `mcp.json`:
+
+```json
+{
+    "mcp": {
+        "inputs": [
+            {
+                "type": "promptString",
+                "id": "rundeck-url",
+                "description": "Rundeck Instance URL"
+            },
+            {
+                "type": "promptString",
+                "id": "rundeck-token",
+                "description": "Rundeck API Token",
+                "password": true
+            }
+        ],
+        "servers": {
+            "rundeck-mcp": {
+                "type": "stdio",
+                "command": "docker",
+                "args": [
+                    "run", "-i", "--rm",
+                    "-e", "RUNDECK_URL=${input:rundeck-url}",
+                    "-e", "RUNDECK_TOKEN=${input:rundeck-token}",
+                    "rundeck/mcp:latest"
+                ]
+            }
+        }
+    }
+}
+```
+
+For Claude Code, add via the CLI:
+
+```bash
+claude mcp add rundeck-mcp -- docker run -i --rm -e RUNDECK_URL=https://your-rundeck-instance.example.com -e RUNDECK_TOKEN=your-rundeck-api-token-here rundeck/mcp:latest
+```
+
+### Using npx Instead (No Docker)
+
+Once published, the server is also available as the [`@rundeck/mcp`](https://www.npmjs.com/package/@rundeck/mcp) npm package, exposing the `rundeck-mcp` binary over stdio — use this if you'd rather not run Docker.
+
+> **Docs-backed features need `RUNDECK_DOCS_PATH` set explicitly in the configs below.** `npm install` downloads a docs checkout automatically, but into the installed package's own directory — not wherever your MCP client happens to run the process from. Without `RUNDECK_DOCS_PATH` pointing at an actual docs checkout on disk, `docs_search`, the doc resources, and OpenAPI-based validation in `api_call` will silently come up empty.
+
+#### Cursor Integration
 
 You can configure this MCP server directly within Cursor's `settings.json` file, by following these steps:
 
@@ -32,14 +100,15 @@ You can configure this MCP server directly within Cursor's `settings.json` file,
           "args": ["-y", "@rundeck/mcp"],
           "env": {
             "RUNDECK_URL": "https://your-rundeck-instance.example.com",
-            "RUNDECK_TOKEN": "your-rundeck-api-token-here"
+            "RUNDECK_TOKEN": "your-rundeck-api-token-here",
+            "RUNDECK_DOCS_PATH": "/path/to/rundeck/docs"
           }
         }
       }
     }
     ```
 
-### VS Code Integration
+#### VS Code Integration
 
 You can configure this MCP server directly within Visual Studio Code's `settings.json` file, allowing VS Code to manage the server lifecycle.
 
@@ -71,7 +140,8 @@ You can configure this MCP server directly within Visual Studio Code's `settings
                     "args": ["-y", "@rundeck/mcp"],
                     "env": {
                         "RUNDECK_URL": "${input:rundeck-url}",
-                        "RUNDECK_TOKEN": "${input:rundeck-token}"
+                        "RUNDECK_TOKEN": "${input:rundeck-token}",
+                        "RUNDECK_DOCS_PATH": "/path/to/rundeck/docs"
                     }
                 }
             }
@@ -79,7 +149,7 @@ You can configure this MCP server directly within Visual Studio Code's `settings
     }
     ```
 
-### Claude Desktop Integration
+#### Claude Desktop Integration
 
 You can configure this MCP server to work with Claude Desktop by adding it to Claude's configuration file.
 
@@ -97,7 +167,8 @@ You can configure this MCP server to work with Claude Desktop by adding it to Cl
           "args": ["-y", "@rundeck/mcp"],
           "env": {
             "RUNDECK_URL": "https://your-rundeck-instance.example.com",
-            "RUNDECK_TOKEN": "your-rundeck-api-token-here"
+            "RUNDECK_TOKEN": "your-rundeck-api-token-here",
+            "RUNDECK_DOCS_PATH": "/path/to/rundeck/docs"
           }
         }
       }
@@ -106,42 +177,12 @@ You can configure this MCP server to work with Claude Desktop by adding it to Cl
 
 3.  **Restart Claude Desktop** completely for the changes to take effect.
 
-### Claude Code Integration
+#### Claude Code Integration
 
 Add the server via the CLI:
 
 ```bash
-claude mcp add rundeck-mcp -e RUNDECK_URL=https://your-rundeck-instance.example.com -e RUNDECK_TOKEN=your-rundeck-api-token-here -- npx -y @rundeck/mcp
-```
-
-### Docker Integration
-
-No Node.js required — only Docker. The server is also published as the [`rundeck/mcp`](https://hub.docker.com/r/rundeck/mcp) image, exposed the same way over stdio.
-
-> **Prerequisite:** the Docker daemon needs to be running (Docker Desktop, Rancher Desktop, etc.) — not just installed — since your MCP client starts a container on demand each time it connects.
-
-For Cursor, Claude Desktop, or any client using an `mcpServers` JSON block:
-
-```json
-{
-  "mcpServers": {
-    "rundeck-mcp": {
-      "command": "docker",
-      "args": [
-        "run", "-i", "--rm",
-        "-e", "RUNDECK_URL=https://your-rundeck-instance.example.com",
-        "-e", "RUNDECK_TOKEN=your-rundeck-api-token-here",
-        "rundeck/mcp:latest"
-      ]
-    }
-  }
-}
-```
-
-For Claude Code, add via the CLI:
-
-```bash
-claude mcp add rundeck-mcp -- docker run -i --rm -e RUNDECK_URL=https://your-rundeck-instance.example.com -e RUNDECK_TOKEN=your-rundeck-api-token-here rundeck/mcp:latest
+claude mcp add rundeck-mcp -e RUNDECK_URL=https://your-rundeck-instance.example.com -e RUNDECK_TOKEN=your-rundeck-api-token-here -e RUNDECK_DOCS_PATH=/path/to/rundeck/docs -- npx -y @rundeck/mcp
 ```
 
 ### Switching Between Multiple Rundeck Instances
@@ -171,4 +212,4 @@ npm test
 npm run validate
 ```
 
-**See [SCRIPTS.md](./SCRIPTS.md) and [COMMANDS.md](./COMMANDS.md)** | **See [SETUP.md](./SETUP.md) for detailed setup**
+**See [SETUP.md](./SETUP.md) for detailed setup**
