@@ -8,6 +8,8 @@ import {
   getApiCallGuidance,
   getJobValidationGuidance,
   getAuthSetupGuidance,
+  getAclValidateGuidance,
+  getAclManageGuidance,
 } from "../../utils/guidance.js";
 
 describe("Guidance Mode", () => {
@@ -54,6 +56,24 @@ describe("Guidance Mode", () => {
       expect(guidance).toContain("format");
       expect(guidance).toContain("yaml");
       expect(guidance).toContain("rundeck://jobs/schema");
+    });
+  });
+
+  describe("acl_validate guidance", () => {
+    it("should describe required parameters", () => {
+      const guidance = getAclValidateGuidance();
+      expect(guidance).toContain("acl_definition");
+      expect(guidance).toContain("Required Parameters");
+    });
+  });
+
+  describe("acl_manage guidance", () => {
+    it("should describe actions, scopes, and required parameters", () => {
+      const guidance = getAclManageGuidance();
+      expect(guidance).toContain("action");
+      expect(guidance).toContain("scope");
+      expect(guidance).toContain("system/acl");
+      expect(guidance).toContain("project/{project}/acl");
     });
   });
 
