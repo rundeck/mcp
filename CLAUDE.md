@@ -38,7 +38,7 @@ npm run dev
 npm test
 
 # Run tests in watch mode
-npm test:watch
+npm run test:watch
 
 # Run a single test file
 NODE_OPTIONS=--experimental-vm-modules npx jest src/__tests__/tools/api.test.ts
@@ -88,8 +88,9 @@ Resources that read from the filesystem use `configManager.getConfig().docsPath`
 | `search.ts` | `docs_search` |
 | `runners.ts` | `runner_create` |
 | `connect.ts` | `rundeck_connect` — only listed/reachable when `configManager.hasInstanceRegistry()` is true (i.e. `RUNDECK_INSTANCES` is set) |
+| `acl.ts` | `acl_validate`, `acl_manage` |
 
-`plugins.ts` (`plugin_create`) exists in the codebase but is **not** currently registered as an MCP tool — deliberately excluded per the Phase 1 comment at the top of `index.ts`.
+`plugins.ts` (`plugin_create`) exists in the codebase but is **not** currently registered as an MCP tool — deliberately excluded per the Phase 1 comment at the top of `src/tools/plugins.ts`.
 
 Each tool exports its handler function and a Zod schema. Schemas are converted to JSON Schema via `zod-to-json-schema` in `index.ts` when responding to `ListTools`.
 

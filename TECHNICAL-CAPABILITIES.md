@@ -193,6 +193,41 @@ Tools enable AI assistants to perform actions beyond reading documentation. Inpu
 
 **Guidance Mode**: Call without `instance` to see the list of registered instance names.
 
+### ACL Tools
+
+#### `acl_validate`
+**Purpose**: Validate a Rundeck ACL Policy YAML document offline against the aclpolicy v1.0 format.
+
+**When to use**:
+- Checking ACL policy structure (context, for, by/notBy, allow/deny) before creating or updating it
+- Debugging why a policy might be silently rejecting access (missing match clause, missing by/notBy, etc.)
+
+**When NOT to use**:
+- Actually creating/updating/deleting a policy on the server (use `acl_manage` instead)
+- Making generic API calls (use `api_call` instead)
+
+**Note**: This is a local structural check, not a substitute for Rundeck's own server-side validation.
+
+**Guidance Mode**: Call without `acl_definition` for guidance.
+
+#### `acl_manage`
+**Purpose**: List, get, create, update, or delete a Rundeck ACL Policy file at system or project scope.
+
+**When to use**:
+- Managing stored ACL policies (`system/acl/*` or `project/{project}/acl/*`) without hand-building `api_call` requests
+- Auditing which ACL policies exist in a scope, or reading one's current contents
+- Creating/updating a policy after validating it with `acl_validate`
+
+**When NOT to use**:
+- Editing ACL policy files on the server's local filesystem (not supported by this or any Rundeck API)
+- Validating policy structure only, without submitting it (use `acl_validate` instead)
+
+**Scopes**:
+- `scope: "system"` → `system/acl/*` (instance/cluster-wide)
+- `scope: "project"` → `project/{project}/acl/*` (single project, requires `project`)
+
+**Guidance Mode**: Call without required parameters (`action`, `scope`) for step-by-step guidance.
+
 ### Not Yet Exposed
 
 A plugin code generator (Java/Groovy scaffolding for node-step, workflow-step, file-copier, and notification plugins) exists in the codebase but is **not** currently wired up as an MCP tool. Use `resources/read` (`rundeck://docs/developer/*`) and `docs_search` for plugin documentation and examples in the meantime.
@@ -256,6 +291,8 @@ The guidance system provides interactive help when tools are called without requ
 - `job_validate` - Validation process guidance
 - `runner_create` - Runner provisioning guidance
 - `rundeck_connect` - Lists registered instance names when called without `instance` (only available when `RUNDECK_INSTANCES` is set)
+- `acl_validate` - ACL policy validation guidance
+- `acl_manage` - ACL policy management guidance
 
 ## Technical Specifications
 
