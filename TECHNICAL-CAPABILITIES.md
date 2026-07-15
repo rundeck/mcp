@@ -252,10 +252,12 @@ The guidance system provides interactive help when tools are called without requ
 
 The server is configured via environment variables:
 
-- `RUNDECK_DOCS_PATH`: Path to documentation directory (default: `./docs/docs`, auto-detected relative to cwd)
 - `RUNDECK_URL`: Default Rundeck instance URL
 - `RUNDECK_TOKEN`: Default API token (optional, can be set via environment)
 - `RUNDECK_API_VERSION`: Default API version (default: "46")
+- `RUNDECK_INSTANCES`: JSON registry for switching between multiple Rundeck instances mid-session (optional — most setups don't need this; see [SETUP.md](./SETUP.md#multiple-rundeck-instances-optional))
+- `RUNDECK_DOCS_PATH`: Path to a documentation directory on disk. Auto-detected relative to cwd (or auto-downloaded at container startup in the Docker image) when launched from inside the repo — but required when launched by an MCP client (Claude Desktop, Cursor, etc.), since their working directory isn't the repo. See [SETUP.md](./SETUP.md#available-environment-variables).
+- `RUNDECK_DOCS_BRANCH`: Docs branch to auto-download at container startup (Docker only, default: `4.0.x`)
 - `MCP_DEBUG`: Enable verbose logging ("1" or "true")
 
 ### Security

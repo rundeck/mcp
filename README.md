@@ -144,6 +144,10 @@ For Claude Code, add via the CLI:
 claude mcp add rundeck-mcp -- docker run -i --rm -e RUNDECK_URL=https://your-rundeck-instance.example.com -e RUNDECK_TOKEN=your-rundeck-api-token-here rundeck/mcp:latest
 ```
 
+### Switching Between Multiple Rundeck Instances
+
+Everything above covers the common case: one Rundeck instance. If you need to switch between more than one (e.g. prod and staging) in the same session without restarting, see [SETUP.md](./SETUP.md#multiple-rundeck-instances-optional).
+
 ---
 
 ## Local Development

@@ -48,10 +48,6 @@ The server supports the following environment variables:
 
 ### Available Environment Variables
 
-- **`RUNDECK_DOCS_PATH`** (optional): Path to Rundeck documentation directory
-  - If not set, the server searches for docs in: `./docs/docs`, `../docs/docs`, `./docs`, `../docs`
-  - Example: `/path/to/rundeck/docs`
-
 - **`RUNDECK_URL`** (optional): Rundeck instance URL for **live** API calls (`api_call` only)
   - Not required for documentation, `docs_search`, `api_list` (endpoint discovery from local docs), prompts, or resources
   - Example: `https://your-rundeck-instance.com`
@@ -65,7 +61,20 @@ The server supports the following environment variables:
   - Should match your Rundeck instance API version
   - Example: `46`
 
+- **`RUNDECK_INSTANCES`** (optional): JSON registry of multiple named Rundeck instances, for switching between them (e.g. prod/staging) mid-session without restarting the server. Most users only ever talk to one Rundeck instance and don't need this — see [Multiple Rundeck Instances](#multiple-rundeck-instances-optional) below if you do.
+
+- **`RUNDECK_DOCS_PATH`** (optional): Path to a Rundeck documentation directory on disk.
+  - Auto-detection (`./docs/docs`, `../docs/docs`, `./docs`, `../docs` relative to the process's working directory) only works when the server is launched *from inside the repo* — e.g. `npm start`/`npm run dev`, or the Docker image, which downloads a docs checkout automatically at container startup if none is present (see `RUNDECK_DOCS_BRANCH` below).
+  - **MCP clients (Claude Desktop, Cursor, VS Code, etc.) don't run the process from inside the repo — auto-detection will not find the docs there, so you need to set this explicitly** in that client's `env` config (see [README.md](./README.md#using-with-mcp-clients) for client config examples; for local dev, point at your locally built `dist/index.js` or the `rundeck/mcp-ci:latest` image instead of the published package/image).
+  - Example: `/path/to/rundeck/docs`
+
+- **`RUNDECK_DOCS_BRANCH`** (optional, Docker only): Branch of [rundeck/docs](https://github.com/rundeck/docs) to download at container startup, when no docs are already present.
+  - Default: `4.0.x`
+  - Has no effect if `RUNDECK_DOCS_PATH` is set, or if a docs checkout already exists (e.g. via a mounted volume).
+
 - **`RUNDECK_SKIP_OPENAPI_VALIDATE`** (optional): When set to `1`, disables pre-request validation of `api_call` query keys and JSON body top-level keys against the OpenAPI file shipped with the docs tree (`RUNDECK_DOCS_PATH/.vuepress/public/files/rundeck-api.yml`). Useful if you intentionally send parameters not yet documented in that spec.
+
+- **`MCP_DEBUG`** (optional): Set to `1` or `true` for verbose server-side logging.
 
 ### Configuration Methods
 
@@ -73,14 +82,13 @@ The server supports the following environment variables:
 
 Configure environment variables in your MCP client settings (e.g., Claude Desktop configuration). This is the recommended approach as it keeps configuration centralized in your MCP settings file.
 
-See the "Example MCP Client Configuration" section below for details.
+See [README.md](./README.md#using-with-mcp-clients) for client config examples. For local dev, point `args` at your locally built `dist/index.js` instead of the published npm package — or, if you're running via Docker, use the `rundeck/mcp-ci:latest` tag built above instead of the published `rundeck/mcp:latest` image.
 
 #### Option 2: Shell Environment Variables
 
 Alternatively, you can set environment variables in your shell before starting the server:
 
 ```bash
-export RUNDECK_DOCS_PATH=/path/to/rundeck/docs
 export RUNDECK_URL=https://your-rundeck-instance.com
 export RUNDECK_TOKEN=your-api-token
 export RUNDECK_API_VERSION=46
@@ -88,99 +96,53 @@ export RUNDECK_API_VERSION=46
 
 Note: When running via MCP client, shell environment variables may not be available. Use MCP settings instead.
 
-## Running the Server
+## Multiple Rundeck Instances (optional)
 
-The server communicates via stdio using the MCP protocol. After `npm run build`:
+Everything above assumes the common case: one Rundeck instance, configured via `RUNDECK_URL`/`RUNDECK_TOKEN`. If that's you, there's nothing else to do.
+
+If you need to switch between more than one Rundeck instance (e.g. prod and staging) in the same session, without quitting and reconfiguring the server, set `RUNDECK_INSTANCES` instead of `RUNDECK_URL`/`RUNDECK_TOKEN` to a JSON registry:
+
+```json
+{
+  "default": "prod",
+  "instances": {
+    "prod":    { "url": "https://rundeck-prod.example.com",    "token": "prod-token" },
+    "staging": { "url": "https://rundeck-staging.example.com", "token": "staging-token" }
+  }
+}
+```
+
+- `default` is which instance the server connects to on startup.
+- Every entry needs both `url` and `token`.
+- Once `RUNDECK_INSTANCES` is set, an extra tool, `rundeck_connect`, becomes available — ask your assistant to "use staging" and every subsequent `api_call`/`job_create`/etc. call uses that instance's URL and token.
+- The registry is only read once, at process start. To rotate a token or add an instance, edit the JSON and relaunch.
+
+Setting `RUNDECK_INSTANCES` isn't just a matter of writing the JSON file — the file itself doesn't do anything until its contents actually land in the `RUNDECK_INSTANCES` environment variable of the process that starts `claude`. Save the JSON above to a file (e.g. `~/.rundeck-mcp/instances.json`, `chmod 600` since it holds live tokens), then get it into the environment one of two ways:
+
+**Option A — the wrapper script:**
 
 ```bash
-npm start
+./scripts/rundeck-connect.sh ~/.rundeck-mcp/instances.json
 ```
 
-Equivalent: `node dist/index.js`.
+This validates the file's shape, exports its contents as `RUNDECK_INSTANCES`, and execs `claude`, so however the MCP server ends up running it inherits that env var. Requires `node` on your `PATH` for the shape validation step (it warns and exports as-is if `node` isn't found).
 
-## Testing
-
-To test the server, you can use an MCP client or connect it to a compatible application like Claude Desktop.
-
-### Example MCP Client Configuration
-
-For Claude Desktop, add to your MCP settings file (typically `~/Library/Application Support/Claude/claude_desktop_config.json` on macOS):
-
-#### Minimal Configuration (Documentation Only)
-
-```json
-{
-  "mcpServers": {
-    "rundeck-docs": {
-      "command": "node",
-      "args": ["/path/to/rundeck-mcp/dist/index.js"],
-      "env": {
-        "RUNDECK_DOCS_PATH": "/path/to/rundeck/docs"
-      }
-    }
-  }
-}
-```
-
-#### Full Configuration (Documentation + API Tools)
-
-```json
-{
-  "mcpServers": {
-    "rundeck-docs": {
-      "command": "node",
-      "args": ["/path/to/rundeck-mcp/dist/index.js"],
-      "env": {
-        "RUNDECK_DOCS_PATH": "/path/to/rundeck/docs",
-        "RUNDECK_URL": "https://your-rundeck-instance.com",
-        "RUNDECK_TOKEN": "your-api-token-here",
-        "RUNDECK_API_VERSION": "46"
-      }
-    }
-  }
-}
-```
-
-**Notes:**
-- Replace `/path/to/rundeck-mcp/dist/index.js` with the actual path to your built server
-- Replace `/path/to/rundeck/docs` with the path to your Rundeck documentation
-- Replace `https://your-rundeck-instance.com` with your Rundeck instance URL
-- Replace `your-api-token-here` with your Rundeck API token
-- Adjust `RUNDECK_API_VERSION` to match your Rundeck instance version (default: 46)
-
-## Development
+**Option B — export it yourself:**
 
 ```bash
-# TypeScript watch + server auto-restart (see SCRIPTS.md)
-npm run dev
-
-# Optional: MCP Inspector GUI (builds then opens inspector)
-npm run inspect
+export RUNDECK_INSTANCES=$(cat ~/.rundeck-mcp/instances.json)
+claude
 ```
 
-## Running the MCP Server Locally
+No shape validation here, so double-check your JSON is well-formed. If you do this regularly, consider a shell alias, e.g.:
 
-For local development with Claude Code, point `.mcp.json` at the stdio entry point directly — the client spawns `node dist/index.js` per session and passes credentials as environment variables, no persistent process to manage:
-
-```json
-{
-  "mcpServers": {
-    "rundeck-mcp": {
-      "command": "node",
-      "args": ["/path/to/rundeck-mcp/dist/index.js"],
-      "env": {
-        "RUNDECK_URL": "http://localhost:4440",
-        "RUNDECK_TOKEN": "your-rundeck-api-token",
-        "RUNDECK_API_VERSION": "46"
-      }
-    }
-  }
-}
+```bash
+alias rundeck-claude='RUNDECK_INSTANCES=$(cat ~/.rundeck-mcp/instances.json) claude'
 ```
 
-Reload Claude Code (or your MCP client) to connect.
+Either way, the end state is the same: `RUNDECK_INSTANCES` is present in the environment *before* `claude` starts.
 
-### Day-to-day loop
+## Day-to-day Loop
 
 - Changed anything in `src/`? Rebuild — see `/rundeck-mcp-rebuild` below.
 - Changed credentials? Edit the `env` block in `.mcp.json` directly and reload Claude Code — there's no separate process to restart.
