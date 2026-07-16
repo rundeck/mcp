@@ -97,6 +97,194 @@ describe("Config Manager", () => {
       );
     });
   });
+
+  describe("RUNDECK_INSTANCES registry", () => {
+    afterEach(() => {
+      delete process.env.RUNDECK_INSTANCES;
+    });
+
+    it("has no registry when RUNDECK_INSTANCES is unset", () => {
+      configManager.initialize();
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+      expect(configManager.listInstanceNames()).toEqual([]);
+    });
+
+    it("connects to the default instance on initialize", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+          staging: { url: "https://staging.example.com", token: "staging-token" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(true);
+      expect(configManager.listInstanceNames().sort()).toEqual(["prod", "staging"]);
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBe("https://prod.example.com");
+      expect(config.apiToken).toBe("prod-token");
+    });
+
+    it("clears any stray env-var connection when the registry has no default", () => {
+      process.env.RUNDECK_URL = "https://old.example.com";
+      process.env.RUNDECK_TOKEN = "old-token";
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(true);
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBeUndefined();
+      expect(config.apiToken).toBeUndefined();
+    });
+
+    it("switches the active connection on a matching instance name", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+          staging: { url: "https://staging.example.com", token: "staging-token" },
+        },
+      });
+      configManager.initialize();
+
+      const result = configManager.connectToInstance("staging");
+
+      expect(result).toEqual({ ok: true });
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBe("https://staging.example.com");
+      expect(config.apiToken).toBe("staging-token");
+    });
+
+    it("clears the connection instead of leaving the previous instance active on a miss", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+        },
+      });
+      configManager.initialize();
+
+      const result = configManager.connectToInstance("does-not-exist");
+
+      expect(result.ok).toBe(false);
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBeUndefined();
+      expect(config.apiToken).toBeUndefined();
+    });
+
+    it("does not resurrect stale RUNDECK_URL/RUNDECK_TOKEN after a failed switch", () => {
+      // A user who already had single-instance env vars exported, then also
+      // set RUNDECK_INSTANCES, is a real scenario the launcher script doesn't
+      // prevent (it only ever adds RUNDECK_INSTANCES, never unsets these).
+      process.env.RUNDECK_URL = "https://old.example.com";
+      process.env.RUNDECK_TOKEN = "old-token";
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+        },
+      });
+      configManager.initialize();
+
+      const result = configManager.connectToInstance("does-not-exist");
+      expect(result.ok).toBe(false);
+
+      // getConfig()'s lazy refreshFromEnvironment() fallback must not
+      // repopulate rundeckUrl/apiToken from the still-exported env vars.
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBeUndefined();
+      expect(config.apiToken).toBeUndefined();
+    });
+
+    it("falls back to no registry on malformed JSON without throwing", () => {
+      process.env.RUNDECK_INSTANCES = "{not valid json";
+
+      expect(() => configManager.initialize()).not.toThrow();
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+    });
+
+    it("falls back to no registry when default does not match a registered instance", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "missing",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+    });
+
+    it("falls back to no registry when an instance entry is missing url/token", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+    });
+
+    it("falls back to no registry when an instance entry has an empty url/token", () => {
+      // scripts/rundeck-connect.sh's own validation already rejects an empty
+      // string the same way it rejects a missing field — this keeps
+      // config.ts's in-process validation just as strict.
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+    });
+
+    it("falls back to no registry when an instance name is a dangerous prototype key", () => {
+      // Built as a raw JSON string rather than JSON.stringify(objectLiteral):
+      // `{ __proto__: {...} }` as a JS object-literal key sets the
+      // prototype instead of creating an own property, so JSON.stringify
+      // would silently drop it before it ever reached JSON.parse in
+      // loadInstanceRegistry() — masking the exact case being tested.
+      process.env.RUNDECK_INSTANCES =
+        '{"default":"prod","instances":{"__proto__":{"url":"https://evil.example.com","token":"evil-token"},"prod":{"url":"https://prod.example.com","token":"prod-token"}}}';
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+      // The rejected registry must not have polluted Object.prototype.
+      expect(({} as Record<string, unknown>).url).toBeUndefined();
+      expect(({} as Record<string, unknown>).token).toBeUndefined();
+    });
+
+    it("connects to a default that is present but an empty string only if it names a registered instance", () => {
+      // An empty-string "default" that doesn't match any registered
+      // instance must reject the whole registry, same as any other bad
+      // default — not silently fall through to "no default" behavior.
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+        },
+      });
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+    });
+  });
 });
 
 

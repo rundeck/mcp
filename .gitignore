@@ -4,4 +4,7 @@ dist/
 .mcp.json
 docs/
 .idea/
-
+instances.json
+.rundeck-mcp/
+.DS_Store
+site/

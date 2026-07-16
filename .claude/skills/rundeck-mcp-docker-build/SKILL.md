@@ -46,7 +46,7 @@ ls Dockerfile docker-entrypoint.sh 2>/dev/null
 ```
 
 If either file is missing, stop:
-> "Dockerfile or docker-entrypoint.sh not found. Make sure you're on the `feat/docker-delivery` branch."
+> "Dockerfile or docker-entrypoint.sh not found. Both ship on `main` — make sure your branch is up to date with `main`."
 
 Check Docker is available:
 
