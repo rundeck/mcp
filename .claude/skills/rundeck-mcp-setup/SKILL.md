@@ -93,7 +93,7 @@ node --version && npm --version
 ```
 
 If Node.js is not found, stop:
-> "Node.js is required. Please install Node.js 20+ from https://nodejs.org and try again."
+> "Node.js is required. Please install Node.js 24+ from https://nodejs.org and try again."
 
 ```
 TaskUpdate taskId=<verify_env_id> status="completed"
