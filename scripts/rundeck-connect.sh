@@ -81,7 +81,12 @@ if command -v node >/dev/null 2>&1; then
       console.error(`${path} has no instances defined under "instances".`);
       process.exit(1);
     }
+    const unsafeKeys = new Set(["__proto__", "constructor", "prototype"]);
     for (const name of names) {
+      if (unsafeKeys.has(name)) {
+        console.error(`Instance name "${name}" is not allowed.`);
+        process.exit(1);
+      }
       // Matches the loadInstanceRegistry() validation in src/config.ts
       // exactly, so a registry this script calls valid is never later
       // silently rejected (and multi-instance mode silently disabled).
