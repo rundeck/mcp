@@ -50,7 +50,7 @@
   "devDependencies": {
     "@modelcontextprotocol/inspector": "^0.22.0",
     "@types/jest": "^30.0.0",
-    "@types/node": "^20.14.0",
+    "@types/node": "^24.0.0",
     "concurrently": "9.2.4",
     "jest": "^30.0.0",
     "jest-util": "^30.0.0",
