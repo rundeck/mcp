@@ -42,7 +42,7 @@
   },
   "overrides": {
     "hono": "4.12.30",
-    "fast-uri": "4.1.0",
+    "fast-uri": "4.1.1",
     "@modelcontextprotocol/sdk": {
       "ajv": "8.20.0"
     }
