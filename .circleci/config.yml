@@ -172,10 +172,12 @@ jobs:
       - run:
           name: Set package version from tag
           command: npm version "${CIRCLE_TAG#v}" --no-git-tag-version --allow-same-version
-      # The repo's own .npmrc points "registry" at the Cloudsmith mirror
-      # (needed for the build job's npm ci) and takes precedence over the
-      # default registry, so the public registry must be forced explicitly
-      # below.
+      # The repo's own .npmrc points the generic "registry" at the Cloudsmith
+      # mirror (needed for the build job's npm ci), but scopes an
+      # "@rundeck:registry" override to the public npm registry — npm
+      # resolves scope-specific registry config ahead of the generic
+      # fallback, so publishing @rundeck/mcp goes to registry.npmjs.org
+      # without needing an explicit --registry flag here.
       - run:
           name: Publish to npm (OIDC)
           command: |
