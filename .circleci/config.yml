@@ -180,7 +180,7 @@ jobs:
           name: Publish to npm (OIDC)
           command: |
             export NPM_ID_TOKEN=$(circleci run oidc get --claims '{"aud": "npm:registry.npmjs.org"}')
-            npm publish --registry=https://registry.npmjs.org/
+            npm publish --access public
 
 workflows:
   build-test-publish:
