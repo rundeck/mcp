@@ -80,7 +80,12 @@ export function getAdministrationCategory(category: string): string {
  */
 export function getAdministrationPath(parts: string[]): string {
   const relPath = parts.join("/");
-  const fullPath = join(getDocsPath(), "administration", relPath);
+  const basePath = join(getDocsPath(), "administration");
+  const fullPath = join(basePath, relPath);
+
+  if (fullPath !== basePath && !fullPath.startsWith(basePath + "/")) {
+    return `Administration path "${relPath}" not found`;
+  }
 
   if (existsSync(fullPath) && statSync(fullPath).isDirectory()) {
     const files = findMarkdownFiles(fullPath);

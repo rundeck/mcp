@@ -58,8 +58,8 @@ import {
 import {
   getSalesforceAlternatives,
 } from "./integrations.js";
-import { readFileSync, existsSync, readdirSync, statSync } from "fs";
-import { join } from "path";
+import { readFileSync, existsSync, statSync } from "fs";
+import { join, dirname } from "path";
 import { configManager } from "../config.js";
 import { logger } from "../utils/logger.js";
 import { findMarkdownFiles } from "../parsers/markdown.js";
@@ -346,39 +346,31 @@ function listDocDirectories(
     return [];
   }
 
-  const entries: Array<{ uri: string; description: string }> = [];
+  // Single recursive scan for markdown files, then derive every ancestor
+  // directory from each file's path — avoids re-scanning the same subtree
+  // once per directory, and keeps a thrown error (e.g. an unreadable
+  // subdirectory) from taking down the whole listResources() response.
+  let markdownFiles: string[];
+  try {
+    markdownFiles = findMarkdownFiles(rootPath);
+  } catch (error) {
+    logger.error(`Failed to scan ${category} docs for resource discovery`, error);
+    return [];
+  }
 
-  function walk(currentPath: string, relPath: string) {
-    let items: string[];
-    try {
-      items = readdirSync(currentPath);
-    } catch {
-      return;
-    }
-
-    for (const item of items) {
-      const fullPath = join(currentPath, item);
-      let stat;
-      try {
-        stat = statSync(fullPath);
-      } catch {
-        continue;
-      }
-      if (!stat.isDirectory()) continue;
-
-      const childRelPath = relPath ? `${relPath}/${item}` : item;
-      if (findMarkdownFiles(fullPath).length > 0) {
-        entries.push({
-          uri: `${uriPrefix}/${childRelPath}`,
-          description: `${category} documentation: ${childRelPath.replace(/\//g, " > ")}`,
-        });
-      }
-      walk(fullPath, childRelPath);
+  const dirsWithMarkdown = new Set<string>();
+  for (const file of markdownFiles) {
+    let dir = dirname(file.replace(rootPath + "/", ""));
+    while (dir && dir !== ".") {
+      dirsWithMarkdown.add(dir);
+      dir = dirname(dir);
     }
   }
 
-  walk(rootPath, "");
-  return entries;
+  return Array.from(dirsWithMarkdown).map((relPath) => ({
+    uri: `${uriPrefix}/${relPath}`,
+    description: `${category} documentation: ${relPath.replace(/\//g, " > ")}`,
+  }));
 }
 
 /**

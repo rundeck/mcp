@@ -119,7 +119,12 @@ export function getManualTopic(section: string, topic: string): string {
  */
 export function getManualPath(parts: string[]): string {
   const relPath = parts.join("/");
-  const fullPath = join(getDocsPath(), "manual", relPath);
+  const basePath = join(getDocsPath(), "manual");
+  const fullPath = join(basePath, relPath);
+
+  if (fullPath !== basePath && !fullPath.startsWith(basePath + "/")) {
+    return `Manual path "${relPath}" not found`;
+  }
 
   if (existsSync(fullPath) && statSync(fullPath).isDirectory()) {
     const files = findMarkdownFiles(fullPath);
