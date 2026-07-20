@@ -26,8 +26,7 @@ import {
 } from "./plugins.js";
 import {
   getManualIndex,
-  getManualSection,
-  getManualTopic,
+  getManualPath,
   getJobsManual,
   getNodesManual,
   getExecutionsManual,
@@ -37,8 +36,7 @@ import {
 } from "./manual.js";
 import {
   getAdministrationIndex,
-  getAdministrationCategory,
-  getAdministrationTopic,
+  getAdministrationPath,
   getClusterDocs,
   getConfigurationDocs,
   getInstallationDocs,
@@ -60,10 +58,11 @@ import {
 import {
   getSalesforceAlternatives,
 } from "./integrations.js";
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, readdirSync, statSync } from "fs";
 import { join } from "path";
 import { configManager } from "../config.js";
 import { logger } from "../utils/logger.js";
+import { findMarkdownFiles } from "../parsers/markdown.js";
 
 function getDocsPath(): string {
   return configManager.getConfig().docsPath;
@@ -232,44 +231,39 @@ export function handleResource(uri: string): string {
 
       // Manual documentation: rundeck://docs/manual
       if (category === "manual") {
-        if (!section) {
+        // Path segments after "manual" — may be arbitrarily deep
+        // (e.g. ["projects", "node-execution", "ssh"]).
+        const remaining = parts.slice(1);
+        if (remaining.length === 0) {
           return getManualIndex();
-        } else if (!topic) {
-          // Special sections
+        }
+        if (remaining.length === 1) {
+          // Friendly named aliases
           if (section === "jobs") return getJobsManual();
           if (section === "nodes") return getNodesManual();
           if (section === "executions") return getExecutionsManual();
           if (section === "calendars") return getCalendarsManual();
           if (section === "aws-ssm" || section === "aws-ssm-setup") return getAwsSsmSetup();
           if (section === "performance" || section === "metrics" || section === "monitoring") return getPerformanceMonitoring();
-          return getManualSection(section);
-        } else {
-          // Special topics
-          if (section === "projects" && topic === "aws-ssm") return getAwsSsmSetup();
-          // Handle nested path: projects/node-execution/aws-ssm
-          if (section === "projects" && topic === "node-execution") {
-            const subTopic = parts.length > 3 ? parts[3] : null;
-            if (subTopic === "aws-ssm") return getAwsSsmSetup();
-          }
-          return getManualTopic(section, topic);
         }
+        return getManualPath(remaining);
       }
 
       // Administration documentation: rundeck://docs/administration
       if (category === "administration") {
-        if (!section) {
+        const remaining = parts.slice(1);
+        if (remaining.length === 0) {
           return getAdministrationIndex();
-        } else if (!topic) {
-          // Special categories
+        }
+        if (remaining.length === 1) {
+          // Friendly named aliases
           if (section === "cluster") return getClusterDocs();
           if (section === "configuration") return getConfigurationDocs();
           if (section === "install") return getInstallationDocs();
           if (section === "security") return getSecurityDocs();
           if (section === "runner") return getRunnerDocs();
-          return getAdministrationCategory(section);
-        } else {
-          return getAdministrationTopic(section, topic);
         }
+        return getAdministrationPath(remaining);
       }
 
       // Developer documentation: rundeck://docs/developer
@@ -337,10 +331,61 @@ export function handleResource(uri: string): string {
 }
 
 /**
+ * Recursively discover subdirectories under a docs category (e.g. "manual",
+ * "administration") and expose one resource URI per directory that contains
+ * markdown content. This lets clients discover — and successfully read —
+ * nested topics (e.g. `rundeck://docs/manual/projects/node-execution`) that
+ * the static list below doesn't spell out individually.
+ */
+function listDocDirectories(
+  category: string,
+  uriPrefix: string
+): Array<{ uri: string; description: string }> {
+  const rootPath = join(getDocsPath(), category);
+  if (!existsSync(rootPath) || !statSync(rootPath).isDirectory()) {
+    return [];
+  }
+
+  const entries: Array<{ uri: string; description: string }> = [];
+
+  function walk(currentPath: string, relPath: string) {
+    let items: string[];
+    try {
+      items = readdirSync(currentPath);
+    } catch {
+      return;
+    }
+
+    for (const item of items) {
+      const fullPath = join(currentPath, item);
+      let stat;
+      try {
+        stat = statSync(fullPath);
+      } catch {
+        continue;
+      }
+      if (!stat.isDirectory()) continue;
+
+      const childRelPath = relPath ? `${relPath}/${item}` : item;
+      if (findMarkdownFiles(fullPath).length > 0) {
+        entries.push({
+          uri: `${uriPrefix}/${childRelPath}`,
+          description: `${category} documentation: ${childRelPath.replace(/\//g, " > ")}`,
+        });
+      }
+      walk(fullPath, childRelPath);
+    }
+  }
+
+  walk(rootPath, "");
+  return entries;
+}
+
+/**
  * List available resources
  */
 export function listResources(): Array<{ uri: string; description: string }> {
-  return [
+  const staticResources: Array<{ uri: string; description: string }> = [
     // API resources
     { uri: "rundeck://api", description: "Complete API reference" },
     { uri: "rundeck://api/auth", description: "API authentication methods" },
@@ -406,5 +451,20 @@ export function listResources(): Array<{ uri: string; description: string }> {
     // Integrations documentation
     { uri: "rundeck://docs/integrations/salesforce", description: "Salesforce integration alternatives" },
   ];
+
+  // Merge in dynamically discovered nested directories (e.g. `manual/projects/node-execution`)
+  // so clients can find topics not called out explicitly above. Static entries win on conflict.
+  const dynamicResources = [
+    ...listDocDirectories("manual", "rundeck://docs/manual"),
+    ...listDocDirectories("administration", "rundeck://docs/administration"),
+  ];
+
+  const byUri = new Map<string, { uri: string; description: string }>();
+  for (const resource of [...staticResources, ...dynamicResources]) {
+    if (!byUri.has(resource.uri)) {
+      byUri.set(resource.uri, resource);
+    }
+  }
+  return Array.from(byUri.values());
 }
 

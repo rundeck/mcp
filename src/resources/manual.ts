@@ -112,6 +112,33 @@ export function getManualTopic(section: string, topic: string): string {
 }
 
 /**
+ * Resolve an arbitrary path under manual/ — used for nested topics that don't
+ * fit the flat `{section}/{topic}.md` shape handled by getManualTopic (e.g.
+ * `projects/node-execution/ssh`, where `node-execution` is itself a directory).
+ * Falls back to `.md` file lookup when the path isn't a directory.
+ */
+export function getManualPath(parts: string[]): string {
+  const relPath = parts.join("/");
+  const fullPath = join(getDocsPath(), "manual", relPath);
+
+  if (existsSync(fullPath) && statSync(fullPath).isDirectory()) {
+    const files = findMarkdownFiles(fullPath);
+    const fileContents = files.map((file) => ({
+      path: file.replace(fullPath + "/", ""),
+      content: readFileSync(file, "utf-8"),
+    }));
+    return groupMarkdownFiles(fileContents);
+  }
+
+  const filePath = `${fullPath}.md`;
+  if (existsSync(filePath)) {
+    return summarizeMarkdown(readFileSync(filePath, "utf-8"));
+  }
+
+  return `Manual path "${relPath}" not found`;
+}
+
+/**
  * Get jobs documentation
  */
 export function getJobsManual(): string {

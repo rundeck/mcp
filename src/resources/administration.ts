@@ -3,7 +3,7 @@
  * Covers cluster setup, configuration, security, installation, etc.
  */
 
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, statSync } from "fs";
 import { join } from "path";
 import { configManager } from "../config.js";
 import { findMarkdownFiles, parseMarkdownContent } from "../parsers/markdown.js";
@@ -73,23 +73,30 @@ export function getAdministrationCategory(category: string): string {
 }
 
 /**
- * Get specific administration topic
+ * Resolve an arbitrary path under administration/ — used for nested topics
+ * that don't fit the flat `{category}/{topic}.md` shape (e.g.
+ * `cluster/logstore/redis`, where `logstore` is itself a directory).
+ * Falls back to `.md` file lookup when the path isn't a directory.
  */
-export function getAdministrationTopic(category: string, topic: string): string {
-  const topicPath = join(getDocsPath(), "administration", category, `${topic}.md`);
-  if (existsSync(topicPath)) {
-    const content = readFileSync(topicPath, "utf-8");
-    return summarizeMarkdown(content);
+export function getAdministrationPath(parts: string[]): string {
+  const relPath = parts.join("/");
+  const fullPath = join(getDocsPath(), "administration", relPath);
+
+  if (existsSync(fullPath) && statSync(fullPath).isDirectory()) {
+    const files = findMarkdownFiles(fullPath);
+    const fileContents = files.map((file) => ({
+      path: file.replace(fullPath + "/", ""),
+      content: readFileSync(file, "utf-8"),
+    }));
+    return groupMarkdownFiles(fileContents);
   }
-  
-  // Try without category (root level)
-  const rootTopicPath = join(getDocsPath(), "administration", `${topic}.md`);
-  if (existsSync(rootTopicPath)) {
-    const content = readFileSync(rootTopicPath, "utf-8");
-    return summarizeMarkdown(content);
+
+  const filePath = `${fullPath}.md`;
+  if (existsSync(filePath)) {
+    return summarizeMarkdown(readFileSync(filePath, "utf-8"));
   }
-  
-  return `Administration topic "${category}/${topic}" not found`;
+
+  return `Administration path "${relPath}" not found`;
 }
 
 /**
