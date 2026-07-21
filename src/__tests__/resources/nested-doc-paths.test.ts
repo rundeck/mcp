@@ -254,4 +254,16 @@ describe("Friendly names that need no alias table entry (resolved generically, s
     expect(result.startsWith("Resource not found")).toBe(false);
     expect(result.length).toBeGreaterThan(0);
   });
+
+  // groupMarkdownFiles (src/utils/summarizer.ts) joins each file's content
+  // under a "## <relative-path>.md" header. Asserting on that marker (not
+  // just non-empty content) is what actually distinguishes "grouped every
+  // file in the directory" from "resolved to a single file's content" — a
+  // regression that silently returned only one file here wouldn't be caught
+  // by a plain length/not-found check.
+  it.each(genericallyResolvedUris)("%s actually groups multiple files together, not just one", (uri) => {
+    const result = handleResource(uri);
+    const fileSectionHeaders = result.match(/^## \S+\.md$/gm) ?? [];
+    expect(fileSectionHeaders.length).toBeGreaterThan(1);
+  });
 });
