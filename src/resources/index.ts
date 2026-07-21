@@ -338,11 +338,15 @@ export function handleResource(uri: string): string {
 }
 
 /**
- * Recursively discover subdirectories under a docs category (e.g. "manual",
- * "administration") and expose one resource URI per directory that contains
- * markdown content. This lets clients discover — and successfully read —
- * nested topics (e.g. `rundeck://docs/manual/projects/node-execution`) that
- * the static list below doesn't spell out individually.
+ * Recursively discover every markdown file and subdirectory under a docs
+ * category (e.g. "manual", "administration") and expose one resource URI
+ * each. This lets clients discover — via listResources(), not just direct
+ * ReadResource calls — both nested directories (e.g.
+ * `rundeck://docs/manual/projects/node-execution`) and individual nested
+ * files (e.g. `.../node-execution/ssh`) that the static list below doesn't
+ * spell out individually. Without the per-file entries, a client that only
+ * reads resources it first saw in listResources() would never be able to
+ * reach a leaf topic, even though ReadResource could resolve it directly.
  */
 function listDocDirectories(
   category: string,
@@ -366,18 +370,28 @@ function listDocDirectories(
   }
 
   const dirsWithMarkdown = new Set<string>();
+  const fileEntries: Array<{ uri: string; description: string }> = [];
   for (const file of markdownFiles) {
-    let dir = dirname(file.replace(rootPath + "/", ""));
+    const relFile = file.replace(rootPath + "/", "");
+    const relFileNoExt = relFile.replace(/\.md$/, "");
+    fileEntries.push({
+      uri: `${uriPrefix}/${relFileNoExt}`,
+      description: `${category} documentation: ${relFileNoExt.replace(/\//g, " > ")}`,
+    });
+
+    let dir = dirname(relFile);
     while (dir && dir !== ".") {
       dirsWithMarkdown.add(dir);
       dir = dirname(dir);
     }
   }
 
-  return Array.from(dirsWithMarkdown).map((relPath) => ({
+  const dirEntries = Array.from(dirsWithMarkdown).map((relPath) => ({
     uri: `${uriPrefix}/${relPath}`,
     description: `${category} documentation: ${relPath.replace(/\//g, " > ")}`,
   }));
+
+  return [...dirEntries, ...fileEntries];
 }
 
 /**

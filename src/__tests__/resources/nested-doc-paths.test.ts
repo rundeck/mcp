@@ -73,6 +73,14 @@ const hasAdminClusterLogstore = existsSync(
       expect(uris).toContain("rundeck://docs/manual/projects");
     });
 
+    it("reported incident: rundeck://docs/manual/projects/node-execution/ssh is both listed and readable end-to-end", () => {
+      const uris = listResources().map((r) => r.uri);
+      expect(uris).toContain("rundeck://docs/manual/projects/node-execution/ssh");
+
+      const result = handleResource("rundeck://docs/manual/projects/node-execution/ssh");
+      expect(result).toContain("SSH Node Execution");
+    });
+
     it("regression: resolves the pre-existing 2-segment shortcut rundeck://docs/manual/projects/aws-ssm", () => {
       // Before this PR, index.ts hardcoded `projects/aws-ssm` -> getAwsSsmSetup(),
       // which reads manual/projects/node-execution/aws-ssm.md directly. The
