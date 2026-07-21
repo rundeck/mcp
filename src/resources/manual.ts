@@ -66,32 +66,6 @@ export function getManualIndex(): string {
 }
 
 /**
- * Get manual section (e.g., jobs, nodes, executions)
- */
-export function getManualSection(section: string): string {
-  const sectionPath = join(getDocsPath(), "manual", section);
-  
-  if (existsSync(sectionPath) && statSync(sectionPath).isDirectory()) {
-    const files = findMarkdownFiles(sectionPath);
-    const fileContents = files.map(file => ({
-      path: file.replace(sectionPath + "/", ""),
-      content: readFileSync(file, "utf-8")
-    }));
-    
-    return groupMarkdownFiles(fileContents);
-  }
-  
-  // Try as a single file
-  const filePath = join(getDocsPath(), "manual", `${section}.md`);
-  if (existsSync(filePath)) {
-    const content = readFileSync(filePath, "utf-8");
-    return summarizeMarkdown(content);
-  }
-  
-  return `Manual section "${section}" not found`;
-}
-
-/**
  * Get specific manual topic
  */
 export function getManualTopic(section: string, topic: string): string {
@@ -140,43 +114,7 @@ export function getManualPath(parts: string[]): string {
     return summarizeMarkdown(readFileSync(filePath, "utf-8"));
   }
 
-  // Preserve getManualTopic's old root-level fallback: a two-segment path
-  // whose topic file lives at the manual root rather than under its section
-  // (e.g. `jobs/03-getting-started` -> `manual/03-getting-started.md`).
-  if (parts.length === 2) {
-    const rootFilePath = join(basePath, `${parts[1]}.md`);
-    if (existsSync(rootFilePath)) {
-      return summarizeMarkdown(readFileSync(rootFilePath, "utf-8"));
-    }
-  }
-
   return `Manual path "${relPath}" not found`;
-}
-
-/**
- * Get jobs documentation
- */
-export function getJobsManual(): string {
-  const jobsPath = join(getDocsPath(), "manual", "jobs");
-  if (existsSync(jobsPath)) {
-    return getManualSection("jobs");
-  }
-  
-  // Fallback to individual job files
-  const jobFiles = [
-    "manual/jobs/index.md",
-    "manual/03-getting-started.md",
-  ];
-  
-  const contents: string[] = [];
-  for (const file of jobFiles) {
-    const filePath = join(getDocsPath(), file);
-    if (existsSync(filePath)) {
-      contents.push(readFileSync(filePath, "utf-8"));
-    }
-  }
-  
-  return contents.length > 0 ? groupMarkdownFiles(contents.map(c => ({ path: "", content: c }))) : "Jobs documentation not found";
 }
 
 /**
@@ -191,13 +129,6 @@ export function getNodesManual(): string {
  */
 export function getExecutionsManual(): string {
   return getManualTopic("", "07-executions");
-}
-
-/**
- * Get calendars documentation
- */
-export function getCalendarsManual(): string {
-  return getManualSection("calendars");
 }
 
 /**

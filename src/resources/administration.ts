@@ -54,25 +54,6 @@ export function getAdministrationIndex(): string {
 }
 
 /**
- * Get administration category documentation
- */
-export function getAdministrationCategory(category: string): string {
-  const categoryPath = join(getDocsPath(), "administration", category);
-  
-  if (existsSync(categoryPath)) {
-    const files = findMarkdownFiles(categoryPath);
-    const fileContents = files.map(file => ({
-      path: file.replace(categoryPath + "/", ""),
-      content: readFileSync(file, "utf-8")
-    }));
-    
-    return groupMarkdownFiles(fileContents);
-  }
-  
-  return `Administration category "${category}" not found`;
-}
-
-/**
  * Resolve an arbitrary path under administration/ — used for nested topics
  * that don't fit the flat `{category}/{topic}.md` shape (e.g.
  * `cluster/logstore/redis`, where `logstore` is itself a directory).
@@ -101,51 +82,6 @@ export function getAdministrationPath(parts: string[]): string {
     return summarizeMarkdown(readFileSync(filePath, "utf-8"));
   }
 
-  // Preserve getAdministrationTopic's old root-level fallback: a two-segment
-  // path whose topic file lives at the administration root rather than under
-  // its category (e.g. `install/license` -> `administration/license.md`).
-  if (parts.length === 2) {
-    const rootFilePath = join(basePath, `${parts[1]}.md`);
-    if (existsSync(rootFilePath)) {
-      return summarizeMarkdown(readFileSync(rootFilePath, "utf-8"));
-    }
-  }
-
   return `Administration path "${relPath}" not found`;
-}
-
-/**
- * Get cluster documentation
- */
-export function getClusterDocs(): string {
-  return getAdministrationCategory("cluster");
-}
-
-/**
- * Get configuration documentation
- */
-export function getConfigurationDocs(): string {
-  return getAdministrationCategory("configuration");
-}
-
-/**
- * Get installation documentation
- */
-export function getInstallationDocs(): string {
-  return getAdministrationCategory("install");
-}
-
-/**
- * Get security documentation
- */
-export function getSecurityDocs(): string {
-  return getAdministrationCategory("security");
-}
-
-/**
- * Get runner documentation
- */
-export function getRunnerDocs(): string {
-  return getAdministrationCategory("runner");
 }
 

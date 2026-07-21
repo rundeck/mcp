@@ -92,15 +92,18 @@ const hasAdminClusterLogstore = existsSync(
       expect(result).not.toContain("not found");
     });
 
-    it("regression: falls back to the manual root when a 2-segment topic file lives there instead of under its section", () => {
-      // getManualTopic (pre-PR) tried `manual/{section}/{topic}.md`, then fell
-      // back to `manual/{topic}.md` at the root. getManualPath must preserve
-      // this for exactly the 2-segment case, or previously-working URIs like
-      // this one (03-getting-started.md lives at manual root, not under jobs/)
-      // silently 404 after the PR.
+    it("does NOT guess a root-level file for a mismatched section+topic pair (no silent fallback)", () => {
+      // getManualPath deliberately does not fall back to searching for a
+      // same-named file elsewhere in the tree. Rundeck's docs have two
+      // distinct files both named "webhooks.md" (manual/webhooks.md, about
+      // the incoming-webhooks feature, vs manual/notifications/webhooks.md,
+      // about the webhook notification plugin) — a "closest guess" fallback
+      // risks silently returning the wrong topic's content. A section/topic
+      // pair that doesn't exist as a literal path should just 404; the
+      // correct way to find a topic by name is docs_search, which ranks by
+      // actual content relevance instead of guessing by filename.
       const result = getManualPath(["jobs", "03-getting-started"]);
-      expect(result).not.toContain("not found");
-      expect(result.length).toBeGreaterThan(0);
+      expect(result).toContain("not found");
     });
   }
 );
@@ -147,15 +150,12 @@ const hasAdminClusterLogstore = existsSync(
       expect(uris).toContain("rundeck://docs/administration/cluster");
     });
 
-    it("regression: falls back to the administration root when a 2-segment topic file lives there instead of under its category", () => {
-      // getAdministrationTopic (pre-PR) tried `administration/{category}/{topic}.md`,
-      // then fell back to `administration/{topic}.md` at the root (e.g.
-      // license.md, which lives at the administration root, not under any
-      // category). getAdministrationPath must preserve this for the
-      // 2-segment case or this previously-working URI silently 404s.
+    it("does NOT guess a root-level file for a mismatched category+topic pair (no silent fallback)", () => {
+      // Same reasoning as the manual-side test above: a category/topic pair
+      // that isn't a literal path should 404, not silently substitute a
+      // same-named file from elsewhere in the tree.
       const result = getAdministrationPath(["install", "license"]);
-      expect(result).not.toContain("not found");
-      expect(result.length).toBeGreaterThan(0);
+      expect(result).toContain("not found");
     });
   }
 );
@@ -199,23 +199,19 @@ describe("Manual/administration alias table stays in sync (routing + listing sha
   // ADMINISTRATION_ALIASES tables in index.ts, so every alias here must both
   // resolve to real content AND appear in listResources() output. If someone
   // adds a routing-only or listing-only special case again (the exact bug
-  // this refactor closes), one half of this pair fails.
+  // this refactor closes), one half of this pair fails. Only entries that
+  // genuinely can't be derived from the filesystem belong in this list —
+  // see the separate "redundant aliases" describe below for names that
+  // resolve without any table entry at all.
   const knownAliasUris = [
-    "rundeck://docs/manual/jobs",
     "rundeck://docs/manual/nodes",
     "rundeck://docs/manual/executions",
-    "rundeck://docs/manual/calendars",
     "rundeck://docs/manual/aws-ssm",
     "rundeck://docs/manual/aws-ssm-setup",
     "rundeck://docs/manual/performance",
     "rundeck://docs/manual/metrics",
     "rundeck://docs/manual/monitoring",
     "rundeck://docs/manual/projects/aws-ssm",
-    "rundeck://docs/administration/cluster",
-    "rundeck://docs/administration/configuration",
-    "rundeck://docs/administration/install",
-    "rundeck://docs/administration/security",
-    "rundeck://docs/administration/runner",
   ];
 
   it.each(knownAliasUris)("%s is both listed and resolves to real content", (uri) => {
@@ -226,6 +222,33 @@ describe("Manual/administration alias table stays in sync (routing + listing sha
     // A strict prefix check (not a "not found" substring check) — real doc
     // content sometimes legitimately contains the words "not found" (e.g.
     // troubleshooting sections), which would otherwise false-positive.
+    expect(result.startsWith("Manual path")).toBe(false);
+    expect(result.startsWith("Administration path")).toBe(false);
+    expect(result.startsWith("Resource not found")).toBe(false);
+    expect(result.length).toBeGreaterThan(0);
+  });
+});
+
+describe("Friendly names that need no alias table entry (resolved generically, since they're real directories)", () => {
+  // jobs/calendars (manual) and cluster/configuration/install/security/runner
+  // (administration) all match a real top-level directory name 1:1, so
+  // getManualPath/getAdministrationPath already resolve them via plain
+  // directory lookup — no MANUAL_ALIASES/ADMINISTRATION_ALIASES entry
+  // needed. These are intentionally NOT listed via a dedicated alias entry
+  // in listResources() (no per-alias description), but they're still
+  // reachable via ReadResource, and via listResources() as directories.
+  const genericallyResolvedUris = [
+    "rundeck://docs/manual/jobs",
+    "rundeck://docs/manual/calendars",
+    "rundeck://docs/administration/cluster",
+    "rundeck://docs/administration/configuration",
+    "rundeck://docs/administration/install",
+    "rundeck://docs/administration/security",
+    "rundeck://docs/administration/runner",
+  ];
+
+  it.each(genericallyResolvedUris)("%s resolves to real content without an alias table entry", (uri) => {
+    const result = handleResource(uri);
     expect(result.startsWith("Manual path")).toBe(false);
     expect(result.startsWith("Administration path")).toBe(false);
     expect(result.startsWith("Resource not found")).toBe(false);

@@ -27,22 +27,12 @@ import {
 import {
   getManualIndex,
   getManualPath,
-  getJobsManual,
   getNodesManual,
   getExecutionsManual,
-  getCalendarsManual,
   getAwsSsmSetup,
   getPerformanceMonitoring,
 } from "./manual.js";
-import {
-  getAdministrationIndex,
-  getAdministrationPath,
-  getClusterDocs,
-  getConfigurationDocs,
-  getInstallationDocs,
-  getSecurityDocs,
-  getRunnerDocs,
-} from "./administration.js";
+import { getAdministrationIndex, getAdministrationPath } from "./administration.js";
 import {
   getDeveloperIndex,
   getPluginDevelopmentDocs,
@@ -84,11 +74,18 @@ interface DocAlias {
   resolve: () => string;
 }
 
+// Deliberately small: every entry here maps a friendly name to content that
+// getManualPath/getAdministrationPath cannot reach by resolving the literal
+// path — either because the target file is named or nested differently than
+// the alias (nodes -> 05-nodes.md, aws-ssm -> projects/node-execution/aws-ssm.md),
+// or because it's a synthesized multi-file resource with no single backing
+// file (performance/metrics/monitoring). Anything that matches a real
+// directory or file 1:1 (jobs, calendars, cluster, configuration, install,
+// security, runner, ...) needs no entry at all — getManualPath/
+// getAdministrationPath already resolve it generically.
 const MANUAL_ALIASES: DocAlias[] = [
-  { segments: ["jobs"], description: "Job documentation", resolve: getJobsManual },
   { segments: ["nodes"], description: "Node documentation", resolve: getNodesManual },
   { segments: ["executions"], description: "Execution documentation", resolve: getExecutionsManual },
-  { segments: ["calendars"], description: "Calendar documentation", resolve: getCalendarsManual },
   { segments: ["aws-ssm"], description: "AWS SSM plugin setup guide", resolve: getAwsSsmSetup },
   { segments: ["aws-ssm-setup"], description: "AWS SSM plugin setup guide", resolve: getAwsSsmSetup },
   { segments: ["performance"], description: "Performance monitoring and metrics", resolve: getPerformanceMonitoring },
@@ -101,13 +98,13 @@ const MANUAL_ALIASES: DocAlias[] = [
   },
 ];
 
-const ADMINISTRATION_ALIASES: DocAlias[] = [
-  { segments: ["cluster"], description: "Cluster setup and management", resolve: getClusterDocs },
-  { segments: ["configuration"], description: "System configuration", resolve: getConfigurationDocs },
-  { segments: ["install"], description: "Installation guides", resolve: getInstallationDocs },
-  { segments: ["security"], description: "Security configuration", resolve: getSecurityDocs },
-  { segments: ["runner"], description: "Runner documentation", resolve: getRunnerDocs },
-];
+// Every administration friendly name (cluster, configuration, install,
+// security, runner) matches a real top-level directory 1:1, so
+// getAdministrationPath already resolves all of them generically — nothing
+// here needs a non-derivable alias today. Kept as an empty table (rather
+// than removed) so routing and listing keep reading from one shared
+// mechanism if a real one is ever needed.
+const ADMINISTRATION_ALIASES: DocAlias[] = [];
 
 function matchAlias(aliases: DocAlias[], remaining: string[]): DocAlias | undefined {
   return aliases.find(
