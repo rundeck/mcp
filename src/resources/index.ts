@@ -246,6 +246,13 @@ export function handleResource(uri: string): string {
           if (section === "aws-ssm" || section === "aws-ssm-setup") return getAwsSsmSetup();
           if (section === "performance" || section === "metrics" || section === "monitoring") return getPerformanceMonitoring();
         }
+        // Pre-existing shortcut: the real file lives at
+        // manual/projects/node-execution/aws-ssm.md, deeper than this
+        // 2-segment alias — kept as a special case since getManualPath only
+        // resolves the literal joined path.
+        if (remaining.length === 2 && section === "projects" && topic === "aws-ssm") {
+          return getAwsSsmSetup();
+        }
         return getManualPath(remaining);
       }
 

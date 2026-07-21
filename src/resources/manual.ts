@@ -140,6 +140,16 @@ export function getManualPath(parts: string[]): string {
     return summarizeMarkdown(readFileSync(filePath, "utf-8"));
   }
 
+  // Preserve getManualTopic's old root-level fallback: a two-segment path
+  // whose topic file lives at the manual root rather than under its section
+  // (e.g. `jobs/03-getting-started` -> `manual/03-getting-started.md`).
+  if (parts.length === 2) {
+    const rootFilePath = join(basePath, `${parts[1]}.md`);
+    if (existsSync(rootFilePath)) {
+      return summarizeMarkdown(readFileSync(rootFilePath, "utf-8"));
+    }
+  }
+
   return `Manual path "${relPath}" not found`;
 }
 

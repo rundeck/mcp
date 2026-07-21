@@ -101,6 +101,16 @@ export function getAdministrationPath(parts: string[]): string {
     return summarizeMarkdown(readFileSync(filePath, "utf-8"));
   }
 
+  // Preserve getAdministrationTopic's old root-level fallback: a two-segment
+  // path whose topic file lives at the administration root rather than under
+  // its category (e.g. `install/license` -> `administration/license.md`).
+  if (parts.length === 2) {
+    const rootFilePath = join(basePath, `${parts[1]}.md`);
+    if (existsSync(rootFilePath)) {
+      return summarizeMarkdown(readFileSync(rootFilePath, "utf-8"));
+    }
+  }
+
   return `Administration path "${relPath}" not found`;
 }
 
