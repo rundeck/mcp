@@ -26,25 +26,13 @@ import {
 } from "./plugins.js";
 import {
   getManualIndex,
-  getManualSection,
-  getManualTopic,
-  getJobsManual,
+  getManualPath,
   getNodesManual,
   getExecutionsManual,
-  getCalendarsManual,
   getAwsSsmSetup,
   getPerformanceMonitoring,
 } from "./manual.js";
-import {
-  getAdministrationIndex,
-  getAdministrationCategory,
-  getAdministrationTopic,
-  getClusterDocs,
-  getConfigurationDocs,
-  getInstallationDocs,
-  getSecurityDocs,
-  getRunnerDocs,
-} from "./administration.js";
+import { getAdministrationIndex, getAdministrationPath } from "./administration.js";
 import {
   getDeveloperIndex,
   getPluginDevelopmentDocs,
@@ -60,13 +48,70 @@ import {
 import {
   getSalesforceAlternatives,
 } from "./integrations.js";
-import { readFileSync, existsSync } from "fs";
-import { join } from "path";
+import { readFileSync, existsSync, statSync } from "fs";
+import { join, dirname } from "path";
 import { configManager } from "../config.js";
 import { logger } from "../utils/logger.js";
+import { findMarkdownFiles } from "../parsers/markdown.js";
 
 function getDocsPath(): string {
   return configManager.getConfig().docsPath;
+}
+
+/**
+ * A named shortcut under manual/ or administration/ that doesn't correspond
+ * 1:1 to a plain filesystem path — either a friendlier name for a real
+ * section (e.g. `jobs` -> manual/jobs), or a pointer to content that lives
+ * deeper than the alias's own path (e.g. `projects/aws-ssm` -> the file at
+ * manual/projects/node-execution/aws-ssm.md). Defined once and consumed by
+ * both handleResource (routing) and listResources (discovery) so the two
+ * can't drift apart the way they did before — a URI that resolves is
+ * guaranteed to also be listed, and vice versa.
+ */
+interface DocAlias {
+  segments: string[];
+  description: string;
+  resolve: () => string;
+}
+
+// Deliberately small: every entry here maps a friendly name to content that
+// getManualPath/getAdministrationPath cannot reach by resolving the literal
+// path — either because the target file is named or nested differently than
+// the alias (nodes -> 05-nodes.md, aws-ssm -> projects/node-execution/aws-ssm.md),
+// or because it's a synthesized multi-file resource with no single backing
+// file (performance/metrics/monitoring). Anything that matches a real
+// directory or file 1:1 (jobs, calendars, cluster, configuration, install,
+// security, runner, ...) needs no entry at all — getManualPath/
+// getAdministrationPath already resolve it generically.
+const MANUAL_ALIASES: DocAlias[] = [
+  { segments: ["nodes"], description: "Node documentation", resolve: getNodesManual },
+  { segments: ["executions"], description: "Execution documentation", resolve: getExecutionsManual },
+  { segments: ["aws-ssm"], description: "AWS SSM plugin setup guide", resolve: getAwsSsmSetup },
+  { segments: ["aws-ssm-setup"], description: "AWS SSM plugin setup guide", resolve: getAwsSsmSetup },
+  { segments: ["performance"], description: "Performance monitoring and metrics", resolve: getPerformanceMonitoring },
+  { segments: ["metrics"], description: "Performance monitoring and metrics", resolve: getPerformanceMonitoring },
+  { segments: ["monitoring"], description: "Performance monitoring and metrics", resolve: getPerformanceMonitoring },
+  {
+    segments: ["projects", "aws-ssm"],
+    description: "AWS SSM plugin setup guide (shortcut for projects/node-execution/aws-ssm)",
+    resolve: getAwsSsmSetup,
+  },
+];
+
+// Every administration friendly name (cluster, configuration, install,
+// security, runner) matches a real top-level directory 1:1, so
+// getAdministrationPath already resolves all of them generically — nothing
+// here needs a non-derivable alias today. Kept as an empty table (rather
+// than removed) so routing and listing keep reading from one shared
+// mechanism if a real one is ever needed.
+const ADMINISTRATION_ALIASES: DocAlias[] = [];
+
+function matchAlias(aliases: DocAlias[], remaining: string[]): DocAlias | undefined {
+  return aliases.find(
+    (alias) =>
+      alias.segments.length === remaining.length &&
+      alias.segments.every((segment, i) => segment === remaining[i])
+  );
 }
 
 /**
@@ -232,44 +277,26 @@ export function handleResource(uri: string): string {
 
       // Manual documentation: rundeck://docs/manual
       if (category === "manual") {
-        if (!section) {
+        // Path segments after "manual" — may be arbitrarily deep
+        // (e.g. ["projects", "node-execution", "ssh"]).
+        const remaining = parts.slice(1);
+        if (remaining.length === 0) {
           return getManualIndex();
-        } else if (!topic) {
-          // Special sections
-          if (section === "jobs") return getJobsManual();
-          if (section === "nodes") return getNodesManual();
-          if (section === "executions") return getExecutionsManual();
-          if (section === "calendars") return getCalendarsManual();
-          if (section === "aws-ssm" || section === "aws-ssm-setup") return getAwsSsmSetup();
-          if (section === "performance" || section === "metrics" || section === "monitoring") return getPerformanceMonitoring();
-          return getManualSection(section);
-        } else {
-          // Special topics
-          if (section === "projects" && topic === "aws-ssm") return getAwsSsmSetup();
-          // Handle nested path: projects/node-execution/aws-ssm
-          if (section === "projects" && topic === "node-execution") {
-            const subTopic = parts.length > 3 ? parts[3] : null;
-            if (subTopic === "aws-ssm") return getAwsSsmSetup();
-          }
-          return getManualTopic(section, topic);
         }
+        const alias = matchAlias(MANUAL_ALIASES, remaining);
+        if (alias) return alias.resolve();
+        return getManualPath(remaining);
       }
 
       // Administration documentation: rundeck://docs/administration
       if (category === "administration") {
-        if (!section) {
+        const remaining = parts.slice(1);
+        if (remaining.length === 0) {
           return getAdministrationIndex();
-        } else if (!topic) {
-          // Special categories
-          if (section === "cluster") return getClusterDocs();
-          if (section === "configuration") return getConfigurationDocs();
-          if (section === "install") return getInstallationDocs();
-          if (section === "security") return getSecurityDocs();
-          if (section === "runner") return getRunnerDocs();
-          return getAdministrationCategory(section);
-        } else {
-          return getAdministrationTopic(section, topic);
         }
+        const alias = matchAlias(ADMINISTRATION_ALIASES, remaining);
+        if (alias) return alias.resolve();
+        return getAdministrationPath(remaining);
       }
 
       // Developer documentation: rundeck://docs/developer
@@ -337,10 +364,67 @@ export function handleResource(uri: string): string {
 }
 
 /**
+ * Recursively discover every markdown file and subdirectory under a docs
+ * category (e.g. "manual", "administration") and expose one resource URI
+ * each. This lets clients discover — via listResources(), not just direct
+ * ReadResource calls — both nested directories (e.g.
+ * `rundeck://docs/manual/projects/node-execution`) and individual nested
+ * files (e.g. `.../node-execution/ssh`) that the static list below doesn't
+ * spell out individually. Without the per-file entries, a client that only
+ * reads resources it first saw in listResources() would never be able to
+ * reach a leaf topic, even though ReadResource could resolve it directly.
+ */
+function listDocDirectories(
+  category: string,
+  uriPrefix: string
+): Array<{ uri: string; description: string }> {
+  const rootPath = join(getDocsPath(), category);
+  if (!existsSync(rootPath) || !statSync(rootPath).isDirectory()) {
+    return [];
+  }
+
+  // Single recursive scan for markdown files, then derive every ancestor
+  // directory from each file's path — avoids re-scanning the same subtree
+  // once per directory, and keeps a thrown error (e.g. an unreadable
+  // subdirectory) from taking down the whole listResources() response.
+  let markdownFiles: string[];
+  try {
+    markdownFiles = findMarkdownFiles(rootPath);
+  } catch (error) {
+    logger.error(`Failed to scan ${category} docs for resource discovery`, error);
+    return [];
+  }
+
+  const dirsWithMarkdown = new Set<string>();
+  const fileEntries: Array<{ uri: string; description: string }> = [];
+  for (const file of markdownFiles) {
+    const relFile = file.replace(rootPath + "/", "");
+    const relFileNoExt = relFile.replace(/\.md$/, "");
+    fileEntries.push({
+      uri: `${uriPrefix}/${relFileNoExt}`,
+      description: `${category} documentation: ${relFileNoExt.replace(/\//g, " > ")}`,
+    });
+
+    let dir = dirname(relFile);
+    while (dir && dir !== ".") {
+      dirsWithMarkdown.add(dir);
+      dir = dirname(dir);
+    }
+  }
+
+  const dirEntries = Array.from(dirsWithMarkdown).map((relPath) => ({
+    uri: `${uriPrefix}/${relPath}`,
+    description: `${category} documentation: ${relPath.replace(/\//g, " > ")}`,
+  }));
+
+  return [...dirEntries, ...fileEntries];
+}
+
+/**
  * List available resources
  */
 export function listResources(): Array<{ uri: string; description: string }> {
-  return [
+  const staticResources: Array<{ uri: string; description: string }> = [
     // API resources
     { uri: "rundeck://api", description: "Complete API reference" },
     { uri: "rundeck://api/auth", description: "API authentication methods" },
@@ -369,21 +453,15 @@ export function listResources(): Array<{ uri: string; description: string }> {
     { uri: "rundeck://ref/filters", description: "Node filter syntax" },
     { uri: "rundeck://ref/terms", description: "Rundeck terminology" },
     
-    // Manual documentation (NEW - comprehensive)
+    // Manual documentation index (per-alias entries below are generated from
+    // MANUAL_ALIASES, the same table handleResource routes through)
     { uri: "rundeck://docs/manual", description: "Complete user manual index" },
-    { uri: "rundeck://docs/manual/jobs", description: "Job documentation" },
-    { uri: "rundeck://docs/manual/nodes", description: "Node documentation" },
-    { uri: "rundeck://docs/manual/executions", description: "Execution documentation" },
-    { uri: "rundeck://docs/manual/calendars", description: "Calendar documentation" },
-    
-    // Administration documentation (NEW - comprehensive)
+
+    // Administration documentation index (per-alias entries below are
+    // generated from ADMINISTRATION_ALIASES, the same table handleResource
+    // routes through)
     { uri: "rundeck://docs/administration", description: "Administration documentation index" },
-    { uri: "rundeck://docs/administration/cluster", description: "Cluster setup and management" },
-    { uri: "rundeck://docs/administration/configuration", description: "System configuration" },
-    { uri: "rundeck://docs/administration/install", description: "Installation guides" },
-    { uri: "rundeck://docs/administration/security", description: "Security configuration" },
-    { uri: "rundeck://docs/administration/runner", description: "Runner documentation" },
-    
+
     // Developer documentation (NEW - comprehensive)
     { uri: "rundeck://docs/developer", description: "Developer documentation index" },
     { uri: "rundeck://docs/developer/plugins", description: "Plugin development overview" },
@@ -406,5 +484,34 @@ export function listResources(): Array<{ uri: string; description: string }> {
     // Integrations documentation
     { uri: "rundeck://docs/integrations/salesforce", description: "Salesforce integration alternatives" },
   ];
+
+  // Alias entries generated from the same tables handleResource routes
+  // through, so a URI can never be readable without also being listed (or
+  // vice versa).
+  const aliasResources = [
+    ...MANUAL_ALIASES.map((alias) => ({
+      uri: `rundeck://docs/manual/${alias.segments.join("/")}`,
+      description: alias.description,
+    })),
+    ...ADMINISTRATION_ALIASES.map((alias) => ({
+      uri: `rundeck://docs/administration/${alias.segments.join("/")}`,
+      description: alias.description,
+    })),
+  ];
+
+  // Merge in dynamically discovered nested directories (e.g. `manual/projects/node-execution`)
+  // so clients can find topics not called out explicitly above. Static entries win on conflict.
+  const dynamicResources = [
+    ...listDocDirectories("manual", "rundeck://docs/manual"),
+    ...listDocDirectories("administration", "rundeck://docs/administration"),
+  ];
+
+  const byUri = new Map<string, { uri: string; description: string }>();
+  for (const resource of [...staticResources, ...aliasResources, ...dynamicResources]) {
+    if (!byUri.has(resource.uri)) {
+      byUri.set(resource.uri, resource);
+    }
+  }
+  return Array.from(byUri.values());
 }
 

@@ -66,32 +66,6 @@ export function getManualIndex(): string {
 }
 
 /**
- * Get manual section (e.g., jobs, nodes, executions)
- */
-export function getManualSection(section: string): string {
-  const sectionPath = join(getDocsPath(), "manual", section);
-  
-  if (existsSync(sectionPath) && statSync(sectionPath).isDirectory()) {
-    const files = findMarkdownFiles(sectionPath);
-    const fileContents = files.map(file => ({
-      path: file.replace(sectionPath + "/", ""),
-      content: readFileSync(file, "utf-8")
-    }));
-    
-    return groupMarkdownFiles(fileContents);
-  }
-  
-  // Try as a single file
-  const filePath = join(getDocsPath(), "manual", `${section}.md`);
-  if (existsSync(filePath)) {
-    const content = readFileSync(filePath, "utf-8");
-    return summarizeMarkdown(content);
-  }
-  
-  return `Manual section "${section}" not found`;
-}
-
-/**
  * Get specific manual topic
  */
 export function getManualTopic(section: string, topic: string): string {
@@ -112,29 +86,35 @@ export function getManualTopic(section: string, topic: string): string {
 }
 
 /**
- * Get jobs documentation
+ * Resolve an arbitrary path under manual/ — used for nested topics that don't
+ * fit the flat `{section}/{topic}.md` shape handled by getManualTopic (e.g.
+ * `projects/node-execution/ssh`, where `node-execution` is itself a directory).
+ * Falls back to `.md` file lookup when the path isn't a directory.
  */
-export function getJobsManual(): string {
-  const jobsPath = join(getDocsPath(), "manual", "jobs");
-  if (existsSync(jobsPath)) {
-    return getManualSection("jobs");
+export function getManualPath(parts: string[]): string {
+  const relPath = parts.join("/");
+  const basePath = join(getDocsPath(), "manual");
+  const fullPath = join(basePath, relPath);
+
+  if (fullPath !== basePath && !fullPath.startsWith(basePath + "/")) {
+    return `Manual path "${relPath}" not found`;
   }
-  
-  // Fallback to individual job files
-  const jobFiles = [
-    "manual/jobs/index.md",
-    "manual/03-getting-started.md",
-  ];
-  
-  const contents: string[] = [];
-  for (const file of jobFiles) {
-    const filePath = join(getDocsPath(), file);
-    if (existsSync(filePath)) {
-      contents.push(readFileSync(filePath, "utf-8"));
-    }
+
+  if (existsSync(fullPath) && statSync(fullPath).isDirectory()) {
+    const files = findMarkdownFiles(fullPath);
+    const fileContents = files.map((file) => ({
+      path: file.replace(fullPath + "/", ""),
+      content: readFileSync(file, "utf-8"),
+    }));
+    return groupMarkdownFiles(fileContents);
   }
-  
-  return contents.length > 0 ? groupMarkdownFiles(contents.map(c => ({ path: "", content: c }))) : "Jobs documentation not found";
+
+  const filePath = `${fullPath}.md`;
+  if (existsSync(filePath)) {
+    return summarizeMarkdown(readFileSync(filePath, "utf-8"));
+  }
+
+  return `Manual path "${relPath}" not found`;
 }
 
 /**
@@ -149,13 +129,6 @@ export function getNodesManual(): string {
  */
 export function getExecutionsManual(): string {
   return getManualTopic("", "07-executions");
-}
-
-/**
- * Get calendars documentation
- */
-export function getCalendarsManual(): string {
-  return getManualSection("calendars");
 }
 
 /**

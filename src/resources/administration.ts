@@ -3,7 +3,7 @@
  * Covers cluster setup, configuration, security, installation, etc.
  */
 
-import { readFileSync, existsSync } from "fs";
+import { readFileSync, existsSync, statSync } from "fs";
 import { join } from "path";
 import { configManager } from "../config.js";
 import { findMarkdownFiles, parseMarkdownContent } from "../parsers/markdown.js";
@@ -54,76 +54,34 @@ export function getAdministrationIndex(): string {
 }
 
 /**
- * Get administration category documentation
+ * Resolve an arbitrary path under administration/ — used for nested topics
+ * that don't fit the flat `{category}/{topic}.md` shape (e.g.
+ * `cluster/logstore/redis`, where `logstore` is itself a directory).
+ * Falls back to `.md` file lookup when the path isn't a directory.
  */
-export function getAdministrationCategory(category: string): string {
-  const categoryPath = join(getDocsPath(), "administration", category);
-  
-  if (existsSync(categoryPath)) {
-    const files = findMarkdownFiles(categoryPath);
-    const fileContents = files.map(file => ({
-      path: file.replace(categoryPath + "/", ""),
-      content: readFileSync(file, "utf-8")
+export function getAdministrationPath(parts: string[]): string {
+  const relPath = parts.join("/");
+  const basePath = join(getDocsPath(), "administration");
+  const fullPath = join(basePath, relPath);
+
+  if (fullPath !== basePath && !fullPath.startsWith(basePath + "/")) {
+    return `Administration path "${relPath}" not found`;
+  }
+
+  if (existsSync(fullPath) && statSync(fullPath).isDirectory()) {
+    const files = findMarkdownFiles(fullPath);
+    const fileContents = files.map((file) => ({
+      path: file.replace(fullPath + "/", ""),
+      content: readFileSync(file, "utf-8"),
     }));
-    
     return groupMarkdownFiles(fileContents);
   }
-  
-  return `Administration category "${category}" not found`;
-}
 
-/**
- * Get specific administration topic
- */
-export function getAdministrationTopic(category: string, topic: string): string {
-  const topicPath = join(getDocsPath(), "administration", category, `${topic}.md`);
-  if (existsSync(topicPath)) {
-    const content = readFileSync(topicPath, "utf-8");
-    return summarizeMarkdown(content);
+  const filePath = `${fullPath}.md`;
+  if (existsSync(filePath)) {
+    return summarizeMarkdown(readFileSync(filePath, "utf-8"));
   }
-  
-  // Try without category (root level)
-  const rootTopicPath = join(getDocsPath(), "administration", `${topic}.md`);
-  if (existsSync(rootTopicPath)) {
-    const content = readFileSync(rootTopicPath, "utf-8");
-    return summarizeMarkdown(content);
-  }
-  
-  return `Administration topic "${category}/${topic}" not found`;
-}
 
-/**
- * Get cluster documentation
- */
-export function getClusterDocs(): string {
-  return getAdministrationCategory("cluster");
-}
-
-/**
- * Get configuration documentation
- */
-export function getConfigurationDocs(): string {
-  return getAdministrationCategory("configuration");
-}
-
-/**
- * Get installation documentation
- */
-export function getInstallationDocs(): string {
-  return getAdministrationCategory("install");
-}
-
-/**
- * Get security documentation
- */
-export function getSecurityDocs(): string {
-  return getAdministrationCategory("security");
-}
-
-/**
- * Get runner documentation
- */
-export function getRunnerDocs(): string {
-  return getAdministrationCategory("runner");
+  return `Administration path "${relPath}" not found`;
 }
 
