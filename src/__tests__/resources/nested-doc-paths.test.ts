@@ -193,3 +193,42 @@ describe("listResources general integrity (PR #45)", () => {
     expect(uris.length).toBe(new Set(uris).size);
   });
 });
+
+describe("Manual/administration alias table stays in sync (routing + listing share one source)", () => {
+  // handleResource and listResources both read from the same MANUAL_ALIASES /
+  // ADMINISTRATION_ALIASES tables in index.ts, so every alias here must both
+  // resolve to real content AND appear in listResources() output. If someone
+  // adds a routing-only or listing-only special case again (the exact bug
+  // this refactor closes), one half of this pair fails.
+  const knownAliasUris = [
+    "rundeck://docs/manual/jobs",
+    "rundeck://docs/manual/nodes",
+    "rundeck://docs/manual/executions",
+    "rundeck://docs/manual/calendars",
+    "rundeck://docs/manual/aws-ssm",
+    "rundeck://docs/manual/aws-ssm-setup",
+    "rundeck://docs/manual/performance",
+    "rundeck://docs/manual/metrics",
+    "rundeck://docs/manual/monitoring",
+    "rundeck://docs/manual/projects/aws-ssm",
+    "rundeck://docs/administration/cluster",
+    "rundeck://docs/administration/configuration",
+    "rundeck://docs/administration/install",
+    "rundeck://docs/administration/security",
+    "rundeck://docs/administration/runner",
+  ];
+
+  it.each(knownAliasUris)("%s is both listed and resolves to real content", (uri) => {
+    const listedUris = listResources().map((r) => r.uri);
+    expect(listedUris).toContain(uri);
+
+    const result = handleResource(uri);
+    // A strict prefix check (not a "not found" substring check) — real doc
+    // content sometimes legitimately contains the words "not found" (e.g.
+    // troubleshooting sections), which would otherwise false-positive.
+    expect(result.startsWith("Manual path")).toBe(false);
+    expect(result.startsWith("Administration path")).toBe(false);
+    expect(result.startsWith("Resource not found")).toBe(false);
+    expect(result.length).toBeGreaterThan(0);
+  });
+});

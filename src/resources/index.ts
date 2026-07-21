@@ -69,6 +69,55 @@ function getDocsPath(): string {
 }
 
 /**
+ * A named shortcut under manual/ or administration/ that doesn't correspond
+ * 1:1 to a plain filesystem path — either a friendlier name for a real
+ * section (e.g. `jobs` -> manual/jobs), or a pointer to content that lives
+ * deeper than the alias's own path (e.g. `projects/aws-ssm` -> the file at
+ * manual/projects/node-execution/aws-ssm.md). Defined once and consumed by
+ * both handleResource (routing) and listResources (discovery) so the two
+ * can't drift apart the way they did before — a URI that resolves is
+ * guaranteed to also be listed, and vice versa.
+ */
+interface DocAlias {
+  segments: string[];
+  description: string;
+  resolve: () => string;
+}
+
+const MANUAL_ALIASES: DocAlias[] = [
+  { segments: ["jobs"], description: "Job documentation", resolve: getJobsManual },
+  { segments: ["nodes"], description: "Node documentation", resolve: getNodesManual },
+  { segments: ["executions"], description: "Execution documentation", resolve: getExecutionsManual },
+  { segments: ["calendars"], description: "Calendar documentation", resolve: getCalendarsManual },
+  { segments: ["aws-ssm"], description: "AWS SSM plugin setup guide", resolve: getAwsSsmSetup },
+  { segments: ["aws-ssm-setup"], description: "AWS SSM plugin setup guide", resolve: getAwsSsmSetup },
+  { segments: ["performance"], description: "Performance monitoring and metrics", resolve: getPerformanceMonitoring },
+  { segments: ["metrics"], description: "Performance monitoring and metrics", resolve: getPerformanceMonitoring },
+  { segments: ["monitoring"], description: "Performance monitoring and metrics", resolve: getPerformanceMonitoring },
+  {
+    segments: ["projects", "aws-ssm"],
+    description: "AWS SSM plugin setup guide (shortcut for projects/node-execution/aws-ssm)",
+    resolve: getAwsSsmSetup,
+  },
+];
+
+const ADMINISTRATION_ALIASES: DocAlias[] = [
+  { segments: ["cluster"], description: "Cluster setup and management", resolve: getClusterDocs },
+  { segments: ["configuration"], description: "System configuration", resolve: getConfigurationDocs },
+  { segments: ["install"], description: "Installation guides", resolve: getInstallationDocs },
+  { segments: ["security"], description: "Security configuration", resolve: getSecurityDocs },
+  { segments: ["runner"], description: "Runner documentation", resolve: getRunnerDocs },
+];
+
+function matchAlias(aliases: DocAlias[], remaining: string[]): DocAlias | undefined {
+  return aliases.find(
+    (alias) =>
+      alias.segments.length === remaining.length &&
+      alias.segments.every((segment, i) => segment === remaining[i])
+  );
+}
+
+/**
  * Handle resource URI and return content
  */
 export function handleResource(uri: string): string {
@@ -237,22 +286,8 @@ export function handleResource(uri: string): string {
         if (remaining.length === 0) {
           return getManualIndex();
         }
-        if (remaining.length === 1) {
-          // Friendly named aliases
-          if (section === "jobs") return getJobsManual();
-          if (section === "nodes") return getNodesManual();
-          if (section === "executions") return getExecutionsManual();
-          if (section === "calendars") return getCalendarsManual();
-          if (section === "aws-ssm" || section === "aws-ssm-setup") return getAwsSsmSetup();
-          if (section === "performance" || section === "metrics" || section === "monitoring") return getPerformanceMonitoring();
-        }
-        // Pre-existing shortcut: the real file lives at
-        // manual/projects/node-execution/aws-ssm.md, deeper than this
-        // 2-segment alias — kept as a special case since getManualPath only
-        // resolves the literal joined path.
-        if (remaining.length === 2 && section === "projects" && topic === "aws-ssm") {
-          return getAwsSsmSetup();
-        }
+        const alias = matchAlias(MANUAL_ALIASES, remaining);
+        if (alias) return alias.resolve();
         return getManualPath(remaining);
       }
 
@@ -262,14 +297,8 @@ export function handleResource(uri: string): string {
         if (remaining.length === 0) {
           return getAdministrationIndex();
         }
-        if (remaining.length === 1) {
-          // Friendly named aliases
-          if (section === "cluster") return getClusterDocs();
-          if (section === "configuration") return getConfigurationDocs();
-          if (section === "install") return getInstallationDocs();
-          if (section === "security") return getSecurityDocs();
-          if (section === "runner") return getRunnerDocs();
-        }
+        const alias = matchAlias(ADMINISTRATION_ALIASES, remaining);
+        if (alias) return alias.resolve();
         return getAdministrationPath(remaining);
       }
 
@@ -427,21 +456,15 @@ export function listResources(): Array<{ uri: string; description: string }> {
     { uri: "rundeck://ref/filters", description: "Node filter syntax" },
     { uri: "rundeck://ref/terms", description: "Rundeck terminology" },
     
-    // Manual documentation (NEW - comprehensive)
+    // Manual documentation index (per-alias entries below are generated from
+    // MANUAL_ALIASES, the same table handleResource routes through)
     { uri: "rundeck://docs/manual", description: "Complete user manual index" },
-    { uri: "rundeck://docs/manual/jobs", description: "Job documentation" },
-    { uri: "rundeck://docs/manual/nodes", description: "Node documentation" },
-    { uri: "rundeck://docs/manual/executions", description: "Execution documentation" },
-    { uri: "rundeck://docs/manual/calendars", description: "Calendar documentation" },
-    
-    // Administration documentation (NEW - comprehensive)
+
+    // Administration documentation index (per-alias entries below are
+    // generated from ADMINISTRATION_ALIASES, the same table handleResource
+    // routes through)
     { uri: "rundeck://docs/administration", description: "Administration documentation index" },
-    { uri: "rundeck://docs/administration/cluster", description: "Cluster setup and management" },
-    { uri: "rundeck://docs/administration/configuration", description: "System configuration" },
-    { uri: "rundeck://docs/administration/install", description: "Installation guides" },
-    { uri: "rundeck://docs/administration/security", description: "Security configuration" },
-    { uri: "rundeck://docs/administration/runner", description: "Runner documentation" },
-    
+
     // Developer documentation (NEW - comprehensive)
     { uri: "rundeck://docs/developer", description: "Developer documentation index" },
     { uri: "rundeck://docs/developer/plugins", description: "Plugin development overview" },
@@ -465,6 +488,20 @@ export function listResources(): Array<{ uri: string; description: string }> {
     { uri: "rundeck://docs/integrations/salesforce", description: "Salesforce integration alternatives" },
   ];
 
+  // Alias entries generated from the same tables handleResource routes
+  // through, so a URI can never be readable without also being listed (or
+  // vice versa).
+  const aliasResources = [
+    ...MANUAL_ALIASES.map((alias) => ({
+      uri: `rundeck://docs/manual/${alias.segments.join("/")}`,
+      description: alias.description,
+    })),
+    ...ADMINISTRATION_ALIASES.map((alias) => ({
+      uri: `rundeck://docs/administration/${alias.segments.join("/")}`,
+      description: alias.description,
+    })),
+  ];
+
   // Merge in dynamically discovered nested directories (e.g. `manual/projects/node-execution`)
   // so clients can find topics not called out explicitly above. Static entries win on conflict.
   const dynamicResources = [
@@ -473,7 +510,7 @@ export function listResources(): Array<{ uri: string; description: string }> {
   ];
 
   const byUri = new Map<string, { uri: string; description: string }>();
-  for (const resource of [...staticResources, ...dynamicResources]) {
+  for (const resource of [...staticResources, ...aliasResources, ...dynamicResources]) {
     if (!byUri.has(resource.uri)) {
       byUri.set(resource.uri, resource);
     }
