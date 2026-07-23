@@ -43,7 +43,7 @@ class ConfigManager {
     }
     const parsed = Number(raw);
     if (!Number.isFinite(parsed) || parsed <= 0) {
-      logger.error(
+      logger.warn(
         `RUNDECK_API_TIMEOUT_MS "${raw}" is not a positive number — using default of ${DEFAULT_API_TIMEOUT_MS}ms`
       );
       return DEFAULT_API_TIMEOUT_MS;
