@@ -61,6 +61,12 @@ The server supports the following environment variables:
   - Should match your Rundeck instance API version
   - Example: `46`
 
+- **`RUNDECK_API_TIMEOUT_MS`** (optional): Timeout in milliseconds for `api_call`'s underlying HTTP request (also bounds `runner_create` and `acl_manage`, which call through it).
+  - Default: `30000` (30 seconds)
+  - Past this limit the request is aborted and a distinct timeout error is returned instead of hanging indefinitely.
+  - Invalid or non-positive values fall back to the default with a logged warning.
+  - Example: `60000`
+
 - **`RUNDECK_INSTANCES`** (optional): JSON registry of multiple named Rundeck instances, for switching between them (e.g. prod/staging) mid-session without restarting the server. Most users only ever talk to one Rundeck instance and don't need this — see [Multiple Rundeck Instances](#multiple-rundeck-instances-optional) below if you do.
 
 - **`RUNDECK_DOCS_PATH`** (optional): Path to a Rundeck documentation directory on disk.
