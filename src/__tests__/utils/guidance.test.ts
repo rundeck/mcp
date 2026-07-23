@@ -10,6 +10,8 @@ import {
   getAuthSetupGuidance,
   getNodeFilterGuidance,
   getPluginIntegrationGuidance,
+  getRunnerGuidance,
+  getAclManageGuidance,
 } from "../../utils/guidance.js";
 
 describe("Guidance Utility", () => {
@@ -20,6 +22,12 @@ describe("Guidance Utility", () => {
       expect(guidance).toContain("name");
       expect(guidance).toContain("project");
       expect(guidance).toContain("workflow_steps");
+    });
+
+    it("includes fallback guidance to api_call", () => {
+      const guidance = getJobCreationGuidance();
+      expect(guidance).toContain("## Fallback");
+      expect(guidance).toContain("api_call");
     });
   });
 
@@ -38,6 +46,12 @@ describe("Guidance Utility", () => {
       expect(guidance).toContain("Validating a Rundeck Job");
       expect(guidance).toContain("job_definition");
       expect(guidance).toContain("format");
+    });
+
+    it("includes fallback guidance to api_call", () => {
+      const guidance = getJobValidationGuidance();
+      expect(guidance).toContain("## Fallback");
+      expect(guidance).toContain("api_call");
     });
   });
 
@@ -70,6 +84,33 @@ describe("Guidance Utility", () => {
     it("should return guidance content", () => {
       const guidance = getPluginIntegrationGuidance();
       expect(guidance).toContain("Integrating Rundeck Plugins");
+    });
+  });
+
+  describe("getRunnerGuidance", () => {
+    it("should return guidance content", () => {
+      const guidance = getRunnerGuidance();
+      expect(guidance).toContain("Creating a Rundeck Runner");
+    });
+
+    it("includes fallback guidance to api_call", () => {
+      const guidance = getRunnerGuidance();
+      expect(guidance).toContain("## Fallback");
+      expect(guidance).toContain("api_call");
+      expect(guidance).toContain("runnerManagement/runners");
+    });
+  });
+
+  describe("getAclManageGuidance", () => {
+    it("should return guidance content", () => {
+      const guidance = getAclManageGuidance();
+      expect(guidance).toContain("Managing Rundeck ACL Policies");
+    });
+
+    it("includes fallback guidance to api_call", () => {
+      const guidance = getAclManageGuidance();
+      expect(guidance).toContain("## Fallback");
+      expect(guidance).toContain("api_call");
     });
   });
 });

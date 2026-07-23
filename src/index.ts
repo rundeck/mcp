@@ -37,6 +37,14 @@ import {
   rundeckValidateAclSchema,
   rundeckManageAclSchema,
 } from "./tools/acl.js";
+import { REGISTERED_TOOL_NAMES } from "./tools/registered-tool-names.js";
+import {
+  API_CALL_DESCRIPTION,
+  JOB_CREATE_DESCRIPTION,
+  JOB_VALIDATE_DESCRIPTION,
+  RUNNER_CREATE_DESCRIPTION,
+  ACL_MANAGE_DESCRIPTION,
+} from "./tools/tool-descriptions.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
 import { z } from "zod";
@@ -51,6 +59,8 @@ import {
   getRundeckConnectGuidance,
 } from "./utils/guidance.js";
 import { prompts, getPrompt } from "./prompts/index.js";
+
+export { REGISTERED_TOOL_NAMES };
 
 // Convert Zod schemas to JSON Schema (lazy conversion to avoid memory issues)
 function convertSchema(schema: any): any {
@@ -119,28 +129,12 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 
 server.setRequestHandler(ListToolsRequestSchema, async (request) => {
   logger.logRequest("tools/list", request.params);
-  const tools = [
-    {
-      name: "api_call",
-      description: `Execute a Rundeck API call to interact with a Rundeck instance.
-
-**When to use:**
-- Making API requests to Rundeck (GET, POST, PUT, DELETE, PATCH)
-- Querying projects, jobs, executions, nodes, or system information
-- Triggering job executions via API
-- Managing Rundeck resources programmatically
-
-**When NOT to use:**
-- Reading documentation (use resources instead: rundeck://docs/*)
-- Creating job definitions (use job_create instead)
-- Validating job definitions (use job_validate instead)
-
-**Authentication:** Set RUNDECK_URL and RUNDECK_TOKEN environment variables before calling.
-Call without required params for setup guidance.`,
+  const toolDefinitions: Record<string, { description: string; inputSchema: any }> = {
+    api_call: {
+      description: API_CALL_DESCRIPTION,
       inputSchema: convertSchema(rundeckApiCallSchema),
     },
-    {
-      name: "api_list",
+    api_list: {
       description: `List available Rundeck API endpoints with descriptions and categories.
 
 **When to use:**
@@ -155,62 +149,19 @@ Call without required params for setup guidance.`,
 **Example:** List all job-related endpoints by calling with category: "jobs"`,
       inputSchema: convertSchema(rundeckListEndpointsSchema),
     },
-    {
-      name: "job_create",
-      description: `Generate a Rundeck job definition in YAML or JSON format.
-
-**When to use:**
-- Creating new job definitions from structured parameters
-- Generating job YAML/JSON for import into Rundeck
-- Building jobs programmatically
-
-**When NOT to use:**
-- Validating existing job definitions (use job_validate instead)
-- Making API calls (use api_call instead)
-- Reading job documentation (use rundeck://docs/manual/jobs resource instead)
-
-**Guidance Mode:** Call without required params (name, project, workflow_steps) to get step-by-step guidance on job creation.
-**Resources:** See rundeck://docs/manual/jobs for comprehensive job documentation.`,
+    job_create: {
+      description: JOB_CREATE_DESCRIPTION,
       inputSchema: convertSchema(rundeckGenerateJobSchema),
     },
-    {
-      name: "job_validate",
-      description: `Validate a Rundeck job definition against Rundeck schemas.
-
-**When to use:**
-- Validating job YAML/JSON before importing
-- Checking job syntax and structure
-- Debugging job definition errors
-
-**When NOT to use:**
-- Creating job definitions (use job_create instead)
-- Making API calls (use api_call instead)
-- Reading job schema (use rundeck://jobs/schema resource instead)
-
-**Guidance Mode:** Call without required params (job_definition, format) to get validation guidance.
-**Output:** Returns validation result with errors and warnings.`,
+    job_validate: {
+      description: JOB_VALIDATE_DESCRIPTION,
       inputSchema: convertSchema(rundeckValidateJobSchema),
     },
-    {
-      name: "runner_create",
-      description: `Create a Rundeck Runner at system or project scope.
-
-**When to use:**
-- Creating ephemeral Docker runners for a specific project
-- Creating global system runners to share across projects
-- Automating runner provisioning
-
-**Scopes:**
-- \`scope: "project"\` → POST project/{project}/runnerManagement/runners (recommended for isolation)
-- \`scope: "system"\` → POST runnerManagement/runners (global runner)
-
-**Important:** The response includes a one-time \`token\` and \`downloadTk\`. Store them — they cannot be retrieved again.
-
-**Guidance Mode:** Call without required params (name, scope) to get step-by-step guidance.`,
+    runner_create: {
+      description: RUNNER_CREATE_DESCRIPTION,
       inputSchema: convertSchema(rundeckCreateRunnerSchema),
     },
-    {
-      name: "acl_validate",
+    acl_validate: {
       description: `Validate a Rundeck ACL Policy YAML document offline against the aclpolicy v1.0 format.
 
 **When to use:**
@@ -225,28 +176,11 @@ Call without required params for setup guidance.`,
 **Note:** This is a local structural check, not a substitute for Rundeck's own server-side validation.`,
       inputSchema: convertSchema(rundeckValidateAclSchema),
     },
-    {
-      name: "acl_manage",
-      description: `List, get, create, update, or delete a Rundeck ACL Policy file at system or project scope.
-
-**When to use:**
-- Managing stored ACL policies (system/acl/* or project/{project}/acl/*) without hand-building api_call requests
-- Auditing which ACL policies exist in a scope, or reading one's current contents
-- Creating/updating a policy after validating it with acl_validate
-
-**When NOT to use:**
-- Editing ACL policy files on the server's local filesystem (not supported by this or any Rundeck API)
-- Validating policy structure only, without submitting it (use acl_validate instead)
-
-**Scopes:**
-- \`scope: "system"\` → system/acl/* (instance/cluster-wide)
-- \`scope: "project"\` → project/{project}/acl/* (single project, requires 'project')
-
-**Guidance Mode:** Call without required params (action, scope) to get step-by-step guidance.`,
+    acl_manage: {
+      description: ACL_MANAGE_DESCRIPTION,
       inputSchema: convertSchema(rundeckManageAclSchema),
     },
-    {
-      name: "docs_search",
+    docs_search: {
       description: `Search local Rundeck documentation (markdown under RUNDECK_DOCS_PATH) by keywords and phrases.
 
 **When to use:**
@@ -262,7 +196,9 @@ Call without required params for setup guidance.`,
 **Follow-up:** Prefer \`resources/read\` on the best match for complete, authoritative content.`,
       inputSchema: convertSchema(rundeckSearchDocsSchema),
     },
-  ];
+  };
+
+  const tools = REGISTERED_TOOL_NAMES.map((name) => ({ name, ...toolDefinitions[name] }));
 
   // Only exposed when RUNDECK_INSTANCES defines a multi-instance registry.
   // Without it, RUNDECK_URL/RUNDECK_TOKEN are the only connection and there's
@@ -386,16 +322,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       default: {
         logger.warn(`Unknown tool requested: ${name}`);
-        const available = [
-          "api_call",
-          "api_list",
-          "job_create",
-          "job_validate",
-          "runner_create",
-          "acl_validate",
-          "acl_manage",
-          "docs_search",
-        ];
+        const available = [...REGISTERED_TOOL_NAMES];
         if (configManager.hasInstanceRegistry()) {
           available.push("rundeck_connect");
         }

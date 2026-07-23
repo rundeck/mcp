@@ -14,6 +14,8 @@
  * - Use Guidance: When calling a tool without required params for step-by-step instructions
  */
 
+import { renderFallbackGuidance } from "../tools/tool-relationships.js";
+
 export function getJobCreationGuidance(): string {
   return `# Creating a Rundeck Job
 
@@ -96,7 +98,7 @@ format, concatenate the arrays, then do a single \`api_call\` with the matching 
 - Job Schema: \`rundeck://jobs/schema\`
 - Job Examples: \`rundeck://docs/manual/jobs\`
 - Workflow Strategies: \`rundeck://jobs/workflows\`
-- Job Options: \`rundeck://jobs/options\``;
+- Job Options: \`rundeck://jobs/options\`` + renderFallbackGuidance("job_create");
 }
 
 export function getRundeckConnectGuidance(instanceNames: string[]): string {
@@ -211,7 +213,7 @@ job_validate({
 
 ## Resources
 - Job schema: \`rundeck://jobs/schema\`
-- Authoring: MCP prompt \`create-job\` or tool \`job_create\``;
+- Authoring: MCP prompt \`create-job\` or tool \`job_create\`` + renderFallbackGuidance("job_validate");
 }
 
 export function getProjectConfigGuidance(): string {
@@ -455,21 +457,36 @@ Creates a global runner that can later be associated to multiple projects.
 
 ## Optional Parameters
 - **description** (string): Human-readable description
-- **replica_type** ("ephemeral" | "manual"): Default "ephemeral" — short-lived Docker container
-- **installation_type** ("docker" | "jar"): Default "docker"
+- **installation_type** ("docker" | "kubernetes" | "linux" | "windows"): Platform/method the runner runs on. Default "docker".
+- **replica_type** ("ephemeral" | "manual"): If omitted, defaults based on installation_type — "manual" for "linux"/"windows", "ephemeral" for "docker"/"kubernetes" — matching Rundeck's own default behavior.
 - **tag_names** (string[]): Tags for filtering, e.g. ["DOCKER", "PRODUCTION"]
+- **node_dispatch** (object): Node Dispatch config, applied via a follow-up call to
+  \`POST project/{project}/runnerManagement/nodeDispatch/config\` right after creation.
+  Only valid when scope is "project". Fields:
+  - **runner_as_node_enabled** (boolean): Adds the Runner itself as a node in the inventory. Default: true.
+  - **remote_node_dispatch** (boolean): Lets the Runner dispatch to remote nodes (SSH/WinRM/HTTP/S) matching \`node_filter\`.
+  - **node_filter** (string): Node Filter expression defining which nodes this Runner handles, e.g. \`"tags: LINUX"\`.
 
 ## Response
-The response includes a **one-time token** and **downloadTk** — store these immediately:
+Creating a runner only **registers** it — it does not download or install anything.
+The response includes a **one-time token** and **downloadTk**, which you use afterward,
+in a separate step, to actually fetch the runner:
 - \`token\`: used to authenticate the runner process on startup
-- \`downloadTk\`: used to download the runner JAR
+- \`downloadTk\`: one-time token to download the runner artifact (see below)
 - \`runnerId\`: unique runner ID
 
-## Starting a Docker Runner
-After creation, start the runner with:
+## Downloading and Starting the Runner (separate step, after creation)
+
+### Docker
 \`\`\`bash
 docker run -e RUNNER_TOKEN=<token> rundeck/runner:latest
 \`\`\`
+
+### Kubernetes
+Deploy the runner workload using \`<token>\`, following your cluster's standard deployment process.
+
+### Linux / Windows (standalone JAR)
+Redeem \`downloadTk\` via the runner download endpoint to fetch the JAR, then run it with \`<token>\`.
 
 ## Examples
 
@@ -479,9 +496,34 @@ runner_create({
   scope: "project",
   project: "my-project",
   name: "my-docker-runner",
-  replica_type: "ephemeral",
   installation_type: "docker",
   tag_names: ["DOCKER"]
+})
+\`\`\`
+
+### Create a manual Linux runner for a project
+\`\`\`
+runner_create({
+  scope: "project",
+  project: "my-project",
+  name: "my-linux-runner",
+  installation_type: "linux",
+  tag_names: ["LINUX"]
+})
+\`\`\`
+
+### Create a manual Linux runner with Node Dispatch enabled
+\`\`\`
+runner_create({
+  scope: "project",
+  project: "my-project",
+  name: "my-linux-runner",
+  installation_type: "linux",
+  tag_names: ["LOCAL", "JAR"],
+  node_dispatch: {
+    remote_node_dispatch: true,
+    node_filter: "tags: LINUX"
+  }
 })
 \`\`\`
 
@@ -493,7 +535,7 @@ runner_create({
   description: "Shared runner for all projects",
   tag_names: ["SHARED"]
 })
-\`\`\``;
+\`\`\`` + renderFallbackGuidance("runner_create");
 }
 
 export function getAclValidateGuidance(): string {
@@ -600,7 +642,7 @@ acl_manage({
 
 ## Resources
 - ACL Policy format: \`rundeck://docs/manual\` (see aclpolicy-v10.md)
-- ACL Policy administration: \`rundeck://docs/administration\` (see acl-policy-editor.md)`;
+- ACL Policy administration: \`rundeck://docs/administration\` (see acl-policy-editor.md)` + renderFallbackGuidance("acl_manage");
 }
 
 export function getPluginCreationGuidance(): string {
