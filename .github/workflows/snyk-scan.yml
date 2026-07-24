@@ -1,8 +1,9 @@
 name: Snyk Security Scan
 
 on:
-  pull_request:
   push:
+    branches:
+      - main
 
 jobs:
   check_secrets:
