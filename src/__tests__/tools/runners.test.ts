@@ -219,18 +219,24 @@ describe("rundeckCreateRunner", () => {
       expect(result.nodeDispatch).toEqual(nodeDispatchBody);
     });
 
-    it("throws when the Node Dispatch follow-up call fails", async () => {
+    it("returns the created runner with an embedded error when the Node Dispatch follow-up call fails", async () => {
       mockApiResponse(RUNNER_BODY);
-      mockApiResponse({ error: true, message: "runnerAsNodeEnabled is required" }, 400);
+      const failureBody = { error: true, message: "runnerAsNodeEnabled is required" };
+      mockApiResponse(failureBody, 400);
 
-      await expect(
-        rundeckCreateRunner({
-          name: "test-runner",
-          scope: "project",
-          project: "my-project",
-          node_dispatch: { remote_node_dispatch: true },
-        })
-      ).rejects.toThrow("Node Dispatch config failed (HTTP 400)");
+      const result = await rundeckCreateRunner({
+        name: "test-runner",
+        scope: "project",
+        project: "my-project",
+        node_dispatch: { remote_node_dispatch: true },
+      });
+
+      // The runner was already created — its one-time token/downloadTk must still be returned.
+      expect(result.runnerId).toBe("abc-123");
+      expect(result.token).toBe("one-time-token");
+      expect(result.downloadTk).toBe("dl-token");
+      expect(result.nodeDispatchError).toEqual({ status: 400, body: failureBody });
+      expect(result.nodeDispatch).toBeUndefined();
     });
   });
 });

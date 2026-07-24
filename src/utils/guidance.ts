@@ -466,6 +466,9 @@ Creates a global runner that can later be associated to multiple projects.
   - **runner_as_node_enabled** (boolean): Adds the Runner itself as a node in the inventory. Default: true.
   - **remote_node_dispatch** (boolean): Lets the Runner dispatch to remote nodes (SSH/WinRM/HTTP/S) matching \`node_filter\`.
   - **node_filter** (string): Node Filter expression defining which nodes this Runner handles, e.g. \`"tags: LINUX"\`.
+  If the Node Dispatch follow-up call fails, the runner has already been created — the result still
+  includes \`token\`/\`downloadTk\`, plus a \`nodeDispatchError\` field describing the failure. The call
+  does not throw in this case, so the one-time token is never lost.
 
 ## Response
 Creating a runner only **registers** it — it does not download or install anything.

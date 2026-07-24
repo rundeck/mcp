@@ -15,6 +15,7 @@ export interface RunnerCreateResult {
   projectAssociations?: unknown;
   replicaId?: string | null;
   nodeDispatch?: unknown;
+  nodeDispatchError?: { status: number; body: unknown };
 }
 
 export interface NodeDispatchParams {
@@ -96,13 +97,15 @@ export async function rundeckCreateRunner(params: {
     });
 
     if (nodeDispatchResult.status !== 200) {
-      throw new Error(
-        `Runner '${runner.name}' (ID ${runner.runnerId}) was created, but Node Dispatch config failed ` +
-        `(HTTP ${nodeDispatchResult.status}): ${JSON.stringify(nodeDispatchResult.body)}`
-      );
+      // The runner was already created successfully — surface its one-time token/downloadTk
+      // instead of throwing, which would otherwise discard them and risk a duplicate on retry.
+      return {
+        ...runner,
+        nodeDispatchError: { status: nodeDispatchResult.status, body: nodeDispatchResult.body },
+      };
     }
 
-    runner.nodeDispatch = nodeDispatchResult.body;
+    return { ...runner, nodeDispatch: nodeDispatchResult.body };
   }
 
   return runner;
