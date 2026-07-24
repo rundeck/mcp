@@ -11,7 +11,10 @@ export interface RundeckConfig {
   apiToken?: string;
   apiVersion: string;
   docsPath: string;
+  apiTimeoutMs: number;
 }
+
+const DEFAULT_API_TIMEOUT_MS = 30_000;
 
 interface RundeckInstanceEntry {
   url: string;
@@ -27,9 +30,26 @@ class ConfigManager {
   private config: RundeckConfig = {
     apiVersion: "46",
     docsPath: this.findDocsPath(),
+    apiTimeoutMs: DEFAULT_API_TIMEOUT_MS,
   };
 
   private instanceRegistry: RundeckInstanceRegistry | null = null;
+
+  /** Parses RUNDECK_API_TIMEOUT_MS, falling back to the default on anything non-positive or non-numeric. */
+  private parseApiTimeoutMs(): number {
+    const raw = process.env.RUNDECK_API_TIMEOUT_MS;
+    if (!raw) {
+      return DEFAULT_API_TIMEOUT_MS;
+    }
+    const parsed = Number(raw);
+    if (!Number.isFinite(parsed) || parsed <= 0) {
+      logger.warn(
+        `RUNDECK_API_TIMEOUT_MS "${raw}" is not a positive number — using default of ${DEFAULT_API_TIMEOUT_MS}ms`
+      );
+      return DEFAULT_API_TIMEOUT_MS;
+    }
+    return parsed;
+  }
 
   /**
    * Find the docs path - try multiple locations
@@ -66,6 +86,7 @@ class ConfigManager {
     this.config.rundeckUrl = process.env.RUNDECK_URL;
     this.config.apiToken = process.env.RUNDECK_TOKEN;
     this.config.apiVersion = process.env.RUNDECK_API_VERSION || "46";
+    this.config.apiTimeoutMs = this.parseApiTimeoutMs();
 
     // Only override docs path if explicitly set
     if (process.env.RUNDECK_DOCS_PATH) {
@@ -238,7 +259,8 @@ class ConfigManager {
     this.config.rundeckUrl = process.env.RUNDECK_URL || this.config.rundeckUrl;
     this.config.apiToken = process.env.RUNDECK_TOKEN || this.config.apiToken;
     this.config.apiVersion = process.env.RUNDECK_API_VERSION || this.config.apiVersion;
-    
+    this.config.apiTimeoutMs = this.parseApiTimeoutMs();
+
     if (!hadToken && this.config.apiToken) {
       logger.info("RUNDECK_TOKEN found in environment and loaded");
     }

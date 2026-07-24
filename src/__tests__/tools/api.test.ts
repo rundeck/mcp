@@ -181,6 +181,39 @@ describe("API Tools", () => {
       expect(callUrl).toContain("max=10");
       expect(callUrl).toContain("offset=0");
     });
+
+    it("should throw a timeout error when the request exceeds RUNDECK_API_TIMEOUT_MS", async () => {
+      process.env.RUNDECK_API_TIMEOUT_MS = "50";
+      configManager.initialize();
+      configManager.setRundeckConnection("https://test.rundeck.com", "test-token");
+
+      mockFetch.mockImplementationOnce((_url, options) => {
+        return new Promise((_resolve, reject) => {
+          (options as RequestInit)?.signal?.addEventListener("abort", () => {
+            const abortError = new Error("This operation was aborted");
+            abortError.name = "AbortError";
+            reject(abortError);
+          });
+        });
+      });
+
+      const { rundeckApiCall } = await import("../../tools/api.js");
+
+      await expect(
+        rundeckApiCall({ endpoint: "/projects", method: "GET" })
+      ).rejects.toThrow(/timed out after 50ms calling GET \/projects/);
+
+      delete process.env.RUNDECK_API_TIMEOUT_MS;
+    });
+
+    it("should fall back to the default timeout when RUNDECK_API_TIMEOUT_MS is invalid", () => {
+      process.env.RUNDECK_API_TIMEOUT_MS = "not-a-number";
+      configManager.initialize();
+
+      expect(configManager.getConfig().apiTimeoutMs).toBe(30_000);
+
+      delete process.env.RUNDECK_API_TIMEOUT_MS;
+    });
   });
 });
 

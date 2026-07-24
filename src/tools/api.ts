@@ -108,8 +108,12 @@ export async function rundeckApiCall(params: {
     }
   }
 
+  const timeoutMs = config.apiTimeoutMs;
+  const controller = new AbortController();
+  const timeoutHandle = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    const response = await fetch(url.toString(), options);
+    const response = await fetch(url.toString(), { ...options, signal: controller.signal });
     const responseHeaders: Record<string, string> = {};
     response.headers.forEach((value, key) => {
       responseHeaders[key] = value;
@@ -129,9 +133,17 @@ export async function rundeckApiCall(params: {
       body,
     };
   } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(
+        `API call timed out after ${timeoutMs}ms calling ${params.method || "GET"} ${params.endpoint}. ` +
+        "The Rundeck instance may be unreachable or overloaded. Set RUNDECK_API_TIMEOUT_MS to adjust the timeout."
+      );
+    }
     throw new Error(
       `API call failed: ${error instanceof Error ? error.message : String(error)}`
     );
+  } finally {
+    clearTimeout(timeoutHandle);
   }
 }
 
