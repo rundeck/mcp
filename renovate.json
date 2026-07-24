@@ -5,5 +5,5 @@
   ],
   "minimumReleaseAge": "7 days",
   "commitMessagePrefix": "[RUN-0000]",
-  "dependencyDashboard": true,
+  "dependencyDashboard": true
 }
