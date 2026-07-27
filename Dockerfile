@@ -10,6 +10,11 @@ WORKDIR /app
 # External/OSS builders won't have CLOUDSMITH_NPM_TOKEN — in that case drop
 # both files and fall back to a plain `npm install` against the public
 # registry (still pinned by the deps in package.json, just not lockfile-exact).
+# CAUTION: BuildKit's cache key for this RUN does not include the secret's
+# value/presence. If you build once without the token (e.g. to test the
+# fallback) and then rebuild WITH it on the same machine, Docker can silently
+# reuse the cached tokenless layer instead of re-running `npm ci` — pass
+# --no-cache whenever you've just toggled whether the token is provided.
 COPY package*.json .npmrc ./
 RUN --mount=type=secret,id=cloudsmith_token sh -c '\
     CLOUDSMITH_NPM_TOKEN="$(cat /run/secrets/cloudsmith_token 2>/dev/null || true)"; \

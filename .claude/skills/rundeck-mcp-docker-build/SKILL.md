@@ -132,7 +132,8 @@ TaskUpdate taskId=<smoke_id> status="completed"
 ```
 Docker image built successfully.
 
-  Image:   rundeck/mcp-ci:latest
+  Image:        rundeck/mcp-ci:latest
+  Smoke tests:  PASSED
 
 Add to .mcp.json (stdio transport — docs downloaded on first start):
   "rundeck-mcp": {

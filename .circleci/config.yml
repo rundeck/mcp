@@ -107,16 +107,46 @@ jobs:
             docker run --privileged --rm tonistiigi/binfmt --install all
             docker buildx create --use
       - run:
-          # Single-platform, locally-loaded build (buildx --push doesn't load
-          # into the local daemon, so it can't be smoke-tested directly) —
-          # validates the image before it's ever pushed.
-          name: Build local image for smoke test
+          # Single-platform (amd64, this machine's native arch), locally-loaded
+          # build — buildx --push doesn't load into the local daemon, so it
+          # can't be smoke-tested directly. --no-cache: the Dockerfile's
+          # OSS-fallback build below shares this same npm-install RUN
+          # instruction, and BuildKit's cache key for it does NOT include
+          # CLOUDSMITH_NPM_TOKEN's presence — without --no-cache, this build
+          # and the fallback one could silently reuse each other's (wrong)
+          # resolved dependencies.
+          name: Build local image for smoke test (with Cloudsmith)
           command: |
-            docker build --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
+            docker build --no-cache --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
               -t rundeck-mcp:smoke-test .
       - run:
-          name: Run Docker smoke tests
+          name: Run Docker smoke tests (with Cloudsmith)
           command: sh ci/docker-smoke-test.sh rundeck-mcp:smoke-test
+      - run:
+          # Validates the Dockerfile's OSS/external-contributor fallback path
+          # (no CLOUDSMITH_NPM_TOKEN) actually works, not just that it exists.
+          name: Build local image for smoke test (OSS fallback, no Cloudsmith)
+          command: docker build --no-cache -t rundeck-mcp:smoke-test-oss .
+      - run:
+          name: Run Docker smoke tests (OSS fallback)
+          command: sh ci/docker-smoke-test.sh rundeck-mcp:smoke-test-oss
+      - run:
+          # arm64 is one of the two platforms actually pushed below (see
+          # "Compute tag and build"); smoke-test it too, under the QEMU
+          # emulation set up above, instead of only ever validating amd64.
+          # Emulation makes this meaningfully slower, hence the looser budget.
+          name: Build local image for smoke test (arm64, with Cloudsmith)
+          command: |
+            docker buildx build --no-cache --platform linux/arm64 --load \
+              --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
+              -t rundeck-mcp:smoke-test-arm64 .
+      - run:
+          name: Run Docker smoke tests (arm64)
+          command: COLD_START_MAX_SECONDS=45 sh ci/docker-smoke-test.sh rundeck-mcp:smoke-test-arm64
+      - run:
+          name: Clean up local smoke-test images
+          command: |
+            docker rmi rundeck-mcp:smoke-test rundeck-mcp:smoke-test-oss rundeck-mcp:smoke-test-arm64 || true
       - run:
           name: Compute tag and build
           command: |
@@ -134,7 +164,13 @@ jobs:
             if [ "${CIRCLE_BRANCH:-}" = "main" ]; then
               TAG_ARGS+=(-t "rundeck/mcp-ci:latest")
             fi
-            docker buildx build --platform linux/amd64,linux/arm64 --push \
+            # --no-cache: the three smoke-test builds above (one of which runs
+            # WITHOUT the token) share this same buildx builder/cache store.
+            # --no-cache only skips *reading* cache, not writing it, so the
+            # tokenless build still overwrote the npm-install layer's cache
+            # entry — without --no-cache here too, THIS build (the one that
+            # actually gets pushed) could silently reuse that wrong layer.
+            docker buildx build --no-cache --platform linux/amd64,linux/arm64 --push \
               --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
               "${TAG_ARGS[@]}" .
 

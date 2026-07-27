@@ -4,7 +4,7 @@
 # RUNDECK_DOCS_PATH bypass, the restart/skip-fetch path, and that the server
 # actually answers an MCP `initialize` request over stdio.
 #
-# Usage: scripts/docker-smoke-test.sh [image]   (default: rundeck/mcp-ci:latest)
+# Usage: ci/docker-smoke-test.sh [image]   (default: rundeck/mcp-ci:latest)
 # Deliberately no `set -e` — failing assertions must be recorded via fail()
 # and reported at the end, not abort the script early.
 
@@ -22,7 +22,8 @@ trap cleanup EXIT
 
 # A regression here (e.g. reintroducing the full tarball, or an unconditional
 # ls-remote round-trip) should fail loudly rather than just being "a bit slower."
-COLD_START_MAX_SECONDS=15
+# Overridable via env for slower contexts (e.g. QEMU-emulated arm64 in CI).
+COLD_START_MAX_SECONDS="${COLD_START_MAX_SECONDS:-15}"
 
 echo "== 1. Cold run: entrypoint fetches docs and starts the server =="
 docker rm -f smoke-run >/dev/null 2>&1 || true
@@ -58,7 +59,14 @@ fi
 
 echo "== 3. Restarting the same container skips the fetch =="
 docker start smoke-run >/dev/null
-sleep 2
+# `timeout` isn't available on stock macOS (only GNU coreutils/Linux) — use it
+# when present so a regression that hangs the server can't hang CI forever,
+# but degrade to a plain (unbounded) wait for local runs rather than failing.
+if command -v timeout >/dev/null 2>&1; then
+  timeout 60 docker wait smoke-run >/dev/null || fail "docker wait timed out after 60s — container may be hanging"
+else
+  docker wait smoke-run >/dev/null
+fi
 docker logs smoke-run 2>&1 | grep -c "fetching docs" | grep -q '^1$' \
   && pass "docs fetched exactly once across both runs" \
   || fail "docs were fetched more than once, or not skipped on restart"
