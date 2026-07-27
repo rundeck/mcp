@@ -15,7 +15,7 @@ pass() { echo "  PASS: $1"; }
 fail() { echo "  FAIL: $1"; FAILED=1; }
 
 cleanup() {
-  docker rm -f smoke-run smoke-structure >/dev/null 2>&1 || true
+  docker rm -f smoke-run >/dev/null 2>&1 || true
   rm -rf /tmp/smoke-docs
 }
 trap cleanup EXIT
