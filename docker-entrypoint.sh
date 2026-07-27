@@ -6,25 +6,36 @@ DOCS_BRANCH="${RUNDECK_DOCS_BRANCH:-4.0.x}"
 DOCS_REPO="https://github.com/rundeck/docs.git"
 
 log() {
-  echo "[entrypoint $(date -u +%H:%M:%S)] $*" >&2
+  # `|| true`: this is called as a bare top-level statement in several places
+  # (including right before `exec node`) — under `set -e`, a broken/closed
+  # stderr making this echo fail would otherwise abort the whole entrypoint.
+  echo "[entrypoint $(date -u +%H:%M:%S)] $*" >&2 || true
 }
 
 # ── Fetch docs via a sparse partial clone (skips the media-heavy .vuepress/public
 # tree, so it's ~4s / ~2MB instead of ~35s / ~200MB for the full tarball) ──────
 fetch_docs() {
   log "fetching docs (branch ${DOCS_BRANCH})"
-  tmp_dir="$(mktemp -d)"
+  # Under `set -e`, any standalone (non-conditional) command's failure aborts
+  # the whole script — including this whole function's caller — so every
+  # command below must be wired into an if/||  so a docs-fetch problem can
+  # never prevent the MCP server from starting.
+  tmp_dir="$(mktemp -d)" || { log "docs fetch failed — starting without docs"; return 0; }
+  # mkdir + find (clearing $DOCS_DIR's contents rather than removing the
+  # directory itself, since it may be a mount point) + cp are part of this
+  # same && chain (the if's condition) deliberately — only the condition of
+  # an if is exempt from set -e's abort-on-failure, so a failing command
+  # inside the `then` body would NOT be exempt.
   if git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$DOCS_BRANCH" "$DOCS_REPO" "$tmp_dir" \
-      && (cd "$tmp_dir" && git sparse-checkout set --no-cone '/docs/**' '!/docs/.vuepress/public/**'); then
-    # clear contents rather than removing $DOCS_DIR itself — it may be a mount point
-    mkdir -p "$DOCS_DIR"
-    find "$DOCS_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-    cp -r "$tmp_dir/docs/." "$DOCS_DIR/"
+      && (cd "$tmp_dir" && git sparse-checkout set --no-cone '/docs/**' '!/docs/.vuepress/public/**') \
+      && mkdir -p "$DOCS_DIR" \
+      && find "$DOCS_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + \
+      && cp -r "$tmp_dir/docs/." "$DOCS_DIR/"; then
     log "docs fetched"
   else
     log "docs fetch failed — starting without docs"
   fi
-  rm -rf "$tmp_dir"
+  rm -rf "$tmp_dir" || true
 }
 
 if [ -n "$RUNDECK_DOCS_PATH" ]; then
@@ -32,7 +43,10 @@ if [ -n "$RUNDECK_DOCS_PATH" ]; then
 elif [ -d "$DOCS_DIR" ] && [ "$(ls -A "$DOCS_DIR" 2>/dev/null)" ]; then
   log "docs already present at $DOCS_DIR — skipping fetch"
 else
-  fetch_docs
+  # `|| true`: fetch_docs is written to always return 0 itself, but this is
+  # cheap insurance against a future edit inside it reintroducing a path that
+  # doesn't — this call must never be what aborts the entrypoint.
+  fetch_docs || true
 fi
 
 log "starting MCP server"
