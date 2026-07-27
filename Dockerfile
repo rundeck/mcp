@@ -25,9 +25,11 @@ RUN npm prune --omit=dev
 FROM node:24-alpine AS production
 WORKDIR /app
 
-# curl/tar are used by the entrypoint to download Rundeck docs on first start
+# git is used by the entrypoint for a sparse partial clone of Rundeck docs,
+# skipping the media-heavy .vuepress/public tree (~4s/~2MB vs ~35s/~200MB
+# for the old full tarball download)
 # procps provides pgrep, used by the HEALTHCHECK
-RUN apk add --no-cache curl tar procps
+RUN apk add --no-cache git procps
 
 # Copy build artifacts and pruned production dependencies
 COPY --from=builder /app/dist            ./dist

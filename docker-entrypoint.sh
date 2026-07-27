@@ -1,23 +1,40 @@
 #!/bin/sh
 set -e
 
-DOCS_EXTRACT_DIR="/app"
-DOCS_CHECK="/app/docs/docs"
+DOCS_DIR="/app/docs"
 DOCS_BRANCH="${RUNDECK_DOCS_BRANCH:-4.0.x}"
-DOCS_URL="https://github.com/rundeck/docs/archive/refs/heads/${DOCS_BRANCH}.tar.gz"
+DOCS_REPO="https://github.com/rundeck/docs.git"
 
-# ── Download docs if not already present ──────────────────────────────────────
-if [ -n "$RUNDECK_DOCS_PATH" ]; then
-  : # external path configured — skip
-elif [ -d "$DOCS_CHECK" ] && [ "$(ls -A "$DOCS_CHECK" 2>/dev/null)" ]; then
-  : # already present (e.g. mounted volume) — skip
-else
-  # strip-components=1 removes the archive root (docs-4.0.x/) so that
-  # docs/docs/manual/... lands directly under /app/docs/docs/
-  if curl -fsSL "$DOCS_URL" | tar xz --strip-components=1 -C "$DOCS_EXTRACT_DIR" 2>/dev/null; then
-    : # downloaded successfully
+log() {
+  echo "[entrypoint $(date -u +%H:%M:%S)] $*" >&2
+}
+
+# ── Fetch docs via a sparse partial clone (skips the media-heavy .vuepress/public
+# tree, so it's ~4s / ~2MB instead of ~35s / ~200MB for the full tarball) ──────
+fetch_docs() {
+  log "fetching docs (branch ${DOCS_BRANCH})"
+  tmp_dir="$(mktemp -d)"
+  if git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$DOCS_BRANCH" "$DOCS_REPO" "$tmp_dir" \
+      && (cd "$tmp_dir" && git sparse-checkout set --no-cone '/docs/**' '!/docs/.vuepress/public/**'); then
+    # clear contents rather than removing $DOCS_DIR itself — it may be a mount point
+    mkdir -p "$DOCS_DIR"
+    find "$DOCS_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
+    cp -r "$tmp_dir/docs/." "$DOCS_DIR/"
+    log "docs fetched"
+  else
+    log "docs fetch failed — starting without docs"
   fi
+  rm -rf "$tmp_dir"
+}
+
+if [ -n "$RUNDECK_DOCS_PATH" ]; then
+  log "RUNDECK_DOCS_PATH set — skipping docs fetch"
+elif [ -d "$DOCS_DIR" ] && [ "$(ls -A "$DOCS_DIR" 2>/dev/null)" ]; then
+  log "docs already present at $DOCS_DIR — skipping fetch"
+else
+  fetch_docs
 fi
 
+log "starting MCP server"
 # ── Start MCP server (stdio transport) ────────────────────────────────────────
 exec node dist/index.js
