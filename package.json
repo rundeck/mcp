@@ -9,7 +9,8 @@
   },
   "files": [
     "dist",
-    "!dist/__tests__"
+    "!dist/__tests__",
+    "scripts"
   ],
   "publishConfig": {
     "access": "public"

@@ -6,12 +6,20 @@ WORKDIR /app
 # Install all deps (dev included — TypeScript compiler needed for build)
 # Skip postinstall to avoid downloading docs during image build
 # .npmrc points the registry at a private Cloudsmith mirror; package-lock.json's
-# "resolved" URLs point there too, so it must be present even though the
-# registry itself isn't referenced by name in most installs.
+# "resolved" URLs point there too, so it must be present for `npm ci` to work.
+# External/OSS builders won't have CLOUDSMITH_NPM_TOKEN — in that case drop
+# both files and fall back to a plain `npm install` against the public
+# registry (still pinned by the deps in package.json, just not lockfile-exact).
 COPY package*.json .npmrc ./
-RUN --mount=type=secret,id=cloudsmith_token \
-    CLOUDSMITH_NPM_TOKEN="$(cat /run/secrets/cloudsmith_token 2>/dev/null || true)" \
-    npm ci --ignore-scripts
+RUN --mount=type=secret,id=cloudsmith_token sh -c '\
+    CLOUDSMITH_NPM_TOKEN="$(cat /run/secrets/cloudsmith_token 2>/dev/null || true)"; \
+    if [ -z "$CLOUDSMITH_NPM_TOKEN" ]; then \
+      echo "No CLOUDSMITH_NPM_TOKEN provided — falling back to the public npm registry"; \
+      rm -f .npmrc package-lock.json; \
+      npm install --ignore-scripts; \
+    else \
+      CLOUDSMITH_NPM_TOKEN="$CLOUDSMITH_NPM_TOKEN" npm ci --ignore-scripts; \
+    fi'
 
 # Compile TypeScript
 COPY tsconfig.json ./

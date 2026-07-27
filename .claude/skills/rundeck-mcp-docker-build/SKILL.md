@@ -29,6 +29,7 @@ allowed-tools:
 TaskCreate "Verify environment"
 TaskCreate "Build Docker image"
 TaskCreate "Verify image"
+TaskCreate "Run Docker smoke tests"
 ```
 
 Store all returned task IDs.
@@ -101,6 +102,27 @@ Print usage instructions:
 
 ```
 TaskUpdate taskId=<verify_image_id> status="completed"
+```
+
+---
+
+### Step 4: Run Docker Smoke Tests
+
+```
+TaskUpdate taskId=<smoke_id> status="in_progress"
+```
+
+Verifies the entrypoint's docs fetch, the resulting `/app/docs` layout (including that the media-heavy `.vuepress/public` tree stays excluded), the `RUNDECK_DOCS_PATH` bypass, the restart/skip-fetch path, and that the server answers a real MCP `initialize` request:
+
+```bash
+sh ci/docker-smoke-test.sh rundeck/mcp-ci:latest
+```
+
+If any check reports `FAIL`, show the full output and stop:
+> "Docker smoke tests failed — see output above. Do not publish this image."
+
+```
+TaskUpdate taskId=<smoke_id> status="completed"
 ```
 
 ---

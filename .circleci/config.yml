@@ -107,6 +107,17 @@ jobs:
             docker run --privileged --rm tonistiigi/binfmt --install all
             docker buildx create --use
       - run:
+          # Single-platform, locally-loaded build (buildx --push doesn't load
+          # into the local daemon, so it can't be smoke-tested directly) —
+          # validates the image before it's ever pushed.
+          name: Build local image for smoke test
+          command: |
+            docker build --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
+              -t rundeck-mcp:smoke-test .
+      - run:
+          name: Run Docker smoke tests
+          command: sh ci/docker-smoke-test.sh rundeck-mcp:smoke-test
+      - run:
           name: Compute tag and build
           command: |
             # One tag per build: the git tag name on release pipelines
