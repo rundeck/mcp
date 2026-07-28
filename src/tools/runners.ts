@@ -14,6 +14,14 @@ export interface RunnerCreateResult {
   description?: string;
   projectAssociations?: unknown;
   replicaId?: string | null;
+  nodeDispatch?: unknown;
+  nodeDispatchError?: { status: number; body: unknown };
+}
+
+export interface NodeDispatchParams {
+  runner_as_node_enabled?: boolean;
+  remote_node_dispatch?: boolean;
+  node_filter?: string;
 }
 
 /**
@@ -28,17 +36,26 @@ export async function rundeckCreateRunner(params: {
   project?: string;
   description?: string;
   replica_type?: "ephemeral" | "manual";
-  installation_type?: "docker" | "jar";
+  installation_type?: "linux" | "windows" | "kubernetes" | "docker";
   tag_names?: string[];
+  node_dispatch?: NodeDispatchParams;
 }): Promise<RunnerCreateResult> {
   if (params.scope === "project" && !params.project) {
     throw new Error("'project' is required when scope is 'project'");
   }
 
+  if (params.node_dispatch && (params.scope !== "project" || !params.project)) {
+    throw new Error("'node_dispatch' requires scope 'project' and a 'project' value");
+  }
+
+  const installationType = params.installation_type ?? "docker";
+  const defaultReplicaType =
+    installationType === "linux" || installationType === "windows" ? "manual" : "ephemeral";
+
   const body: Record<string, unknown> = {
     name: params.name,
-    replicaType: params.replica_type ?? "ephemeral",
-    installationType: params.installation_type ?? "docker",
+    replicaType: params.replica_type ?? defaultReplicaType,
+    installationType,
   };
 
   if (params.description) body.description = params.description;
@@ -57,7 +74,41 @@ export async function rundeckCreateRunner(params: {
     );
   }
 
-  return result.body as RunnerCreateResult;
+  const runner = result.body as RunnerCreateResult;
+
+  if (params.node_dispatch) {
+    const nodeDispatchBody: Record<string, unknown> = {
+      runnerId: runner.runnerId,
+      // Rundeck requires this field on every call to this endpoint; default to its
+      // own "enabled" default for newly-created runners when the caller omits it.
+      runnerAsNodeEnabled: params.node_dispatch.runner_as_node_enabled ?? true,
+    };
+    if (params.node_dispatch.remote_node_dispatch !== undefined) {
+      nodeDispatchBody.remoteNodeDispatch = params.node_dispatch.remote_node_dispatch;
+    }
+    if (params.node_dispatch.node_filter !== undefined) {
+      nodeDispatchBody.runnerNodeFilter = params.node_dispatch.node_filter;
+    }
+
+    const nodeDispatchResult = await rundeckApiCall({
+      endpoint: `project/${params.project}/runnerManagement/nodeDispatch/config`,
+      method: "POST",
+      body: nodeDispatchBody,
+    });
+
+    if (nodeDispatchResult.status !== 200) {
+      // The runner was already created successfully — surface its one-time token/downloadTk
+      // instead of throwing, which would otherwise discard them and risk a duplicate on retry.
+      return {
+        ...runner,
+        nodeDispatchError: { status: nodeDispatchResult.status, body: nodeDispatchResult.body },
+      };
+    }
+
+    return { ...runner, nodeDispatch: nodeDispatchResult.body };
+  }
+
+  return runner;
 }
 
 // Zod schema
@@ -76,20 +127,24 @@ export const rundeckCreateRunnerSchema = z.object({
   description: z.string().optional().describe("Human-readable description for the runner."),
   replica_type: z.enum(["ephemeral", "manual"])
     .optional()
-    .default("ephemeral")
     .describe(
       "Replica type.\n" +
       "- 'ephemeral': short-lived runner (e.g. Docker container spun up per job).\n" +
       "- 'manual': long-lived persistent runner.\n" +
-      "Default: 'ephemeral'"
+      "If omitted, defaults based on installation_type — 'manual' for 'linux'/'windows', " +
+      "'ephemeral' for 'docker'/'kubernetes' — matching Rundeck's own default behavior."
     ),
-  installation_type: z.enum(["docker", "jar"])
+  installation_type: z.enum(["linux", "windows", "kubernetes", "docker"])
     .optional()
     .default("docker")
     .describe(
-      "How the runner is installed.\n" +
+      "Platform/method the runner is installed on.\n" +
       "- 'docker': Docker image (recommended for ephemeral runners).\n" +
-      "- 'jar': standalone JAR file.\n" +
+      "- 'kubernetes': runs as a Kubernetes workload.\n" +
+      "- 'linux': standalone JAR on a Linux host.\n" +
+      "- 'windows': standalone JAR on a Windows host.\n" +
+      "'linux'/'windows' default to replica_type 'manual'; 'docker'/'kubernetes' default to 'ephemeral' — " +
+      "matching Rundeck's own behavior when replica_type is left unset.\n" +
       "Default: 'docker'"
     ),
   tag_names: z.array(z.string())
@@ -98,7 +153,30 @@ export const rundeckCreateRunnerSchema = z.object({
       "Tags to assign to the runner. Used for filtering and targeting. " +
       "Example: ['DOCKER', 'PRODUCTION', 'US-EAST']"
     ),
+  node_dispatch: z.object({
+    runner_as_node_enabled: z.boolean().optional().describe(
+      "Adds the Runner itself as a node in the project's node inventory (the 'Runner as a Node' setting). " +
+      "Default: true, matching Rundeck's own default when a Runner is created."
+    ),
+    remote_node_dispatch: z.boolean().optional().describe(
+      "Enables the Runner to dispatch commands/scripts/API calls to remote nodes (via SSH, WinRM, HTTP/S) " +
+      "that match 'node_filter'."
+    ),
+    node_filter: z.string().optional().describe(
+      "Node Filter expression defining which nodes this Runner is responsible for when " +
+      "'remote_node_dispatch' is enabled. Example: 'tags: LINUX'."
+    ),
+  })
+    .optional()
+    .describe(
+      "Optional Node Dispatch configuration, applied via a follow-up call to " +
+      "POST project/{project}/runnerManagement/nodeDispatch/config right after the runner is created. " +
+      "Only valid when scope is 'project' (requires the 'project' field)."
+    ),
 }).refine(
   (s) => s.scope !== "project" || s.project !== undefined,
   { message: "'project' is required when scope is 'project'", path: ["project"] }
+).refine(
+  (s) => !s.node_dispatch || (s.scope === "project" && s.project !== undefined),
+  { message: "'node_dispatch' requires scope 'project' and a 'project' value", path: ["node_dispatch"] }
 );

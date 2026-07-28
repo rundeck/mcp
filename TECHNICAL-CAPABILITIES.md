@@ -147,17 +147,21 @@ Tools enable AI assistants to perform actions beyond reading documentation. Inpu
 ### Runner Tools
 
 #### `runner_create`
-**Purpose**: Create a Rundeck Runner at system or project scope.
+**Purpose**: Create a Rundeck Runner at system or project scope, on any supported platform (Docker, Kubernetes, Linux, or Windows).
 
 **Capabilities**:
 - Project-scoped runners (`POST project/{project}/runnerManagement/runners`) for isolation
 - System-scoped runners (`POST runnerManagement/runners`) shared across projects
-- Ephemeral or manual replica types; Docker or JAR installation types
+- Installation types: `docker`, `kubernetes`, `linux`, `windows`
+- `installation_type` (platform) and `replica_type` (`ephemeral`/`manual`) are independent — default pairing is `linux`/`windows` → `manual` and `docker`/`kubernetes` → `ephemeral` (matching Rundeck's own default), but any combination is valid and can be set explicitly
 
 **When to use**:
-- Creating ephemeral Docker runners for a specific project
-- Creating global system runners to share across projects
-- Automating runner provisioning
+- Creating a runner for a specific project or global to the system
+- Provisioning a runner on any platform: Docker, Kubernetes, Linux, or Windows
+- Overriding the default replica type when the default pairing doesn't fit (e.g. a manual Docker runner, or an ephemeral Kubernetes runner)
+
+**When NOT to use**:
+- Expecting the runner to be downloaded, installed, or started automatically — this tool only registers the runner; fetching/starting it is always a separate, later step
 
 **Important**: The response includes a one-time `token` and `downloadTk` — they cannot be retrieved again, so surface them to the user immediately.
 

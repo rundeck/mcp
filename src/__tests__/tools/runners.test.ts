@@ -77,6 +77,30 @@ describe("rundeckCreateRunner", () => {
     expect(sentBody.installationType).toBe("docker");
   });
 
+  it.each([
+    ["linux", "manual"],
+    ["windows", "manual"],
+    ["docker", "ephemeral"],
+    ["kubernetes", "ephemeral"],
+  ] as const)(
+    "defaults replica_type to %s -> %s when omitted, matching Rundeck's own behavior",
+    async (installationType, expectedReplicaType) => {
+      mockApiResponse(RUNNER_BODY);
+
+      await rundeckCreateRunner({
+        name: "test-runner",
+        scope: "system",
+        installation_type: installationType,
+      });
+
+      const sentBody = JSON.parse(
+        (mockFetch.mock.calls[0][1] as RequestInit).body as string
+      );
+      expect(sentBody.replicaType).toBe(expectedReplicaType);
+      expect(sentBody.installationType).toBe(installationType);
+    }
+  );
+
   it("passes optional fields in the body", async () => {
     mockApiResponse(RUNNER_BODY);
 
@@ -85,7 +109,7 @@ describe("rundeckCreateRunner", () => {
       scope: "system",
       description: "A test runner",
       replica_type: "manual",
-      installation_type: "jar",
+      installation_type: "kubernetes",
       tag_names: ["PROD", "US-EAST"],
     });
 
@@ -94,7 +118,7 @@ describe("rundeckCreateRunner", () => {
     );
     expect(sentBody.description).toBe("A test runner");
     expect(sentBody.replicaType).toBe("manual");
-    expect(sentBody.installationType).toBe("jar");
+    expect(sentBody.installationType).toBe("kubernetes");
     expect(sentBody.tagNames).toEqual(["PROD", "US-EAST"]);
   });
 
@@ -118,5 +142,101 @@ describe("rundeckCreateRunner", () => {
     expect(result.runnerId).toBe("abc-123");
     expect(result.token).toBe("one-time-token");
     expect(result.downloadTk).toBe("dl-token");
+  });
+
+  describe("node_dispatch", () => {
+    it("throws when node_dispatch is provided but scope is system", async () => {
+      await expect(
+        rundeckCreateRunner({
+          name: "test-runner",
+          scope: "system",
+          node_dispatch: { remote_node_dispatch: true, node_filter: "tags: LINUX" },
+        })
+      ).rejects.toThrow("'node_dispatch' requires scope 'project' and a 'project' value");
+
+      expect(mockFetch).not.toHaveBeenCalled();
+    });
+
+    it("sends a follow-up call to the Node Dispatch config endpoint", async () => {
+      mockApiResponse(RUNNER_BODY);
+      mockApiResponse({ ...RUNNER_BODY, remoteNodeDispatch: true, runnerNodeFilter: "tags: LINUX" });
+
+      await rundeckCreateRunner({
+        name: "test-runner",
+        scope: "project",
+        project: "my-project",
+        installation_type: "linux",
+        node_dispatch: { remote_node_dispatch: true, node_filter: "tags: LINUX" },
+      });
+
+      expect(mockFetch).toHaveBeenCalledTimes(2);
+
+      const secondCallUrl = mockFetch.mock.calls[1][0] as string;
+      expect(secondCallUrl).toContain("project/my-project/runnerManagement/nodeDispatch/config");
+
+      const secondCallBody = JSON.parse(
+        (mockFetch.mock.calls[1][1] as RequestInit).body as string
+      );
+      expect(secondCallBody).toEqual({
+        runnerId: "abc-123",
+        runnerAsNodeEnabled: true,
+        remoteNodeDispatch: true,
+        runnerNodeFilter: "tags: LINUX",
+      });
+    });
+
+    it("defaults runner_as_node_enabled to true when omitted", async () => {
+      mockApiResponse(RUNNER_BODY);
+      mockApiResponse(RUNNER_BODY);
+
+      await rundeckCreateRunner({
+        name: "test-runner",
+        scope: "project",
+        project: "my-project",
+        node_dispatch: { node_filter: "tags: LINUX" },
+      });
+
+      const secondCallBody = JSON.parse(
+        (mockFetch.mock.calls[1][1] as RequestInit).body as string
+      );
+      expect(secondCallBody.runnerAsNodeEnabled).toBe(true);
+      expect(secondCallBody.runnerNodeFilter).toBe("tags: LINUX");
+      expect(secondCallBody.remoteNodeDispatch).toBeUndefined();
+    });
+
+    it("merges the Node Dispatch response into the returned result", async () => {
+      mockApiResponse(RUNNER_BODY);
+      const nodeDispatchBody = { ...RUNNER_BODY, remoteNodeDispatch: true };
+      mockApiResponse(nodeDispatchBody);
+
+      const result = await rundeckCreateRunner({
+        name: "test-runner",
+        scope: "project",
+        project: "my-project",
+        node_dispatch: { remote_node_dispatch: true },
+      });
+
+      expect(result.nodeDispatch).toEqual(nodeDispatchBody);
+    });
+
+    it("returns the created runner with an embedded error when the Node Dispatch follow-up call fails", async () => {
+      mockApiResponse(RUNNER_BODY);
+      const failureBody = { error: true, message: "runnerAsNodeEnabled is required" };
+      mockApiResponse(failureBody, 400);
+
+      const result = await rundeckCreateRunner({
+        name: "test-runner",
+        scope: "project",
+        project: "my-project",
+        node_dispatch: { remote_node_dispatch: true },
+      });
+
+      // The runner was already created — its one-time token/downloadTk must still be returned.
+      expect(result.runnerId).toBe("abc-123");
+      expect(result.token).toBe("one-time-token");
+      expect(result.downloadTk).toBe("dl-token");
+      expect(result.nodeDispatchError).toEqual({ status: 400, body: failureBody });
+      expect(result.nodeDispatch).toBeUndefined();
+    });
   });
 });
