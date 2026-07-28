@@ -6,12 +6,25 @@ WORKDIR /app
 # Install all deps (dev included — TypeScript compiler needed for build)
 # Skip postinstall to avoid downloading docs during image build
 # .npmrc points the registry at a private Cloudsmith mirror; package-lock.json's
-# "resolved" URLs point there too, so it must be present even though the
-# registry itself isn't referenced by name in most installs.
+# "resolved" URLs point there too, so it must be present for `npm ci` to work.
+# External/OSS builders won't have CLOUDSMITH_NPM_TOKEN — in that case drop
+# both files and fall back to a plain `npm install` against the public
+# registry (still pinned by the deps in package.json, just not lockfile-exact).
+# CAUTION: BuildKit's cache key for this RUN does not include the secret's
+# value/presence. If you build once without the token (e.g. to test the
+# fallback) and then rebuild WITH it on the same machine, Docker can silently
+# reuse the cached tokenless layer instead of re-running `npm ci` — pass
+# --no-cache whenever you've just toggled whether the token is provided.
 COPY package*.json .npmrc ./
-RUN --mount=type=secret,id=cloudsmith_token \
-    CLOUDSMITH_NPM_TOKEN="$(cat /run/secrets/cloudsmith_token 2>/dev/null || true)" \
-    npm ci --ignore-scripts
+RUN --mount=type=secret,id=cloudsmith_token sh -c '\
+    CLOUDSMITH_NPM_TOKEN="$(cat /run/secrets/cloudsmith_token 2>/dev/null || true)"; \
+    if [ -z "$CLOUDSMITH_NPM_TOKEN" ]; then \
+      echo "No CLOUDSMITH_NPM_TOKEN provided — falling back to the public npm registry"; \
+      rm -f .npmrc package-lock.json; \
+      npm install --ignore-scripts; \
+    else \
+      CLOUDSMITH_NPM_TOKEN="$CLOUDSMITH_NPM_TOKEN" npm ci --ignore-scripts; \
+    fi'
 
 # Compile TypeScript
 COPY tsconfig.json ./
@@ -25,9 +38,11 @@ RUN npm prune --omit=dev
 FROM node:24-alpine AS production
 WORKDIR /app
 
-# curl/tar are used by the entrypoint to download Rundeck docs on first start
+# git is used by the entrypoint for a sparse partial clone of Rundeck docs,
+# skipping the media-heavy .vuepress/public tree (~4s/~2MB vs ~35s/~200MB
+# for the old full tarball download)
 # procps provides pgrep, used by the HEALTHCHECK
-RUN apk add --no-cache curl tar procps
+RUN apk add --no-cache git procps
 
 # Copy build artifacts and pruned production dependencies
 COPY --from=builder /app/dist            ./dist

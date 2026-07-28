@@ -9,7 +9,9 @@
   },
   "files": [
     "dist",
-    "!dist/__tests__"
+    "!dist/__tests__",
+    "scripts/download-docs.mjs",
+    "scripts/rundeck-connect.sh"
   ],
   "publishConfig": {
     "access": "public"
