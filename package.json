@@ -39,7 +39,7 @@
     "@modelcontextprotocol/sdk": "1.29.0",
     "marked": "^18.0.0",
     "yaml": "2.9.0",
-    "zod": "^3.23.8",
+    "zod": "^4.0.0",
     "zod-to-json-schema": "^3.25.0"
   },
   "overrides": {
