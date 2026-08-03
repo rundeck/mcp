@@ -47,7 +47,8 @@
     "fast-uri": "4.1.1",
     "@modelcontextprotocol/sdk": {
       "ajv": "8.20.0"
-    }
+    },
+    "ip-address": "10.2.1"
   },
   "devDependencies": {
     "@modelcontextprotocol/inspector": "^1.0.0",
