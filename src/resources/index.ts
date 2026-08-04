@@ -123,8 +123,14 @@ export function handleResource(uri: string): string {
   // and pathname is the resource (e.g., "/index", "/yaml-schema")
   const category = url.hostname;
   const resource = url.pathname;
-  const path = category ? `/${category}${resource}` : resource;
-  
+  let path = category ? `/${category}${resource}` : resource;
+  // Tolerate a guessed trailing ".md" — every doc here is a markdown file on
+  // disk, so clients naturally try appending it even though URIs are
+  // extension-less; stripping it avoids a needless round trip.
+  if (path.endsWith(".md")) {
+    path = path.slice(0, -3);
+  }
+
   // Check for query parameters (e.g., ?format=yaml)
   const format = url.searchParams.get("format") || null;
 
@@ -345,14 +351,18 @@ export function handleResource(uri: string): string {
 
       // Learning documentation: rundeck://docs/learning (alias for rundeck://learn)
       if (category === "learning") {
+        // Full remaining path after the section (e.g. "acls/group-readonly"),
+        // not just parts[2] — howto/tutorial guides can be nested in
+        // subdirectories (e.g. learning/howto/acls/*.md).
+        const remaining = parts.slice(2).join("/");
         if (!section) {
           return getGettingStarted();
         } else if (section === "runners" || (section === "getting-started" && topic === "runners-overview")) {
           return getRunnersOverview();
-        } else if (section === "howto" && topic) {
-          return getHowTo(topic);
-        } else if (section === "tutorial" && topic) {
-          return getTutorial(topic);
+        } else if (section === "howto" && remaining) {
+          return getHowTo(remaining);
+        } else if (section === "tutorial" && remaining) {
+          return getTutorial(remaining);
         }
       }
     }
@@ -504,6 +514,8 @@ export function listResources(): Array<{ uri: string; description: string }> {
   const dynamicResources = [
     ...listDocDirectories("manual", "rundeck://docs/manual"),
     ...listDocDirectories("administration", "rundeck://docs/administration"),
+    ...listDocDirectories("learning/howto", "rundeck://docs/learning/howto"),
+    ...listDocDirectories("learning/tutorial", "rundeck://docs/learning/tutorial"),
   ];
 
   const byUri = new Map<string, { uri: string; description: string }>();

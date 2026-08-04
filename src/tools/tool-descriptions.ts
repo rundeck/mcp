@@ -85,4 +85,8 @@ export const ACL_MANAGE_DESCRIPTION = `List, get, create, update, or delete a Ru
 - \`scope: "system"\` → system/acl/* (instance/cluster-wide)
 - \`scope: "project"\` → project/{project}/acl/* (single project, requires 'project')
 
+**Reference docs (read these directly — do not guess the URI or list all resources):**
+- \`rundeck://docs/manual/document-format-reference/aclpolicy-v10\` — full YAML format spec (context, for, by/notBy, allow/deny)
+- \`rundeck://docs/learning/howto/acls/group-readonly\`, \`.../group-project-exec\`, \`.../group-project-full\`, \`.../group-manage-runner\`, \`.../group-jobname\`, \`.../group-jobgroup\`, \`.../group-node-filtered\`, \`.../group-multiproject\`, \`.../group-apikey\` — worked examples per access pattern
+
 **Guidance Mode:** Call without required params (action, scope) to get step-by-step guidance.${renderPriorityGuidance("acl_manage")}`;

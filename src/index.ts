@@ -172,6 +172,10 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 - Actually creating/updating/deleting a policy on the server (use acl_manage instead)
 - Making generic API calls (use api_call instead)
 
+**Reference docs (read these directly — do not guess the URI or list all resources):**
+- \`rundeck://docs/manual/document-format-reference/aclpolicy-v10\` — full YAML format spec (context, for, by/notBy, allow/deny)
+- \`rundeck://docs/learning/howto/acls/group-readonly\`, \`.../group-project-exec\`, \`.../group-project-full\`, \`.../group-manage-runner\`, \`.../group-jobname\`, \`.../group-jobgroup\`, \`.../group-node-filtered\`, \`.../group-multiproject\`, \`.../group-apikey\` — worked examples per access pattern
+
 **Guidance Mode:** Call without required params (acl_definition) to get guidance.
 **Note:** This is a local structural check, not a substitute for Rundeck's own server-side validation.`,
       inputSchema: convertSchema(rundeckValidateAclSchema),
