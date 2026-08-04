@@ -174,7 +174,7 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 
 **Reference docs (read these directly — do not guess the URI or list all resources):**
 - \`rundeck://docs/manual/document-format-reference/aclpolicy-v10\` — full YAML format spec (context, for, by/notBy, allow/deny)
-- \`rundeck://docs/learning/howto/acls/group-readonly\`, \`.../group-project-exec\`, \`.../group-project-full\`, \`.../group-manage-runner\`, \`.../group-jobname\`, \`.../group-jobgroup\`, \`.../group-node-filtered\`, \`.../group-multiproject\`, \`.../group-apikey\` — worked examples per access pattern
+- Worked examples, one per access pattern: \`rundeck://docs/learning/howto/acls/group-readonly\`, \`rundeck://docs/learning/howto/acls/group-project-exec\`, \`rundeck://docs/learning/howto/acls/group-project-full\`, \`rundeck://docs/learning/howto/acls/group-manage-runner\`, \`rundeck://docs/learning/howto/acls/group-jobname\`, \`rundeck://docs/learning/howto/acls/group-jobgroup\`, \`rundeck://docs/learning/howto/acls/group-node-filtered\`, \`rundeck://docs/learning/howto/acls/group-multiproject\`, \`rundeck://docs/learning/howto/acls/group-apikey\`
 
 **Guidance Mode:** Call without required params (acl_definition) to get guidance.
 **Note:** This is a local structural check, not a substitute for Rundeck's own server-side validation.`,
