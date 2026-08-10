@@ -46,7 +46,7 @@
     "zod-to-json-schema": "^3.25.0"
   },
   "overrides": {
-    "hono": "4.12.32",
+    "hono": "4.12.34",
     "fast-uri": "4.1.1",
     "@modelcontextprotocol/sdk": {
       "ajv": "8.20.0"
