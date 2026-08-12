@@ -165,7 +165,7 @@ Use \`api_list\` tool to discover available API endpoints.${categorySection}
 
 ### Step 2: Execute API Call
 Use \`api_call\` tool with:
-- \`endpoint\`: API path (e.g., "/api/46/projects" or "projects")
+- \`endpoint\`: API path (e.g., "/api/59/projects" or "projects")
 - \`method\`: HTTP method (GET, POST, PUT, DELETE, PATCH)
 - \`body\`: Request body for POST/PUT (optional)
 - \`query_params\`: Query parameters (optional)
@@ -192,7 +192,7 @@ api_call({
 \`\`\`
 
 ## API Version
-The API version is specified in the URL path (e.g., /api/46/...). Current default version is 46.
+The API version is specified in the URL path (e.g., /api/59/...). Current default version is 59.
 
 ## Tools
 - \`api_list\`: List available API endpoints (call with category to filter)
@@ -333,7 +333,7 @@ Set the following environment variables before using \`api_call\`:
 \`\`\`bash
 export RUNDECK_URL=https://your-rundeck-instance.com
 export RUNDECK_TOKEN=your-api-token-here
-export RUNDECK_API_VERSION=46  # Optional, defaults to 46
+export RUNDECK_API_VERSION=59  # Optional, defaults to 59
 \`\`\`
 
 ## Security Best Practices

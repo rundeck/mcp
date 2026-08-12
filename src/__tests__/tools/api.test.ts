@@ -45,7 +45,7 @@ describe("API Tools", () => {
       });
 
       const config = configManager.getConfig();
-      expect(config.apiVersion).toBe("46");
+      expect(config.apiVersion).toBe("59");
     });
   });
 
@@ -104,14 +104,14 @@ describe("API Tools", () => {
       const { rundeckApiCall } = await import("../../tools/api.js");
 
       const result = await rundeckApiCall({
-        endpoint: "/api/46/projects",
+        endpoint: "/api/59/projects",
         method: "GET",
       });
 
       expect(result.status).toBe(200);
       // The endpoint "/projects" gets prepended with the API base URL
       const callArgs = mockFetch.mock.calls[0];
-      expect(callArgs[0]).toContain("/api/46/projects");
+      expect(callArgs[0]).toContain("/api/59/projects");
       expect(callArgs[1]).toMatchObject({
         method: "GET",
         headers: expect.objectContaining({

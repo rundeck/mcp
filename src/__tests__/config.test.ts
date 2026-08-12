@@ -34,7 +34,7 @@ describe("Config Manager", () => {
       configManager.initialize();
 
       const config = configManager.getConfig();
-      expect(config.apiVersion).toBe("46");
+      expect(config.apiVersion).toBe("59");
       expect(config.docsPath).toBeTruthy();
     });
   });
@@ -60,7 +60,7 @@ describe("Config Manager", () => {
       );
 
       const config = configManager.getConfig();
-      expect(config.apiVersion).toBe("46");
+      expect(config.apiVersion).toBe("59");
     });
   });
 

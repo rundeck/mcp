@@ -118,7 +118,7 @@ describe("Resource Handlers", () => {
 
     it("should handle endpoint resources with path", () => {
       const result = handleResource(
-        "rundeck://api/endpoint/%2Fapi%2F46%2Fprojects"
+        "rundeck://api/endpoint/%2Fapi%2F59%2Fprojects"
       );
       expect(result).toBeTruthy();
       expect(typeof result).toBe("string");
