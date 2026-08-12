@@ -58,7 +58,7 @@ RUN chown -R node:node /app
 USER node
 
 ENV NODE_ENV=production \
-    RUNDECK_API_VERSION=46
+    RUNDECK_API_VERSION=59
 
 # Verify the stdio server process is still running
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
