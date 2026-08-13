@@ -72,7 +72,7 @@ describe("openapi-validate helpers", () => {
   it("normalizes URLs and strips /api/version prefix", () => {
     expect(normalizeEndpointToOpenApiPath("projects")).toBe("/projects");
     expect(normalizeEndpointToOpenApiPath("/projects")).toBe("/projects");
-    expect(normalizeEndpointToOpenApiPath("/api/46/projects")).toBe("/projects");
+    expect(normalizeEndpointToOpenApiPath("/api/59/projects")).toBe("/projects");
     expect(normalizeEndpointToOpenApiPath("https://rd.example/api/52/job/x/run")).toBe("/job/x/run");
   });
 

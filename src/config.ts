@@ -28,7 +28,7 @@ interface RundeckInstanceRegistry {
 
 class ConfigManager {
   private config: RundeckConfig = {
-    apiVersion: "46",
+    apiVersion: "59",
     docsPath: this.findDocsPath(),
     apiTimeoutMs: DEFAULT_API_TIMEOUT_MS,
   };
@@ -85,7 +85,7 @@ class ConfigManager {
   initialize(): void {
     this.config.rundeckUrl = process.env.RUNDECK_URL;
     this.config.apiToken = process.env.RUNDECK_TOKEN;
-    this.config.apiVersion = process.env.RUNDECK_API_VERSION || "46";
+    this.config.apiVersion = process.env.RUNDECK_API_VERSION || "59";
     this.config.apiTimeoutMs = this.parseApiTimeoutMs();
 
     // Only override docs path if explicitly set

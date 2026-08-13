@@ -8,10 +8,10 @@ describe("API Index Parser", () => {
   describe("parseApiIndex", () => {
     it("should parse API endpoints from content", () => {
       const content = `# API Reference
-[GET /api/46/projects]
+[GET /api/59/projects]
 List all projects
 
-[POST /api/46/job/{id}/run]
+[POST /api/59/job/{id}/run]
 Run a job`;
 
       const endpoints = parseApiIndex(content);
@@ -22,7 +22,7 @@ Run a job`;
     });
 
     it("should extract method from endpoint", () => {
-      const content = `[POST /api/46/projects]
+      const content = `[POST /api/59/projects]
 Create a project`;
 
       const endpoints = parseApiIndex(content);
@@ -32,7 +32,7 @@ Create a project`;
     });
 
     it("should default to GET if no method specified", () => {
-      const content = `[/api/46/projects]
+      const content = `[/api/59/projects]
 List projects`;
 
       const endpoints = parseApiIndex(content);
@@ -41,9 +41,9 @@ List projects`;
     });
 
     it("should categorize endpoints", () => {
-      const content = `[/api/46/job/{id}]
+      const content = `[/api/59/job/{id}]
 Get job info
-[/api/46/project/{name}]
+[/api/59/project/{name}]
 Get project info`;
 
       const endpoints = parseApiIndex(content);
@@ -60,25 +60,25 @@ Get project info`;
     it("should find documentation for endpoint", () => {
       const content = `# API Docs
 ## Job Endpoints
-[/api/46/job/{id}/run]
+[/api/59/job/{id}/run]
 Run a job with the given ID
 This endpoint accepts options in the request body.`;
 
-      const result = findEndpointDocumentation(content, "/api/46/job/{id}/run");
+      const result = findEndpointDocumentation(content, "/api/59/job/{id}/run");
 
       expect(result).not.toBeNull();
-      expect(result).toContain("/api/46/job/{id}/run");
+      expect(result).toContain("/api/59/job/{id}/run");
       expect(result).toContain("Run a job");
     });
 
     it("should return null for non-existent endpoint", () => {
       const content = `# API Docs
-[/api/46/projects]
+[/api/59/projects]
 List projects`;
 
       const result = findEndpointDocumentation(
         content,
-        "/api/46/nonexistent"
+        "/api/59/nonexistent"
       );
 
       expect(result).toBeNull();

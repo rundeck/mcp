@@ -110,7 +110,7 @@ Prompts are static objects with `name`, `description`, `arguments`, optional `ar
 |---|---|---|
 | `RUNDECK_URL` | — | Rundeck instance URL (required for `api_call`) |
 | `RUNDECK_TOKEN` | — | API token (required for `api_call`) |
-| `RUNDECK_API_VERSION` | `46` | API version appended to base URL |
+| `RUNDECK_API_VERSION` | `59` | API version appended to base URL |
 | `RUNDECK_API_TIMEOUT_MS` | `30000` | Timeout for `api_call`'s underlying `fetch` (also bounds `runner_create` and `acl_manage`, which call through it). Aborts and throws a distinct timeout error past this limit. Invalid/non-positive values fall back to the default with a logged warning. |
 | `RUNDECK_INSTANCES` | — | JSON registry of multiple named instances; when set, enables the `rundeck_connect` tool for mid-session switching (see `src/config.ts`'s `loadInstanceRegistry()`) |
 | `RUNDECK_DOCS_PATH` | auto-detected | Path to Rundeck docs directory. Auto-detection is `process.cwd()`-relative only (see `findDocsPath()`), so it won't find docs downloaded by either mechanism below unless cwd happens to line up |

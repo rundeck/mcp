@@ -314,7 +314,7 @@ The server is configured via environment variables:
 
 - `RUNDECK_URL`: Default Rundeck instance URL
 - `RUNDECK_TOKEN`: Default API token (optional, can be set via environment)
-- `RUNDECK_API_VERSION`: Default API version (default: "46")
+- `RUNDECK_API_VERSION`: Default API version (default: "59")
 - `RUNDECK_API_TIMEOUT_MS`: Timeout in ms for `api_call`'s underlying HTTP request, also bounding `runner_create` and `acl_manage` (default: `30000`). Aborts with a distinct timeout error past this limit; invalid/non-positive values fall back to the default.
 - `RUNDECK_INSTANCES`: JSON registry for switching between multiple Rundeck instances mid-session (optional — most setups don't need this; see [SETUP.md](./SETUP.md#multiple-rundeck-instances-optional))
 - `RUNDECK_DOCS_PATH`: Path to a documentation directory on disk. Auto-detected relative to cwd when launched from inside the repo — but required when launched by an MCP client (Claude Desktop, Cursor, etc.), since their working directory isn't the repo and docs auto-downloaded via `npm install` or Docker startup won't be found by cwd-relative auto-detection. See [SETUP.md](./SETUP.md#available-environment-variables).
@@ -361,7 +361,7 @@ The server integrates directly with Rundeck instances:
 
 - **API Calls**: Via `api_call` tool, the server can execute any Rundeck API endpoint
 - **Authentication**: Uses Rundeck API tokens (configured via environment variables)
-- **API Version**: Supports Rundeck API version 46 (configurable)
+- **API Version**: Supports Rundeck API version 59 (configurable)
 - **Capabilities**: Full Rundeck API functionality (jobs, projects, executions, nodes, system)
 
 ### Documentation Integration

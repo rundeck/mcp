@@ -163,7 +163,7 @@ export function rundeckSetupToken(params: {
     );
     return {
       success: true,
-      message: `Rundeck connection configured: ${params.rundeck_url} (API v${params.api_version || "46"})`,
+      message: `Rundeck connection configured: ${params.rundeck_url} (API v${params.api_version || "59"})`,
     };
   } catch (error) {
     return {
@@ -190,8 +190,8 @@ export function rundeckListEndpoints(params?: {
 // Zod schemas for validation
 export const rundeckApiCallSchema = z.object({
   endpoint: z.string().describe(
-    "API endpoint path. Can be full path (e.g., '/api/46/projects') or relative (e.g., 'projects'). " +
-    "Examples: 'projects', '/api/46/projects', 'job/{job-id}/run', 'execution/{execution-id}'"
+    "API endpoint path. Can be full path (e.g., '/api/59/projects') or relative (e.g., 'projects'). " +
+    "Examples: 'projects', '/api/59/projects', 'job/{job-id}/run', 'execution/{execution-id}'"
   ),
   method: z.enum(["GET", "POST", "PUT", "DELETE", "PATCH"])
     .optional()
@@ -225,7 +225,7 @@ export const rundeckApiCallSchema = z.object({
 export const rundeckSetupTokenSchema = z.object({
   rundeck_url: z.string().url().describe("Base URL of Rundeck instance (e.g., 'https://rundeck.example.com')"),
   api_token: z.string().describe("API token for authentication"),
-  api_version: z.string().optional().default("46").describe("API version to use"),
+  api_version: z.string().optional().default("59").describe("API version to use"),
 });
 
 export const rundeckListEndpointsSchema = z.object({
