@@ -29,7 +29,7 @@
         },
         {
           "name": "RUNDECK_API_VERSION",
-          "description": "Rundeck API version to use (default: 46)",
+          "description": "Rundeck API version to use (default: 59)",
           "required": false
         },
         {
@@ -65,7 +65,7 @@
         },
         {
           "name": "RUNDECK_API_VERSION",
-          "description": "Rundeck API version to use (default: 46)",
+          "description": "Rundeck API version to use (default: 59)",
           "required": false
         },
         {

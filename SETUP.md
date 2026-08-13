@@ -100,7 +100,7 @@ Alternatively, you can set environment variables in your shell before starting t
 ```bash
 export RUNDECK_URL=https://your-rundeck-instance.com
 export RUNDECK_TOKEN=your-api-token
-export RUNDECK_API_VERSION=46
+export RUNDECK_API_VERSION=59
 ```
 
 Note: When running via MCP client, shell environment variables may not be available. Use MCP settings instead.
