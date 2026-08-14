@@ -8,7 +8,7 @@ import { REGISTERED_TOOL_NAMES } from "../../tools/registered-tool-names.js";
 describe("TOOL_RELATIONSHIPS", () => {
   it("covers exactly the expected specialized tools", () => {
     expect(TOOL_RELATIONSHIPS.map((r) => r.tool).sort()).toEqual(
-      ["acl_manage", "job_create", "job_validate", "runner_create"].sort()
+      ["acl_manage", "job_create", "job_validate", "resource_model_source_manage", "runner_create"].sort()
     );
   });
 
@@ -22,7 +22,7 @@ describe("TOOL_RELATIONSHIPS", () => {
 });
 
 describe("renderPriorityGuidance", () => {
-  it.each(["runner_create", "acl_manage", "job_create", "job_validate"])(
+  it.each(["runner_create", "acl_manage", "job_create", "job_validate", "resource_model_source_manage"])(
     "mentions api_call for %s's own priority text",
     (toolName) => {
       const guidance = renderPriorityGuidance(toolName);
@@ -31,12 +31,13 @@ describe("renderPriorityGuidance", () => {
     }
   );
 
-  it("returns the deferral bullet list for api_call, covering all four specialized tools", () => {
+  it("returns the deferral bullet list for api_call, covering all five specialized tools", () => {
     const guidance = renderPriorityGuidance("api_call");
     expect(guidance).toContain("runner_create");
     expect(guidance).toContain("acl_manage");
     expect(guidance).toContain("job_create");
     expect(guidance).toContain("job_validate");
+    expect(guidance).toContain("resource_model_source_manage");
   });
 
   it("returns an empty string for a tool with no relationship", () => {
@@ -45,7 +46,7 @@ describe("renderPriorityGuidance", () => {
 });
 
 describe("renderFallbackGuidance", () => {
-  it.each(["runner_create", "acl_manage", "job_create", "job_validate"])(
+  it.each(["runner_create", "acl_manage", "job_create", "job_validate", "resource_model_source_manage"])(
     "returns a Fallback section mentioning api_call for %s",
     (toolName) => {
       const guidance = renderFallbackGuidance(toolName);

@@ -37,6 +37,10 @@ import {
   rundeckValidateAclSchema,
   rundeckManageAclSchema,
 } from "./tools/acl.js";
+import {
+  rundeckManageResourceSource,
+  rundeckManageResourceSourceSchema,
+} from "./tools/resources.js";
 import { REGISTERED_TOOL_NAMES } from "./tools/registered-tool-names.js";
 import {
   API_CALL_DESCRIPTION,
@@ -44,6 +48,7 @@ import {
   JOB_VALIDATE_DESCRIPTION,
   RUNNER_CREATE_DESCRIPTION,
   ACL_MANAGE_DESCRIPTION,
+  RESOURCE_MODEL_SOURCE_MANAGE_DESCRIPTION,
 } from "./tools/tool-descriptions.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
@@ -56,6 +61,7 @@ import {
   getRunnerGuidance,
   getAclValidateGuidance,
   getAclManageGuidance,
+  getResourceSourceManageGuidance,
   getRundeckConnectGuidance,
 } from "./utils/guidance.js";
 import { prompts, getPrompt } from "./prompts/index.js";
@@ -184,6 +190,10 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
       description: ACL_MANAGE_DESCRIPTION,
       inputSchema: convertSchema(rundeckManageAclSchema),
     },
+    resource_model_source_manage: {
+      description: RESOURCE_MODEL_SOURCE_MANAGE_DESCRIPTION,
+      inputSchema: convertSchema(rundeckManageResourceSourceSchema),
+    },
     docs_search: {
       description: `Search local Rundeck documentation (markdown under RUNDECK_DOCS_PATH) by keywords and phrases.
 
@@ -302,6 +312,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const aclParams = rundeckManageAclSchema.parse(args);
         const aclResult = await rundeckManageAcl(aclParams);
         return { content: [{ type: "text", text: JSON.stringify(aclResult, null, 2) }] };
+
+      case "resource_model_source_manage": {
+        // 'project' isn't required for 'list_provider_types'/'describe_provider_config' (instance-wide
+        // plugin metadata, not project-scoped), so only 'action' triggers guidance mode here — the
+        // schema's own refine() rules surface any other missing-field errors with per-action messages.
+        if (needsGuidance(args, ["action"])) {
+          logger.info("resource_model_source_manage called without required params - returning guidance");
+          return returnGuidance(getResourceSourceManageGuidance());
+        }
+        const resourceSourceParams = rundeckManageResourceSourceSchema.parse(args);
+        const resourceSourceResult = await rundeckManageResourceSource(resourceSourceParams);
+        return { content: [{ type: "text", text: JSON.stringify(resourceSourceResult, null, 2) }] };
+      }
 
       case "docs_search": {
         const parsed = rundeckSearchDocsSchema.parse(args ?? {});

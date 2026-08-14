@@ -89,6 +89,7 @@ Resources that read from the filesystem use `configManager.getConfig().docsPath`
 | `runners.ts` | `runner_create` |
 | `connect.ts` | `rundeck_connect` — only listed/reachable when `configManager.hasInstanceRegistry()` is true (i.e. `RUNDECK_INSTANCES` is set) |
 | `acl.ts` | `acl_validate`, `acl_manage` |
+| `resources.ts` | `resource_model_source_manage` — discovers installed Resource Model Source plugins and their config schema (`list_provider_types`/`describe_provider_config`, via `plugin/list`/`plugin/detail/ResourceModelSource/{type}` — e.g. to configure an Ansible resource model without guessing its config keys), and manages a project's Resource Model Sources (list/get/add/remove, free-form `type`/`config` matching Rundeck's own `resources.source.N.*` keys) and, for writeable sources, reads/writes the node definition content itself via `project/{project}/source/{index}/resources`. Writeability is empirical (check `list_sources`/`get_source`'s `writeable` flag), not implied by `type` — a `file` source can be non-writeable on DB-backed project storage, while Enterprise-only `node-wizard` (commonly assumed manual-entry-only) can be writeable via the same endpoint. Caveat: `node-wizard` node data persists in the project independent of the source's config entry — `remove_source` doesn't delete it. |
 
 `plugins.ts` (`plugin_create`) exists in the codebase but is **not** currently registered as an MCP tool — deliberately excluded per the Phase 1 comment at the top of `src/tools/plugins.ts`.
 

@@ -15,5 +15,6 @@ export const REGISTERED_TOOL_NAMES: string[] = [
   "runner_create",
   "acl_validate",
   "acl_manage",
+  "resource_model_source_manage",
   "docs_search",
 ];
