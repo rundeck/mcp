@@ -152,9 +152,16 @@ async function getSourceWriteable(project: string, index: number): Promise<boole
   return typeof writeable === "boolean" ? writeable : undefined;
 }
 
-/** Scans existing `resources.source.N.type` keys and returns the next unused index (1-based). */
+/**
+ * Scans existing `resources.source.N.*` keys — any suffix, not just `.type` —
+ * and returns the next unused index (1-based). Matching only `.type` would
+ * miss an index that has stray `.config.*` keys but no `.type` (e.g. a
+ * leftover fragment from a prior partial/corrupted config), letting a new
+ * source's `.type` get written on top of unrelated old config for that same
+ * index instead of a genuinely free one.
+ */
 function findNextSourceIndex(config: Record<string, string>): number {
-  const pattern = /^resources\.source\.(\d+)\.type$/;
+  const pattern = /^resources\.source\.(\d+)\./;
   let max = 0;
   for (const key of Object.keys(config)) {
     const match = pattern.exec(key);
@@ -338,7 +345,13 @@ export async function rundeckManageResourceSource(params: {
       if (!project) {
         throw new Error("'project' is required for action 'add_source'");
       }
-      const type = params.type ?? "file";
+      if (!params.type) {
+        throw new Error(
+          "'type' is required for action 'add_source' — there is no default. A bare 'file' source " +
+          "with no 'config.file' can break 'list_sources'/'get_source' for the whole project until removed."
+        );
+      }
+      const type = params.type;
       const config = await getProjectConfig(project);
       const nextIndex = findNextSourceIndex(config);
       const prefix = `resources.source.${nextIndex}`;

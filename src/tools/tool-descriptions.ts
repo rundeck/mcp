@@ -123,4 +123,4 @@ export const RESOURCE_MODEL_SOURCE_MANAGE_DESCRIPTION = `Configure a project's R
 **Caveat — some providers' data outlives their source entry:** e.g. \`node-wizard\`'s node data lives in the project itself, independent of any single source's config entry/index. \`remove_source\` only deletes the config pointer, not that underlying data — re-adding such a source later can resurface (and duplicate) old nodes.
 
 ${NODE_DEFINITION_FORMAT_REFERENCE}
-**Guidance Mode:** Call without required params (action, project) to get step-by-step guidance.${renderPriorityGuidance("resource_model_source_manage")}`;
+**Guidance Mode:** Call without \`action\` to get step-by-step guidance (\`project\` isn't checked for this, since it's only required for some actions — see Actions above).${renderPriorityGuidance("resource_model_source_manage")}`;

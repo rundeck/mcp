@@ -155,6 +155,13 @@ describe("rundeckManageResourceSource", () => {
     expect(mockFetch).not.toHaveBeenCalled();
   });
 
+  it("throws when type is missing for add_source (called directly, bypassing schema) — no silent 'file' fallback", async () => {
+    await expect(
+      rundeckManageResourceSource({ action: "add_source", project: "demo" })
+    ).rejects.toThrow("'type' is required for action 'add_source'");
+    expect(mockFetch).not.toHaveBeenCalled();
+  });
+
   it("list_provider_types calls plugin/list and filters to ResourceModelSource plugins", async () => {
     mockApiResponse([
       { name: "ansible-resource", service: "ResourceModelSource", title: "Ansible Inventory" },
@@ -347,6 +354,29 @@ describe("rundeckManageResourceSource", () => {
     });
 
     expect((result.body as { index: number }).index).toBe(1);
+  });
+
+  it("add_source skips an index with stray 'config.*' keys but no 'type' key, instead of overwriting it", async () => {
+    // Simulates a leftover fragment from a prior partial/corrupted config: index 1 has
+    // config keys but no 'resources.source.1.type'. Only matching '.type' would miss this
+    // index entirely and let a new source overwrite it at the same index.
+    mockApiResponse({
+      "resources.source.1.config.file": "etc/leftover.yaml",
+    });
+    mockApiResponse({}, 200);
+
+    const result = await rundeckManageResourceSource({
+      action: "add_source",
+      project: "demo",
+      type: "file",
+      config: { file: "etc/resources.yaml" },
+    });
+
+    const putOptions = mockFetch.mock.calls[1][1] as RequestInit;
+    const sentBody = JSON.parse(putOptions.body as string);
+    expect(sentBody["resources.source.1.config.file"]).toBe("etc/leftover.yaml"); // untouched
+    expect(sentBody["resources.source.2.type"]).toBe("file"); // new source placed at the next free index
+    expect((result.body as { index: number }).index).toBe(2);
   });
 
   it("add_source with an arbitrary type and no config sets only the type key", async () => {
