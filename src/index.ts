@@ -21,6 +21,7 @@ import {
   rundeckListEndpoints,
   rundeckApiCallSchema,
   rundeckListEndpointsSchema,
+  isRunnerCredentialRegenerationEndpoint,
 } from "./tools/api.js";
 import {
   rundeckGenerateJob,
@@ -57,8 +58,10 @@ import {
   getAclValidateGuidance,
   getAclManageGuidance,
   getRundeckConnectGuidance,
-  getDeleteConfirmationGuidance,
+  getConfirmationRequiredGuidance,
+  getConfirmationDeclinedGuidance,
 } from "./utils/guidance.js";
+import { requestDestructiveConfirmation, type DestructiveAction } from "./utils/confirmation.js";
 import { prompts, getPrompt } from "./prompts/index.js";
 import { ASK_USER_ERROR_TRAILER, ASK_USER_LINE } from "./utils/escalation.js";
 
@@ -254,11 +257,33 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return returnGuidance(getApiCallGuidance());
         }
         const parsed = rundeckApiCallSchema.parse(args ?? {});
-        if (parsed.method === "DELETE" && !parsed.confirm) {
-          logger.info("api_call DELETE requested without confirm - requesting confirmation");
-          return returnGuidance(
-            getDeleteConfirmationGuidance("api_call", `the resource at \`${parsed.endpoint}\``)
-          );
+        let apiDestructiveAction: DestructiveAction | null = null;
+        if (parsed.method === "DELETE") {
+          apiDestructiveAction = {
+            phrase: `permanently delete the resource at \`${parsed.endpoint}\``,
+            consequence: "Rundeck's API has no undo for this.",
+          };
+        } else if (
+          parsed.method === "POST" &&
+          isRunnerCredentialRegenerationEndpoint(parsed.endpoint)
+        ) {
+          apiDestructiveAction = {
+            phrase: `regenerate credentials for the runner at \`${parsed.endpoint}\``,
+            consequence:
+              "This immediately invalidates the runner's current token — any running " +
+              "instance of it will lose connectivity until reconfigured with the new one.",
+          };
+        }
+        if (apiDestructiveAction) {
+          const outcome = await requestDestructiveConfirmation(server, apiDestructiveAction);
+          if (outcome === "declined") {
+            logger.info("api_call destructive action declined via elicitation");
+            return returnGuidance(getConfirmationDeclinedGuidance("api_call", apiDestructiveAction));
+          }
+          if (outcome === "unsupported" && !parsed.confirm) {
+            logger.info("api_call destructive action requested without confirm - requesting confirmation");
+            return returnGuidance(getConfirmationRequiredGuidance("api_call", apiDestructiveAction));
+          }
         }
         const apiResult = await rundeckApiCall(parsed);
         return { content: [{ type: "text", text: JSON.stringify(apiResult, null, 2) }] };
@@ -316,16 +341,31 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return returnGuidance(getAclManageGuidance());
         }
         const aclParams = rundeckManageAclSchema.parse(args);
-        if (aclParams.action === "delete" && !aclParams.confirm) {
-          logger.info("acl_manage delete requested without confirm - requesting confirmation");
+        if (aclParams.action === "delete" || aclParams.action === "update") {
           const scopeDetail =
             aclParams.scope === "project" ? `project '${aclParams.project}'` : "system scope";
-          return returnGuidance(
-            getDeleteConfirmationGuidance(
-              "acl_manage",
-              `ACL policy '${aclParams.name}' (${scopeDetail})`
-            )
-          );
+          const target = `ACL policy '${aclParams.name}' (${scopeDetail})`;
+          const aclDestructiveAction: DestructiveAction =
+            aclParams.action === "delete"
+              ? {
+                  phrase: `permanently delete ${target}`,
+                  consequence: "Rundeck's API has no undo for this.",
+                }
+              : {
+                  phrase: `overwrite the contents of ${target}`,
+                  consequence:
+                    "Rundeck has no way to revert to the previous version afterward — the old " +
+                    "policy content will be gone.",
+                };
+          const outcome = await requestDestructiveConfirmation(server, aclDestructiveAction);
+          if (outcome === "declined") {
+            logger.info(`acl_manage ${aclParams.action} declined via elicitation`);
+            return returnGuidance(getConfirmationDeclinedGuidance("acl_manage", aclDestructiveAction));
+          }
+          if (outcome === "unsupported" && !aclParams.confirm) {
+            logger.info(`acl_manage ${aclParams.action} requested without confirm - requesting confirmation`);
+            return returnGuidance(getConfirmationRequiredGuidance("acl_manage", aclDestructiveAction));
+          }
         }
         const aclResult = await rundeckManageAcl(aclParams);
         return { content: [{ type: "text", text: JSON.stringify(aclResult, null, 2) }] };

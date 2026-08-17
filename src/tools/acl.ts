@@ -416,9 +416,11 @@ export const rundeckManageAclSchema = z
       "and a list of per-document errors, but a local check surfaces the same issues faster."
     ),
     confirm: z.boolean().optional().default(false).describe(
-      "Required when action is 'delete'. Must be explicitly set to true, and only after the " +
-      "user has explicitly approved deleting this specific policy — never inferred or defaulted " +
-      "to true on the agent's own judgment. Ignored for all other actions."
+      "Fallback only, for clients that don't support MCP elicitation (in which case the server " +
+      "prompts the user directly and this field is unused). Required when action is 'delete' or " +
+      "'update' — both mutate or remove the policy irreversibly: must be explicitly set to true, " +
+      "and only after the user has explicitly approved that specific change — never inferred or " +
+      "defaulted to true on the agent's own judgment. Ignored for 'list', 'get', and 'create'."
     ),
   })
   .refine((s) => s.scope !== "project" || s.project !== undefined, {

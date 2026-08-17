@@ -187,6 +187,19 @@ export function rundeckListEndpoints(params?: {
   return listApiEndpoints(params?.category);
 }
 
+/**
+ * True for `POST .../runnerManagement/runner/{id}/regenerateCreds` (system or project scoped) —
+ * the only way to revoke a Runner's current credentials via the API. It immediately invalidates
+ * the old token, so it's treated as destructive even though it's a POST, not a DELETE.
+ */
+export function isRunnerCredentialRegenerationEndpoint(endpoint: string): boolean {
+  const path = endpoint
+    .split("?")[0]
+    .replace(/^\//, "")
+    .replace(/^api\/\d+\//i, "");
+  return /^(?:project\/[^/]+\/)?runnermanagement\/runner\/[^/]+\/regeneratecreds\/?$/i.test(path);
+}
+
 // Zod schemas for validation
 export const rundeckApiCallSchema = z.object({
   endpoint: z.string().describe(
@@ -224,9 +237,11 @@ export const rundeckApiCallSchema = z.object({
     .optional()
     .default(false)
     .describe(
-      "Required when method is 'DELETE'. Must be explicitly set to true, and only after the " +
-      "user has explicitly approved this specific deletion — never inferred or defaulted to " +
-      "true on the agent's own judgment. Ignored for all other methods."
+      "Fallback only, for clients that don't support MCP elicitation (in which case the server " +
+      "prompts the user directly and this field is unused). Required when method is 'DELETE', or " +
+      "for a POST to a runner's 'regenerateCreds' endpoint (which revokes its current credentials): " +
+      "must be explicitly set to true, and only after the user has explicitly approved that specific " +
+      "action — never inferred or defaulted to true on the agent's own judgment. Ignored otherwise."
     ),
 });
 

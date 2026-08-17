@@ -23,9 +23,11 @@ ${renderPriorityGuidance("api_call")}
 **Authentication:** Set RUNDECK_URL and RUNDECK_TOKEN environment variables before calling.
 Call without required params for setup guidance.
 
-**Deleting things:** \`method: "DELETE"\` requires \`confirm: true\`. Without it, the call is
-intercepted and returns a confirmation prompt instead of reaching Rundeck — set \`confirm: true\`
-only after the user has explicitly approved that specific deletion.
+**Destructive calls:** \`method: "DELETE"\`, and \`POST\` to a runner's \`regenerateCreds\` endpoint
+(which revokes its current credentials), always require confirmation before reaching Rundeck. If
+the connected client supports MCP elicitation, the server asks the user directly and you don't
+need to do anything extra — just wait for the outcome. Otherwise, it requires \`confirm: true\`,
+which you must only set after the user has explicitly approved that specific action yourself.
 
 ${ASK_USER_LINE}`;
 
@@ -104,8 +106,10 @@ export const ACL_MANAGE_DESCRIPTION = `List, get, create, update, or delete a Ru
 
 **Guidance Mode:** Call without required params (action, scope) to get step-by-step guidance.${renderPriorityGuidance("acl_manage")}
 
-**Deleting a policy:** \`action: "delete"\` requires \`confirm: true\`. Without it, the call is
-intercepted and returns a confirmation prompt instead of reaching Rundeck — set \`confirm: true\`
-only after the user has explicitly approved deleting that specific policy.
+**Changing or deleting a policy:** \`action: "delete"\` and \`action: "update"\` (both irreversible —
+Rundeck keeps no prior version) always require confirmation before reaching Rundeck. If the
+connected client supports MCP elicitation, the server asks the user directly and you don't need to
+do anything extra — just wait for the outcome. Otherwise, it requires \`confirm: true\`, which you
+must only set after the user has explicitly approved that specific change yourself.
 
 ${ASK_USER_LINE}`;

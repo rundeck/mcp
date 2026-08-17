@@ -193,11 +193,7 @@ Everything above covers the common case: one Rundeck instance. If you need to sw
 
 ## Safety: Approvals and Destructive Actions
 
-This server acts against a real, live Rundeck instance — `api_call`, `runner_create`, and `acl_manage` change or delete real jobs, runners, projects, and ACL policies.
-
-- **Delete calls require explicit confirmation.** `api_call` with `method: "DELETE"` and `acl_manage` with `action: "delete"` are intercepted server-side unless the call also sets `confirm: true`. Without it, the server returns a confirmation prompt instead of reaching Rundeck, so a deletion can never happen on the strength of the model's own judgment alone — the calling agent is expected to get explicit user approval for that specific deletion first.
-- **This is not a substitute for your MCP client's own permission prompts.** Most MCP clients (including Claude Code) ask you to approve each tool call before it runs. That's the primary safety net for *every* tool this server exposes, not just deletes.
-- **If you run your client in an auto-approve / "auto mode" / YOLO mode** that skips those per-call confirmations, you are disabling that safety net yourself. The `confirm: true` gate above still requires the agent to set the flag, but nothing stops an auto-approving client from letting the agent set it without ever showing you the prompt. **By opting into auto-approve mode, you accept the risk that the agent may take an action — including a deletion — that it should not have.** Use it only against instances/projects where that risk is acceptable (e.g. disposable dev/test environments), never against production without a human reviewing each call.
+This server acts against a real, live Rundeck instance. Deletes, ACL policy changes, and runner credential revocation require confirmation before reaching Rundeck; auto-approve/"auto mode" MCP clients bypass that safety net, and you assume the risk if you use one. See [Destructive Actions and Confirmation](./TECHNICAL-CAPABILITIES.md#destructive-actions-and-confirmation) in TECHNICAL-CAPABILITIES.md for how it works.
 
 ---
 

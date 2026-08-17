@@ -16,24 +16,53 @@
 
 import { renderFallbackGuidance } from "../tools/tool-relationships.js";
 import { ASK_USER_GUIDANCE, ASK_USER_LINE } from "./escalation.js";
+import type { DestructiveAction } from "./confirmation.js";
 
 /**
- * Returned instead of executing a delete when the call didn't set `confirm: true`.
- * No delete request is sent to Rundeck when this is shown — it's a hard stop, not
- * just advice, so a delete can never happen on the strength of guidance text alone.
+ * Fallback path only: shown when the connected MCP client does NOT declare the
+ * `elicitation` capability, so the server has no way to prompt the human directly.
+ * (When the client DOES support elicitation, the server asks the human itself via
+ * `requestDestructiveConfirmation` before this is ever reached — see index.ts.)
+ *
+ * Covers every action this server gates: deleting a job/resource/ACL policy,
+ * overwriting an ACL policy's contents, and regenerating a runner's credentials.
+ * No request is sent to Rundeck when this is shown — it's a hard stop, not just
+ * advice, so the action can never happen on the strength of guidance text alone.
  */
-export function getDeleteConfirmationGuidance(toolName: string, target: string): string {
-  return `# Confirmation Required: This Would Delete ${target}
+export function getConfirmationRequiredGuidance(toolName: string, action: DestructiveAction): string {
+  return `# Confirmation Required
 
-Calling \`${toolName}\` with these parameters **permanently deletes ${target}**. Rundeck's API
-has no undo for this. Nothing has been deleted — this call was intercepted before it reached
-Rundeck because \`confirm\` was not set to \`true\`.
+Calling \`${toolName}\` with these parameters would **${action.phrase}**. ${action.consequence}
+Nothing has happened yet — this call was intercepted before it reached Rundeck because \`confirm\`
+was not set to \`true\`.
+
+Your MCP client doesn't support live confirmation prompts (MCP elicitation), so there's no way
+for the server to ask the user directly — you (the agent) are responsible for getting real,
+explicit approval before retrying.
 
 ## Before retrying
-1. Confirm the user explicitly asked for (or explicitly approved) deleting **this specific
-   target** — not something you inferred while doing other work.
-2. Restate to the user exactly what will be deleted, and wait for their explicit go-ahead.
+1. Confirm the user explicitly asked for (or explicitly approved) **this specific action** —
+   not something you inferred while doing other work.
+2. Restate to the user exactly what will happen, and wait for their explicit go-ahead.
 3. Only then, re-call \`${toolName}\` with the same parameters plus \`confirm: true\`.
+
+${ASK_USER_LINE}`;
+}
+
+/**
+ * Returned when the client DOES support elicitation and the human was asked directly,
+ * but declined or cancelled the prompt. The action was never attempted.
+ */
+export function getConfirmationDeclinedGuidance(toolName: string, action: DestructiveAction): string {
+  return `# Action Not Confirmed
+
+The user was asked directly (via the MCP client's confirmation prompt) whether to ${action.phrase},
+and did not confirm. **Nothing happened.**
+
+Do not retry this \`${toolName}\` call expecting a different outcome, and do not try to route
+around this by other means (e.g. hand-building the same request a different way). The user's
+answer was already collected — if you still think this is needed, ask them directly what
+they'd like to do instead.
 
 ${ASK_USER_LINE}`;
 }
@@ -204,9 +233,12 @@ The API version is specified in the URL path (e.g., /api/59/...). Current defaul
 ## Optional Parameters
 - **body** (object): Request body for POST/PUT requests
 - **query_params** (object): Query parameters
-- **confirm** (boolean): Required (and must be \`true\`) for \`method: "DELETE"\`. Only set this after
-  the user has explicitly approved the specific deletion — a DELETE call without it is intercepted
-  and returns a confirmation prompt instead of reaching Rundeck.
+- **confirm** (boolean): Fallback only, for clients that don't support MCP elicitation. Required
+  (and must be \`true\`) on those clients for \`method: "DELETE"\`, and for \`POST\` to a runner's
+  \`regenerateCreds\` endpoint (revokes its current credentials). Only set this after the user has
+  explicitly approved that specific action — the call is otherwise intercepted and returns a
+  confirmation prompt instead of reaching Rundeck. On clients that support elicitation, the
+  server prompts the user directly instead and this field is unused.
 
 ## Alternative: Use Prompts
 You can also use the \`call-api\` prompt via \`prompts/get\` for API guidance:
@@ -627,9 +659,12 @@ filesystem (those can only be managed by editing them directly on disk).
 - **project** (string): required when scope is "project"
 - **name** (string): required for all actions except "list". The \`.aclpolicy\` suffix is added automatically if omitted.
 - **content** (string): required for "create"/"update" — the ACL policy YAML
-- **confirm** (boolean): required (and must be \`true\`) for action "delete". Only set this after the
-  user has explicitly approved deleting that specific policy — a delete call without it is
-  intercepted and returns a confirmation prompt instead of reaching Rundeck.
+- **confirm** (boolean): Fallback only, for clients that don't support MCP elicitation. Required
+  (and must be \`true\`) on those clients for actions "delete" and "update" — both mutate or remove
+  the policy irreversibly. Only set this after the user has explicitly approved that specific
+  change; the call is otherwise intercepted and returns a confirmation prompt instead of reaching
+  Rundeck. On clients that support elicitation, the server prompts the user directly instead and
+  this field is unused.
 
 ## Recommended workflow
 1. Draft the policy YAML.
