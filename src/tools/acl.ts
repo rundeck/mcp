@@ -415,6 +415,11 @@ export const rundeckManageAclSchema = z
       "Strongly recommended: validate with acl_validate before submitting — Rundeck will reject invalid policies with a 400 " +
       "and a list of per-document errors, but a local check surfaces the same issues faster."
     ),
+    confirm: z.boolean().optional().default(false).describe(
+      "Required when action is 'delete'. Must be explicitly set to true, and only after the " +
+      "user has explicitly approved deleting this specific policy — never inferred or defaulted " +
+      "to true on the agent's own judgment. Ignored for all other actions."
+    ),
   })
   .refine((s) => s.scope !== "project" || s.project !== undefined, {
     message: "'project' is required when scope is 'project'",

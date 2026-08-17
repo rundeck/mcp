@@ -12,6 +12,7 @@ import {
   getPluginIntegrationGuidance,
   getRunnerGuidance,
   getAclManageGuidance,
+  getDeleteConfirmationGuidance,
 } from "../../utils/guidance.js";
 
 describe("Guidance Utility", () => {
@@ -111,6 +112,16 @@ describe("Guidance Utility", () => {
       const guidance = getAclManageGuidance();
       expect(guidance).toContain("## Fallback");
       expect(guidance).toContain("api_call");
+    });
+  });
+
+  describe("getDeleteConfirmationGuidance", () => {
+    it("names the tool and target, and never implies the delete already happened", () => {
+      const guidance = getDeleteConfirmationGuidance("acl_manage", "ACL policy 'admin' (system scope)");
+      expect(guidance).toContain("acl_manage");
+      expect(guidance).toContain("ACL policy 'admin' (system scope)");
+      expect(guidance).toContain("confirm");
+      expect(guidance).toContain("Nothing has been deleted");
     });
   });
 });

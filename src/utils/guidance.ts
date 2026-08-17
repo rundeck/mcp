@@ -15,6 +15,28 @@
  */
 
 import { renderFallbackGuidance } from "../tools/tool-relationships.js";
+import { ASK_USER_GUIDANCE, ASK_USER_LINE } from "./escalation.js";
+
+/**
+ * Returned instead of executing a delete when the call didn't set `confirm: true`.
+ * No delete request is sent to Rundeck when this is shown — it's a hard stop, not
+ * just advice, so a delete can never happen on the strength of guidance text alone.
+ */
+export function getDeleteConfirmationGuidance(toolName: string, target: string): string {
+  return `# Confirmation Required: This Would Delete ${target}
+
+Calling \`${toolName}\` with these parameters **permanently deletes ${target}**. Rundeck's API
+has no undo for this. Nothing has been deleted — this call was intercepted before it reached
+Rundeck because \`confirm\` was not set to \`true\`.
+
+## Before retrying
+1. Confirm the user explicitly asked for (or explicitly approved) deleting **this specific
+   target** — not something you inferred while doing other work.
+2. Restate to the user exactly what will be deleted, and wait for their explicit go-ahead.
+3. Only then, re-call \`${toolName}\` with the same parameters plus \`confirm: true\`.
+
+${ASK_USER_LINE}`;
+}
 
 export function getJobCreationGuidance(): string {
   return `# Creating a Rundeck Job
@@ -121,7 +143,7 @@ ${list}
 
 ## Notes
 - This tool only takes a **name** — never a URL or token.
-- If the name doesn't match a registered instance, the connection is cleared rather than left pointing at whatever was active before, so a follow-up \`api_call\` fails closed instead of silently hitting the wrong instance.`;
+- If the name doesn't match a registered instance, the connection is cleared rather than left pointing at whatever was active before, so a follow-up \`api_call\` fails closed instead of silently hitting the wrong instance.` + ASK_USER_GUIDANCE;
 }
 
 export function getApiCallGuidance(): string {
@@ -182,6 +204,9 @@ The API version is specified in the URL path (e.g., /api/59/...). Current defaul
 ## Optional Parameters
 - **body** (object): Request body for POST/PUT requests
 - **query_params** (object): Query parameters
+- **confirm** (boolean): Required (and must be \`true\`) for \`method: "DELETE"\`. Only set this after
+  the user has explicitly approved the specific deletion — a DELETE call without it is intercepted
+  and returns a confirmation prompt instead of reaching Rundeck.
 
 ## Alternative: Use Prompts
 You can also use the \`call-api\` prompt via \`prompts/get\` for API guidance:
@@ -190,7 +215,7 @@ You can also use the \`call-api\` prompt via \`prompts/get\` for API guidance:
 ## Resources
 - API Index: \`rundeck://api\`
 - Authentication: \`rundeck://api/auth\`
-- API Examples: \`rundeck://api/examples\``;
+- API Examples: \`rundeck://api/examples\`` + ASK_USER_GUIDANCE;
 }
 
 export function getJobValidationGuidance(): string {
@@ -262,7 +287,7 @@ Use \`rd projects configure set\` command
 ## Resources
 - Project Configuration: \`rundeck://config/project\`
 - System Configuration: \`rundeck://config/system\`
-- Plugin Configuration: \`rundeck://config/plugins\``;
+- Plugin Configuration: \`rundeck://config/plugins\`` + ASK_USER_GUIDANCE;
 }
 
 export function getAuthSetupGuidance(): string {
@@ -305,7 +330,7 @@ Tokens inherit the authorization roles of the user who created them. Ensure your
 ## Resources
 - Authentication Methods: \`rundeck://api/auth\`
 - API Basics: \`rundeck://api/examples\`
-- Configuration: \`rundeck://docs/administration/configuration\``;
+- Configuration: \`rundeck://docs/administration/configuration\`` + ASK_USER_GUIDANCE;
 }
 
 export function getNodeFilterGuidance(): string {
@@ -364,7 +389,7 @@ You can also use the \`write-node-filter\` prompt via \`prompts/get\`:
 
 ## Resources
 - Node Filter Reference: \`rundeck://ref/filters\`
-- Node Documentation: \`rundeck://learn\``;
+- Node Documentation: \`rundeck://learn\`` + ASK_USER_GUIDANCE;
 }
 
 export function getPluginIntegrationGuidance(): string {
@@ -428,7 +453,7 @@ You can also use the \`integrate-plugin\` prompt via \`prompts/get\`:
 - Plugin Overview: \`rundeck://plugins\`
 - Node Step Plugins: \`rundeck://plugins/node-steps\`
 - Workflow Step Plugins: \`rundeck://plugins/workflow-steps\`
-- Plugin Configuration: \`rundeck://config/plugins\``;
+- Plugin Configuration: \`rundeck://config/plugins\`` + ASK_USER_GUIDANCE;
 }
 
 export function getRunnerGuidance(): string {
@@ -574,7 +599,7 @@ acl_validate({
 
 ## Resources
 - ACL Policy format: \`rundeck://docs/manual\` (see aclpolicy-v10.md)
-- ACL Policy administration: \`rundeck://docs/administration\` (see acl-policy-editor.md)`;
+- ACL Policy administration: \`rundeck://docs/administration\` (see acl-policy-editor.md)` + ASK_USER_GUIDANCE;
 }
 
 export function getAclManageGuidance(): string {
@@ -602,6 +627,9 @@ filesystem (those can only be managed by editing them directly on disk).
 - **project** (string): required when scope is "project"
 - **name** (string): required for all actions except "list". The \`.aclpolicy\` suffix is added automatically if omitted.
 - **content** (string): required for "create"/"update" — the ACL policy YAML
+- **confirm** (boolean): required (and must be \`true\`) for action "delete". Only set this after the
+  user has explicitly approved deleting that specific policy — a delete call without it is
+  intercepted and returns a confirmation prompt instead of reaching Rundeck.
 
 ## Recommended workflow
 1. Draft the policy YAML.
@@ -745,6 +773,6 @@ When plugin codegen is re-enabled, parameters follow the schema in \`src/tools/p
 plugin_type: node-step
 name: my-custom-step
 class_name: MyCustomStep
-\`\`\``;
+\`\`\`` + ASK_USER_GUIDANCE;
 }
 
