@@ -13,7 +13,9 @@ log() {
 }
 
 # ── Fetch docs via a sparse partial clone (skips the media-heavy .vuepress/public
-# tree, so it's ~4s / ~2MB instead of ~35s / ~200MB for the full tarball) ──────
+# tree, so it's ~4s / ~2MB instead of ~35s / ~200MB for the full tarball), except
+# for rundeck-api.yml — the OpenAPI spec api_call validates requests against —
+# which is carved back in explicitly since it lives under that excluded tree. ──
 fetch_docs() {
   log "fetching docs (branch ${DOCS_BRANCH})"
   # Under `set -e`, any standalone (non-conditional) command's failure aborts
@@ -27,7 +29,7 @@ fetch_docs() {
   # an if is exempt from set -e's abort-on-failure, so a failing command
   # inside the `then` body would NOT be exempt.
   if git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$DOCS_BRANCH" "$DOCS_REPO" "$tmp_dir" \
-      && (cd "$tmp_dir" && git sparse-checkout set --no-cone '/docs/**' '!/docs/.vuepress/public/**') \
+      && (cd "$tmp_dir" && git sparse-checkout set --no-cone '/docs/**' '!/docs/.vuepress/public/**' '/docs/.vuepress/public/files/rundeck-api.yml') \
       && mkdir -p "$DOCS_DIR" \
       && find "$DOCS_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + \
       && cp -r "$tmp_dir/docs/." "$DOCS_DIR/"; then

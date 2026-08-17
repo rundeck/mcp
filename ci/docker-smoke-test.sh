@@ -51,10 +51,18 @@ for d in manual api administration developer enterprise history learning rd-cli 
   fi
 done
 [ -f /tmp/smoke-docs/index.md ] && pass "docs/index.md present" || fail "docs/index.md missing"
-if [ -d /tmp/smoke-docs/.vuepress/public ]; then
-  fail "docs/.vuepress/public present — sparse-checkout exclusion regressed (media bloat)"
+if [ -f /tmp/smoke-docs/.vuepress/public/files/rundeck-api.yml ]; then
+  pass "docs/.vuepress/public/files/rundeck-api.yml present (OpenAPI spec carved back in for api_call validation)"
 else
-  pass "docs/.vuepress/public correctly excluded"
+  fail "docs/.vuepress/public/files/rundeck-api.yml missing — api_call request validation would be silently disabled"
+fi
+# Only that one carved-out file should exist under .vuepress/public — anything else
+# means the sparse-checkout exclusion regressed (media bloat came back).
+UNEXPECTED="$(find /tmp/smoke-docs/.vuepress/public -type f ! -name rundeck-api.yml 2>/dev/null)"
+if [ -z "$UNEXPECTED" ]; then
+  pass "docs/.vuepress/public otherwise excluded (no media bloat)"
+else
+  fail "docs/.vuepress/public contains unexpected files (media bloat regressed): $UNEXPECTED"
 fi
 
 echo "== 3. Restarting the same container skips the fetch =="
