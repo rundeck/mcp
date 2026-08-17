@@ -57,9 +57,9 @@ The server supports the following environment variables:
   - Example: `your-api-token-here`
 
 - **`RUNDECK_API_VERSION`** (optional): Rundeck API version
-  - Default: `46`
+  - Default: `59`
   - Should match your Rundeck instance API version
-  - Example: `46`
+  - Example: `59`
 
 - **`RUNDECK_API_TIMEOUT_MS`** (optional): Timeout in milliseconds for `api_call`'s underlying HTTP request (also bounds `runner_create` and `acl_manage`, which call through it).
   - Default: `30000` (30 seconds)
