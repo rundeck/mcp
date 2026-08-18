@@ -112,7 +112,7 @@ TaskUpdate taskId=<verify_image_id> status="completed"
 TaskUpdate taskId=<smoke_id> status="in_progress"
 ```
 
-Verifies the entrypoint's docs fetch, the resulting `/app/docs` layout (including that the media-heavy `.vuepress/public` tree stays excluded), the `RUNDECK_DOCS_PATH` bypass, the restart/skip-fetch path, and that the server answers a real MCP `initialize` request:
+Verifies the entrypoint's docs fetch, the resulting `/app/docs` layout (including that the media-heavy `.vuepress/public` tree stays excluded except for the carved-out `rundeck-api.yml` OpenAPI spec `api_call` validates against), the `RUNDECK_DOCS_PATH` bypass, the restart/skip-fetch path, and that the server answers a real MCP `initialize` request:
 
 ```bash
 sh ci/docker-smoke-test.sh rundeck/mcp-ci:latest
