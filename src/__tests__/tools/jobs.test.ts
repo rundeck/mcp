@@ -315,6 +315,33 @@ describe("Job Tools", () => {
       expect(result).not.toContain("notification:");
     });
 
+    it("should include a runnerSelector block", () => {
+      const result = rundeckGenerateJob({
+        name: "Runner Selector Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo hi" }],
+        runnerSelector: {
+          filter: "env=prod",
+          runnerFilterMode: "TAGS",
+          runnerFilterType: "TAG_FILTER_AND",
+        },
+      });
+
+      const parsed = yaml.parse(result);
+      expect(parsed[0].runnerSelector.filter).toBe("env=prod");
+      expect(parsed[0].runnerSelector.runnerFilterType).toBe("TAG_FILTER_AND");
+    });
+
+    it("should not include runnerSelector when omitted", () => {
+      const result = rundeckGenerateJob({
+        name: "No Runner Selector Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo hi" }],
+      });
+
+      expect(result).not.toContain("runnerSelector");
+    });
+
     it("should include crontab schedule in YAML output", () => {
       const result = rundeckGenerateJob({
         name: "Scheduled Job",

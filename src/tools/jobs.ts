@@ -114,6 +114,16 @@ export interface JobNotification {
 }
 
 /**
+ * Targets a runner by tag instead of direct node reachability. Used for jobs
+ * destined for a runner-based (SaaS) deployment rather than self-hosted Rundeck.
+ */
+export interface RunnerSelector {
+  filter: string;
+  runnerFilterMode?: "TAGS";
+  runnerFilterType?: "TAG_FILTER_AND" | "TAG_FILTER_OR";
+}
+
+/**
  * Build a single workflow step's YAML/JSON representation, including
  * nested errorhandler, LogFilter plugins, and (for conditional steps)
  * recursively-built subSteps.
@@ -215,6 +225,7 @@ export function rundeckGenerateJob(params: {
   project: string;
   workflow_steps: WorkflowStep[];
   node_filter?: string;
+  runnerSelector?: RunnerSelector;
   options?: JobOption[];
   format?: "yaml" | "json";
   group?: string;
@@ -254,6 +265,10 @@ export function rundeckGenerateJob(params: {
     job.nodefilters = {
       filter: params.node_filter,
     };
+  }
+
+  if (params.runnerSelector) {
+    job.runnerSelector = params.runnerSelector;
   }
 
   if (params.options && params.options.length > 0) {
@@ -680,6 +695,16 @@ export const rundeckGenerateJobSchema = z.object({
     .describe(
       "Node filter expression. Determines which nodes the job targets. " +
       "Examples: 'tags: production', 'name: web-.*', 'tags: web AND os-family: linux'"
+    ),
+  runnerSelector: z.object({
+    filter: z.string().describe("Tag filter expression selecting which runner(s) execute this job."),
+    runnerFilterMode: z.literal("TAGS").optional(),
+    runnerFilterType: z.enum(["TAG_FILTER_AND", "TAG_FILTER_OR"]).optional(),
+  })
+    .optional()
+    .describe(
+      "Targets a runner by tag instead of node_filter's direct node reachability. Use for jobs " +
+      "destined for a runner-based (SaaS / PagerDuty Process Automation) deployment rather than self-hosted Rundeck."
     ),
   options: z.array(jobOptionSchema)
     .optional()

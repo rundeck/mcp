@@ -78,6 +78,7 @@ format, concatenate the arrays, then do a single \`api_call\` with the matching 
 ## Optional Parameters
 - **description** (string): Job description
 - **node_filter** (string): Node filter expression
+- **runnerSelector** (object): \`{ filter, runnerFilterMode?, runnerFilterType? }\` — targets a runner by tag instead of direct node reachability. Use for jobs deployed to a runner-based (SaaS / PagerDuty Process Automation) target rather than self-hosted Rundeck.
 - **options** (array): Job options
 - **format** ("yaml" | "json"): Output format (default: "yaml")
 - **group** (string): Job group
