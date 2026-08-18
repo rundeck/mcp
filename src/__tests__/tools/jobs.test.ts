@@ -264,6 +264,57 @@ describe("Job Tools", () => {
       expect(parsed[0].sequence.commands).toHaveLength(0);
     });
 
+    it("should generate an export-var step", () => {
+      const result = rundeckGenerateJob({
+        name: "Export Var Job",
+        project: "test-project",
+        workflow_steps: [
+          {
+            type: "export-var",
+            exportVar: { export: "result", value: "${data.result}" },
+          },
+        ],
+      });
+
+      const parsed = yaml.parse(result);
+      const step = parsed[0].sequence.commands[0];
+      expect(step.type).toBe("export-var");
+      expect(step.configuration.export).toBe("result");
+      expect(step.configuration.group).toBe("export");
+      expect(step.configuration.value).toBe("${data.result}");
+    });
+
+    it("should include a notification block", () => {
+      const result = rundeckGenerateJob({
+        name: "Notification Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo hi" }],
+        notification: {
+          onfailure: {
+            plugin: {
+              type: "PagerDutyEventNotification",
+              configuration: { serviceKey: "abc123" },
+            },
+          },
+        },
+      });
+
+      const parsed = yaml.parse(result);
+      expect(parsed[0].notification.onfailure.plugin.type).toBe(
+        "PagerDutyEventNotification"
+      );
+    });
+
+    it("should not include a notification block when omitted", () => {
+      const result = rundeckGenerateJob({
+        name: "No Notification Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo hi" }],
+      });
+
+      expect(result).not.toContain("notification:");
+    });
+
     it("should include crontab schedule in YAML output", () => {
       const result = rundeckGenerateJob({
         name: "Scheduled Job",

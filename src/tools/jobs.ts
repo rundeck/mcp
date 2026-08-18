@@ -6,7 +6,7 @@ import { z } from "zod";
 import * as yaml from "yaml";
 
 export interface WorkflowStep {
-  type: "command" | "script" | "jobref" | "plugin" | "conditional";
+  type: "command" | "script" | "jobref" | "plugin" | "conditional" | "export-var";
   exec?: string;
   script?: string;
   scriptfile?: string;
@@ -36,6 +36,12 @@ export interface WorkflowStep {
   conditionGroups?: ConditionClause[][];
   /** For type "conditional": steps to run when the condition evaluates true. */
   subSteps?: WorkflowStep[];
+  /** For type "export-var": exports a data value so it's visible outside sequence/data context, e.g. to notifications as ${export.<export>}. */
+  exportVar?: {
+    export: string;
+    group?: string;
+    value: string;
+  };
 }
 
 export interface LogFilter {
@@ -94,6 +100,19 @@ export interface JobOption {
   valueExposed?: boolean;
 }
 
+export interface NotificationHook {
+  plugin: {
+    type: string;
+    configuration?: Record<string, unknown>;
+  };
+}
+
+export interface JobNotification {
+  onsuccess?: NotificationHook;
+  onfailure?: NotificationHook;
+  onstart?: NotificationHook;
+}
+
 /**
  * Build a single workflow step's YAML/JSON representation, including
  * nested errorhandler, LogFilter plugins, and (for conditional steps)
@@ -140,6 +159,16 @@ function buildWorkflowCommand(step: WorkflowStep): Record<string, unknown> | nul
       subSteps: step.subSteps
         .map((subStep) => buildWorkflowCommand(subStep))
         .filter((subCommand): subCommand is Record<string, unknown> => subCommand !== null),
+    };
+  } else if (step.type === "export-var" && step.exportVar) {
+    command = {
+      type: "export-var",
+      nodeStep: false,
+      configuration: {
+        export: step.exportVar.export,
+        group: step.exportVar.group || "export",
+        value: step.exportVar.value,
+      },
     };
   }
 
@@ -194,6 +223,7 @@ export function rundeckGenerateJob(params: {
   retry?: number | string;
   multipleExecutions?: boolean;
   schedule?: JobSchedule;
+  notification?: JobNotification;
 }): string {
   const format = params.format || "yaml";
   const loglevel = params.loglevel || "INFO";
@@ -264,6 +294,16 @@ export function rundeckGenerateJob(params: {
 
   if (params.schedule) {
     job.schedule = params.schedule;
+  }
+
+  if (params.notification) {
+    const notification: Record<string, unknown> = {};
+    if (params.notification.onsuccess) notification.onsuccess = params.notification.onsuccess;
+    if (params.notification.onfailure) notification.onfailure = params.notification.onfailure;
+    if (params.notification.onstart) notification.onstart = params.notification.onstart;
+    if (Object.keys(notification).length > 0) {
+      job.notification = notification;
+    }
   }
 
   if (format === "yaml") {
@@ -463,8 +503,27 @@ export const jobScheduleSchema = z.object({
   "Only one approach is needed. Example crontab: '0 0 8 ? * MON-FRI' (8 AM weekdays)."
 );
 
+const notificationHookSchema = z.object({
+  plugin: z.object({
+    type: z.string().describe(
+      "Notification plugin type. Example: 'PagerDutyEventNotification'."
+    ),
+    configuration: z.record(z.unknown()).optional(),
+  }),
+});
+
+export const jobNotificationSchema = z.object({
+  onsuccess: notificationHookSchema.optional(),
+  onfailure: notificationHookSchema.optional(),
+  onstart: notificationHookSchema.optional(),
+}).describe(
+  "Notifications fired on job lifecycle events. Note: values captured via a step's LogFilter " +
+  "('${data.<name>}') are not visible inside notification config — export them first with an " +
+  "'export-var' workflow step and reference them as '${export.<name>}'."
+);
+
 export const workflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() => z.object({
-  type: z.enum(["command", "script", "jobref", "plugin", "conditional"]),
+  type: z.enum(["command", "script", "jobref", "plugin", "conditional", "export-var"]),
   exec: z.string().optional(),
   script: z.string().optional(),
   scriptfile: z.string().optional(),
@@ -565,6 +624,16 @@ export const workflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() => z.object
     .describe(
       "For type 'conditional': steps to run when the condition evaluates true. Requires 'conditionGroups' to also be set."
     ),
+  exportVar: z.object({
+    export: z.string().describe("Name the exported value is referenced by, e.g. 'result' for ${export.result}."),
+    group: z.string().optional().describe("Export group name. Defaults to 'export'."),
+    value: z.string().describe("Value to export, typically a reference like '${data.someKey}'."),
+  })
+    .optional()
+    .describe(
+      "For type 'export-var': makes a captured data value (from a LogFilter) visible outside " +
+      "step/sequence data context, e.g. in notifications, as ${export.<export>}."
+    ),
 })).refine(
   (step) => !(step.type === "conditional" && (!step.conditionGroups || !step.subSteps)),
   { message: "conditional steps require both 'conditionGroups' and 'subSteps'" }
@@ -654,6 +723,7 @@ export const rundeckGenerateJobSchema = z.object({
       "If true, the job can run multiple times concurrently. Default: false"
     ),
   schedule: jobScheduleSchema.optional(),
+  notification: jobNotificationSchema.optional(),
 });
 
 export const rundeckValidateJobSchema = z.object({

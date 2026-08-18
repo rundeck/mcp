@@ -107,6 +107,10 @@ Steps run in isolated shells, so output isn't visible to later steps unless capt
 - \`subSteps\` (array of workflow steps): run only when the condition evaluates true.
 - Both fields are required together. Conditional steps are **not compatible** with \`sequence.strategy: "node-first"\` — \`job_validate\` flags this.
 
+### Notifications and exporting captured data
+- **notification** (top-level, optional): \`{ onsuccess?, onfailure?, onstart? }\`, each \`{ plugin: { type, configuration? } }\`. Example type: \`"PagerDutyEventNotification"\`.
+- Data captured via a step's \`logFilters\` (\`\${data.<name>}\`) is **not visible** inside notification config. Export it first with a \`workflow_steps\` entry of type \`"export-var"\` (\`exportVar: { export, group?, value }\`), then reference it as \`\${export.<export>}\`.
+
 ## Next Steps
 1. Use \`job_create\` with required parameters to generate your job definition
 2. Validate with \`job_validate\` before importing
