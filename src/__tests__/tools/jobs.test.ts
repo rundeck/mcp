@@ -527,6 +527,81 @@ describe("Job Tools", () => {
       expect(result.valid).toBe(true);
     });
 
+    it("should warn about a key-value-data LogFilter regex with the wrong capture group count", () => {
+      const jobYaml = `- name: Test Job
+  loglevel: INFO
+  sequence:
+    commands:
+      - exec: echo key=value
+        plugins:
+          LogFilter:
+            - type: key-value-data
+              config:
+                regex: "(.+)"`;
+
+      const result = rundeckValidateJob({
+        job_definition: jobYaml,
+        format: "yaml",
+      });
+
+      expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.includes("capture group"))).toBe(true);
+    });
+
+    it("should not warn about a key-value-data LogFilter regex with exactly 2 capture groups", () => {
+      const jobYaml = `- name: Test Job
+  loglevel: INFO
+  sequence:
+    commands:
+      - exec: echo key=value
+        plugins:
+          LogFilter:
+            - type: key-value-data
+              config:
+                regex: "(.+)=(.+)"`;
+
+      const result = rundeckValidateJob({
+        job_definition: jobYaml,
+        format: "yaml",
+      });
+
+      expect(result.warnings.some((w) => w.includes("capture group"))).toBe(false);
+    });
+
+    it("should warn about a literal-only plugin field containing a substitution", () => {
+      const jobYaml = `- name: Test Job
+  loglevel: INFO
+  sequence:
+    commands:
+      - type: some-plugin
+        configuration:
+          outputFormat: "\${option.format}"`;
+
+      const result = rundeckValidateJob({
+        job_definition: jobYaml,
+        format: "yaml",
+      });
+
+      expect(result.warnings.some((w) => w.includes("outputFormat"))).toBe(true);
+    });
+
+    it("should not warn about a literal-only plugin field with a plain value", () => {
+      const jobYaml = `- name: Test Job
+  loglevel: INFO
+  sequence:
+    commands:
+      - type: some-plugin
+        configuration:
+          outputFormat: json`;
+
+      const result = rundeckValidateJob({
+        job_definition: jobYaml,
+        format: "yaml",
+      });
+
+      expect(result.warnings.some((w) => w.includes("outputFormat"))).toBe(false);
+    });
+
     it("should detect invalid YAML syntax", () => {
       const invalidYaml = `- name: Test
   invalid: [unclosed`;

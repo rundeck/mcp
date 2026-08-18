@@ -234,6 +234,12 @@ job_validate({
 })
 \`\`\`
 
+## What gets checked
+Beyond structural checks (name, loglevel, sequence.commands), \`job_validate\` also warns/errors on:
+- \`type: 'conditional'\` steps combined with \`sequence.strategy: 'node-first'\` (error — incompatible at import)
+- A \`key-value-data\` LogFilter whose regex doesn't have exactly 2 capture groups (warning — capture silently fails)
+- Plugin config fields commonly validated as literals at import time (e.g. \`outputFormat\`, \`objectType\`, \`imagePullPolicy\`, \`duration\`) containing a \`\${...}\` substitution (warning — some plugins reject this)
+
 ## Resources
 - Job schema: \`rundeck://jobs/schema\`
 - Authoring: MCP prompt \`create-job\` or tool \`job_create\`` + renderFallbackGuidance("job_validate");

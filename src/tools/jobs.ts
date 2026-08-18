@@ -347,6 +347,87 @@ function containsConditionalStep(commands: unknown[]): boolean {
   return false;
 }
 
+/**
+ * Counts capturing groups in a regex source string (non-capturing groups,
+ * lookaheads/lookbehinds excluded). Used to flag LogFilter regexes that
+ * won't capture the fields they claim to.
+ */
+function countCaptureGroups(pattern: string): number {
+  let count = 0;
+  for (let i = 0; i < pattern.length; i++) {
+    if (pattern[i] === "\\") {
+      i++;
+      continue;
+    }
+    if (pattern[i] !== "(") continue;
+    if (pattern[i + 1] !== "?") {
+      count++;
+      continue;
+    }
+    const marker = pattern[i + 2];
+    if (marker === ":" || marker === "=" || marker === "!") continue; // non-capturing / lookahead
+    if (marker === "<" && (pattern[i + 3] === "=" || pattern[i + 3] === "!")) continue; // lookbehind
+    count++; // named capturing group (?<name>...)
+  }
+  return count;
+}
+
+// Fields that some common Rundeck plugins validate as literals at import
+// time, rejecting ${option.x}/${data.x} substitution even though the field
+// accepts a plain string.
+const LITERAL_ONLY_PLUGIN_FIELDS = ["outputFormat", "objectType", "imagePullPolicy", "duration"];
+
+/**
+ * Recursively walks a parsed sequence's commands (including conditional
+ * subSteps and errorhandlers) collecting non-fatal correctness warnings
+ * that are cheap to check deterministically.
+ */
+function collectStepWarnings(commands: unknown[], warnings: string[]): void {
+  for (const command of commands) {
+    if (typeof command !== "object" || command === null) continue;
+    const commandObj = command as Record<string, unknown>;
+
+    const plugins = commandObj.plugins as Record<string, unknown> | undefined;
+    if (plugins && Array.isArray(plugins.LogFilter)) {
+      for (const filter of plugins.LogFilter) {
+        if (typeof filter !== "object" || filter === null) continue;
+        const filterObj = filter as Record<string, unknown>;
+        if (filterObj.type === "key-value-data") {
+          const config = filterObj.config as Record<string, unknown> | undefined;
+          const regex = config?.regex;
+          if (typeof regex === "string") {
+            const groups = countCaptureGroups(regex);
+            if (groups !== 2) {
+              warnings.push(
+                `LogFilter 'key-value-data' regex '${regex}' has ${groups} capture group(s); expected exactly 2 (key, value) or the capture will silently fail`
+              );
+            }
+          }
+        }
+      }
+    }
+
+    if (typeof commandObj.type === "string" && commandObj.configuration && typeof commandObj.configuration === "object") {
+      const config = commandObj.configuration as Record<string, unknown>;
+      for (const field of LITERAL_ONLY_PLUGIN_FIELDS) {
+        const value = config[field];
+        if (typeof value === "string" && value.includes("${")) {
+          warnings.push(
+            `Plugin '${commandObj.type}' field '${field}' contains '\${...}' substitution; some Rundeck plugins validate this field as a literal at import time and will reject a dynamic value here`
+          );
+        }
+      }
+    }
+
+    if (Array.isArray(commandObj.subSteps)) {
+      collectStepWarnings(commandObj.subSteps, warnings);
+    }
+    if (commandObj.errorhandler && typeof commandObj.errorhandler === "object") {
+      collectStepWarnings([commandObj.errorhandler], warnings);
+    }
+  }
+}
+
 export function rundeckValidateJob(params: {
   job_definition: string;
   format: "yaml" | "json";
@@ -409,13 +490,16 @@ export function rundeckValidateJob(params: {
           errors.push("Job sequence must have a 'commands' array");
         } else if (sequence.commands.length === 0) {
           warnings.push("Job has no workflow steps");
-        } else if (
-          sequence.strategy === "node-first" &&
-          containsConditionalStep(sequence.commands)
-        ) {
-          errors.push(
-            "Conditional workflow steps (type: 'conditional') are not compatible with sequence.strategy 'node-first'"
-          );
+        } else {
+          if (
+            sequence.strategy === "node-first" &&
+            containsConditionalStep(sequence.commands)
+          ) {
+            errors.push(
+              "Conditional workflow steps (type: 'conditional') are not compatible with sequence.strategy 'node-first'"
+            );
+          }
+          collectStepWarnings(sequence.commands, warnings);
         }
       }
 
