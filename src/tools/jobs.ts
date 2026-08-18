@@ -28,6 +28,25 @@ export interface WorkflowStep {
   };
   nodeStep?: boolean;
   description?: string;
+  /** Step to run if this step fails. Rundeck runs it in place, then still fails the workflow unless keepgoingOnSuccess is true. */
+  errorhandler?: ErrorHandlerStep;
+}
+
+export interface ErrorHandlerStep {
+  exec?: string;
+  script?: string;
+  scriptfile?: string;
+  scripturl?: string;
+  scriptInterpreter?: string;
+  interpreterArgsQuoted?: boolean;
+  fileExtension?: string;
+  plugin?: {
+    type: string;
+    configuration?: Record<string, unknown>;
+  };
+  nodeStep?: boolean;
+  /** If true, a successful error handler counts the step as successful and the workflow continues. */
+  keepgoingOnSuccess?: boolean;
 }
 
 export interface JobSchedule {
@@ -82,8 +101,10 @@ export function rundeckGenerateJob(params: {
   // Build workflow sequence
   const commands: unknown[] = [];
   for (const step of params.workflow_steps) {
+    let command: Record<string, unknown> | null = null;
+
     if (step.type === "command" && step.exec) {
-      commands.push({ exec: step.exec });
+      command = { exec: step.exec };
     } else if (step.type === "script" && (step.script || step.scriptfile || step.scripturl)) {
       const scriptStep: Record<string, unknown> = {};
       if (step.script) scriptStep.script = step.script;
@@ -93,9 +114,9 @@ export function rundeckGenerateJob(params: {
       if (step.interpreterArgsQuoted !== undefined)
         scriptStep.interpreterArgsQuoted = step.interpreterArgsQuoted;
       if (step.fileExtension) scriptStep.fileExtension = step.fileExtension;
-      commands.push(scriptStep);
+      command = scriptStep;
     } else if (step.type === "jobref" && step.jobref) {
-      commands.push({ jobref: step.jobref });
+      command = { jobref: step.jobref };
     } else if (step.type === "plugin" && step.plugin) {
       const pluginStep: Record<string, unknown> = {
         type: step.plugin.type,
@@ -106,7 +127,32 @@ export function rundeckGenerateJob(params: {
       if (step.plugin.configuration) {
         pluginStep.configuration = step.plugin.configuration;
       }
-      commands.push(pluginStep);
+      command = pluginStep;
+    }
+
+    if (command && step.errorhandler) {
+      const handler = step.errorhandler;
+      const errorhandlerStep: Record<string, unknown> = {};
+      if (handler.script) errorhandlerStep.script = handler.script;
+      else if (handler.scriptfile) errorhandlerStep.scriptfile = handler.scriptfile;
+      else if (handler.scripturl) errorhandlerStep.scripturl = handler.scripturl;
+      else if (handler.exec) errorhandlerStep.exec = handler.exec;
+      else if (handler.plugin) {
+        errorhandlerStep.type = handler.plugin.type;
+        if (handler.plugin.configuration) errorhandlerStep.configuration = handler.plugin.configuration;
+      }
+      if (handler.scriptInterpreter) errorhandlerStep.scriptInterpreter = handler.scriptInterpreter;
+      if (handler.interpreterArgsQuoted !== undefined)
+        errorhandlerStep.interpreterArgsQuoted = handler.interpreterArgsQuoted;
+      if (handler.fileExtension) errorhandlerStep.fileExtension = handler.fileExtension;
+      if (handler.nodeStep !== undefined) errorhandlerStep.nodeStep = handler.nodeStep;
+      if (handler.keepgoingOnSuccess !== undefined)
+        errorhandlerStep.keepgoingOnSuccess = handler.keepgoingOnSuccess;
+      command.errorhandler = errorhandlerStep;
+    }
+
+    if (command) {
+      commands.push(command);
     }
   }
 
@@ -379,6 +425,33 @@ export const workflowStepSchema = z.object({
     .optional(),
   nodeStep: z.boolean().optional(),
   description: z.string().optional(),
+  errorhandler: z.object({
+    exec: z.string().optional(),
+    script: z.string().optional(),
+    scriptfile: z.string().optional(),
+    scripturl: z.string().url().optional(),
+    scriptInterpreter: z.string().optional(),
+    interpreterArgsQuoted: z.boolean().optional(),
+    fileExtension: z.string().optional(),
+    plugin: z
+      .object({
+        type: z.string(),
+        configuration: z.record(z.unknown()).optional(),
+      })
+      .optional(),
+    nodeStep: z.boolean().optional(),
+    keepgoingOnSuccess: z.boolean()
+      .optional()
+      .describe(
+        "If true, a successful error handler counts the step as successful and the workflow continues. " +
+        "If false/omitted, the step is still marked failed even if the error handler succeeds."
+      ),
+  })
+    .optional()
+    .describe(
+      "Step to run if this step fails, e.g. a cleanup command or notification. " +
+      "Runs in place of failure handling; combine with keepgoingOnSuccess to continue the workflow on handler success."
+    ),
 });
 
 export const jobOptionSchema = z.object({

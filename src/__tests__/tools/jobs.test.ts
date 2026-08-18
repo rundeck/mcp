@@ -2,6 +2,7 @@
  * Tests for job generation tools
  */
 
+import * as yaml from "yaml";
 import {
   rundeckGenerateJob,
   rundeckValidateJob,
@@ -158,6 +159,38 @@ describe("Job Tools", () => {
       expect(result).not.toContain("scriptInterpreter");
       expect(result).not.toContain("interpreterArgsQuoted");
       expect(result).not.toContain("fileExtension");
+    });
+
+    it("should include errorhandler on a step", () => {
+      const result = rundeckGenerateJob({
+        name: "Errorhandler Job",
+        project: "test-project",
+        workflow_steps: [
+          {
+            type: "command",
+            exec: "risky-command",
+            errorhandler: {
+              exec: "cleanup-command",
+              keepgoingOnSuccess: true,
+            },
+          },
+        ],
+      });
+
+      const parsed = yaml.parse(result);
+      const step = parsed[0].sequence.commands[0];
+      expect(step.errorhandler.exec).toBe("cleanup-command");
+      expect(step.errorhandler.keepgoingOnSuccess).toBe(true);
+    });
+
+    it("should not include errorhandler when omitted", () => {
+      const result = rundeckGenerateJob({
+        name: "No Errorhandler Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo hi" }],
+      });
+
+      expect(result).not.toContain("errorhandler");
     });
 
     it("should include crontab schedule in YAML output", () => {

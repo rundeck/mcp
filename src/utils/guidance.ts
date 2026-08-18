@@ -95,6 +95,9 @@ format, concatenate the arrays, then do a single \`api_call\` with the matching 
 - \`interpreterArgsQuoted\` (boolean): whether interpreter args are quoted as a single argument
 - \`fileExtension\` (string): file extension for the generated script file, e.g. \`".ps1"\` — required for PowerShell to run correctly
 
+### Error handling (on any \`workflow_steps\` entry)
+- \`errorhandler\` (object): a step to run if this step fails — \`{ exec | script | scriptfile | scripturl | plugin, keepgoingOnSuccess? }\`. Set \`keepgoingOnSuccess: true\` to continue the workflow when the handler itself succeeds.
+
 ## Next Steps
 1. Use \`job_create\` with required parameters to generate your job definition
 2. Validate with \`job_validate\` before importing
