@@ -40,6 +40,7 @@ import {
 import {
   rundeckManageResourceSource,
   rundeckManageResourceSourceSchema,
+  PROJECT_SCOPED_ACTIONS,
 } from "./tools/resources.js";
 import { REGISTERED_TOOL_NAMES } from "./tools/registered-tool-names.js";
 import {
@@ -315,9 +316,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       case "resource_model_source_manage": {
         // 'project' isn't required for 'list_provider_types'/'describe_provider_config' (instance-wide
-        // plugin metadata, not project-scoped), so only 'action' triggers guidance mode here — the
-        // schema's own refine() rules surface any other missing-field errors with per-action messages.
-        if (needsGuidance(args, ["action"])) {
+        // plugin metadata, not project-scoped), so it's only checked for the actions that do need it —
+        // otherwise a bare `{ action: "add_source" }` call would skip straight to a terse schema-refine
+        // error instead of the full step-by-step guidance.
+        const rsmAction = (args as Record<string, unknown> | undefined)?.action;
+        const rsmNeedsProject =
+          typeof rsmAction === "string" &&
+          (PROJECT_SCOPED_ACTIONS as string[]).includes(rsmAction) &&
+          needsGuidance(args, ["project"]);
+        if (needsGuidance(args, ["action"]) || rsmNeedsProject) {
           logger.info("resource_model_source_manage called without required params - returning guidance");
           return returnGuidance(getResourceSourceManageGuidance());
         }

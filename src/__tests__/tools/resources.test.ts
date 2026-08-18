@@ -117,6 +117,15 @@ describe("rundeckManageResourceSourceSchema", () => {
     expect(result.success).toBe(false);
   });
 
+  it("requires config.file when type is a differently-cased 'File' — the guard is case-insensitive", () => {
+    const result = rundeckManageResourceSourceSchema.safeParse({
+      action: "add_source",
+      project: "demo",
+      type: "File",
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("accepts type 'file' with config.file present", () => {
     const result = rundeckManageResourceSourceSchema.safeParse({
       action: "add_source",
@@ -283,8 +292,23 @@ describe("rundeckManageResourceSource", () => {
     expect(mockFetch).toHaveBeenCalledTimes(1); // only the pre-flight GET — no POST attempted
   });
 
-  it("set_resources proceeds to POST when the pre-flight get_source call is inconclusive (e.g. fails)", async () => {
-    mockApiResponse({ message: "not found" }, 404); // pre-flight get_source fails
+  it("set_resources fails fast, before POSTing, when the pre-flight get_source reports 404 (index doesn't exist)", async () => {
+    mockApiResponse({ message: "not found" }, 404);
+
+    await expect(
+      rundeckManageResourceSource({
+        action: "set_resources",
+        project: "demo",
+        index: 1,
+        content: "web-01:\n  hostname: web-01.internal\n",
+      })
+    ).rejects.toThrow(/does not exist.*\(404\)/);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1); // only the pre-flight GET — no POST attempted
+  });
+
+  it("set_resources proceeds to POST when the pre-flight get_source call is genuinely inconclusive (e.g. a 500)", async () => {
+    mockApiResponse({ message: "internal error" }, 500); // pre-flight get_source fails, but not with 404
     mockApiResponse({ "web-01": { hostname: "web-01.internal" } }); // POST still attempted
 
     await rundeckManageResourceSource({
@@ -459,6 +483,19 @@ describe("rundeckManageResourceSource", () => {
     expect((result.body as { renumbered: Array<{ from: number; to: number }> }).renumbered).toEqual([
       { from: 3, to: 2 },
     ]);
+  });
+
+  it("remove_source rejects a nonexistent index instead of reporting a no-op success", async () => {
+    mockApiResponse({
+      "resources.source.1.type": "file",
+      "resources.source.1.config.file": "etc/resources.yaml",
+    });
+
+    await expect(
+      rundeckManageResourceSource({ action: "remove_source", project: "demo", index: 5 })
+    ).rejects.toThrow(/Source 5 does not exist in project 'demo' — nothing to remove/);
+
+    expect(mockFetch).toHaveBeenCalledTimes(1); // only the GET — no PUT attempted for a no-op removal
   });
 
   it("throws a descriptive error when reading project config fails", async () => {

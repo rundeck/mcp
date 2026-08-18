@@ -103,6 +103,21 @@ export type ResourceSourceAction =
   | "get_resources"
   | "set_resources";
 
+/**
+ * Actions that require `project` — every one except the two instance-wide
+ * plugin-metadata lookups. Exported so the guidance-mode gate in index.ts can
+ * trigger full guidance markdown for a bare `{ action: "add_source" }` call
+ * (missing `project`), not just a terse schema-refine error.
+ */
+export const PROJECT_SCOPED_ACTIONS: ResourceSourceAction[] = [
+  "list_sources",
+  "get_source",
+  "add_source",
+  "remove_source",
+  "get_resources",
+  "set_resources",
+];
+
 /** Rundeck's own service name for Resource Model Source plugins (see plugin/list's `service` field). */
 const RESOURCE_MODEL_SOURCE_SERVICE = "ResourceModelSource";
 
@@ -131,25 +146,40 @@ async function putProjectConfig(project: string, config: Record<string, string>)
   return { status: result.status, body: result.body };
 }
 
+export interface SourceWriteableCheck {
+  /** `true`/`false` when Rundeck reported a `writeable` boolean; `undefined` if inconclusive. */
+  writeable?: boolean;
+  /** `true` when the detail call returned 404 — the index doesn't exist, a hard failure, not "inconclusive". */
+  notFound: boolean;
+}
+
 /**
  * Fetches a source's own detail and reports whether Rundeck considers it
  * writeable — the `resources.writeable` field from `GET project/{project}/source/{index}`.
- * Returns `undefined` (inconclusive) rather than throwing if the detail call
- * fails or the field is absent, so a transient/unrelated GET failure doesn't
- * block a `set_resources` call that might otherwise succeed; the POST itself
- * remains the final authority.
+ *
+ * A 404 is reported explicitly via `notFound: true` rather than folded into
+ * "inconclusive": a nonexistent index is an unambiguous, permanent failure
+ * (unlike a transient network error), so the caller should stop there instead
+ * of still attempting the POST. Any other non-200 response, or a 200 missing
+ * the expected shape, is genuinely inconclusive (`writeable: undefined,
+ * notFound: false`) — the caller then still attempts the POST, since a
+ * transient/unrelated GET failure shouldn't block a write that might succeed;
+ * the POST result remains the final authority in that case.
  */
-async function getSourceWriteable(project: string, index: number): Promise<boolean | undefined> {
+async function getSourceWriteable(project: string, index: number): Promise<SourceWriteableCheck> {
   const result = await rundeckApiCall({ endpoint: `project/${project}/source/${index}`, method: "GET" });
+  if (result.status === 404) {
+    return { notFound: true };
+  }
   if (result.status !== 200 || typeof result.body !== "object" || result.body === null) {
-    return undefined;
+    return { notFound: false };
   }
   const resources = (result.body as Record<string, unknown>).resources;
   if (typeof resources !== "object" || resources === null) {
-    return undefined;
+    return { notFound: false };
   }
   const writeable = (resources as Record<string, unknown>).writeable;
-  return typeof writeable === "boolean" ? writeable : undefined;
+  return { writeable: typeof writeable === "boolean" ? writeable : undefined, notFound: false };
 }
 
 /**
@@ -311,8 +341,14 @@ export async function rundeckManageResourceSource(params: {
       // failed POST — writeability is an empirical, per-source fact (not
       // implied by 'type'), so check it fresh every call rather than assume
       // it from whatever a previous add_source/get_source call reported.
-      const writeable = await getSourceWriteable(project, params.index);
-      if (writeable === false) {
+      const preflight = await getSourceWriteable(project, params.index);
+      if (preflight.notFound) {
+        throw new Error(
+          `Source ${params.index} does not exist in project '${project}' (404) — there is nothing to write ` +
+          "to. Check list_sources for the actual indices before retrying set_resources."
+        );
+      }
+      if (preflight.writeable === false) {
         throw new Error(
           `Source ${params.index} in project '${project}' is not writeable (writeable: false) — ` +
           "set_resources cannot write node definitions to it. Writeability depends on the actual " +
@@ -376,6 +412,14 @@ export async function rundeckManageResourceSource(params: {
         throw new Error("'index' is required for action 'remove_source'");
       }
       const config = await getProjectConfig(project);
+      const targetPrefix = `resources.source.${params.index}.`;
+      const targetExists = Object.keys(config).some((key) => key.startsWith(targetPrefix));
+      if (!targetExists) {
+        throw new Error(
+          `Source ${params.index} does not exist in project '${project}' — nothing to remove. ` +
+          "Check list_sources for the actual indices."
+        );
+      }
       const { config: renumbered, moves } = removeAndRenumberSource(config, params.index);
       const putResult = await putProjectConfig(project, renumbered);
       return {
@@ -522,11 +566,16 @@ export const rundeckManageResourceSourceSchema = z
     path: ["type"],
   })
   .refine(
-    (s) => s.action !== "add_source" || s.type !== "file" || !!s.config?.file,
+    // Case-insensitive on purpose: Rundeck's actual provider names are
+    // lowercase ("file"), but this guard exists to stop a corruption bug
+    // (a bare file-type source with no config.file), and that risk doesn't
+    // go away just because a caller typed "File" or "FILE" instead.
+    (s) => s.action !== "add_source" || s.type?.toLowerCase() !== "file" || !!s.config?.file,
     {
       message:
-        "'config.file' is required when type is 'file' (add_source) — a 'file' source with no file path " +
-        "doesn't just fail to write, it can break 'list_sources'/'get_source' for the whole project until removed.",
+        "'config.file' is required when type is 'file' (add_source, case-insensitive) — a 'file' source " +
+        "with no file path doesn't just fail to write, it can break 'list_sources'/'get_source' for the " +
+        "whole project until removed.",
       path: ["config"],
     }
   );
