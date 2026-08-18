@@ -30,6 +30,13 @@ export interface WorkflowStep {
   description?: string;
   /** Step to run if this step fails. Rundeck runs it in place, then still fails the workflow unless keepgoingOnSuccess is true. */
   errorhandler?: ErrorHandlerStep;
+  /** Log filters that capture step output into data for use by later steps (${data.<name>}) or notifications. */
+  logFilters?: LogFilter[];
+}
+
+export interface LogFilter {
+  type: string;
+  config?: Record<string, unknown>;
 }
 
 export interface ErrorHandlerStep {
@@ -149,6 +156,16 @@ export function rundeckGenerateJob(params: {
       if (handler.keepgoingOnSuccess !== undefined)
         errorhandlerStep.keepgoingOnSuccess = handler.keepgoingOnSuccess;
       command.errorhandler = errorhandlerStep;
+    }
+
+    if (command && step.logFilters && step.logFilters.length > 0) {
+      command.plugins = {
+        LogFilter: step.logFilters.map((f) => {
+          const filter: Record<string, unknown> = { type: f.type };
+          if (f.config) filter.config = f.config;
+          return filter;
+        }),
+      };
     }
 
     if (command) {
@@ -451,6 +468,26 @@ export const workflowStepSchema = z.object({
     .describe(
       "Step to run if this step fails, e.g. a cleanup command or notification. " +
       "Runs in place of failure handling; combine with keepgoingOnSuccess to continue the workflow on handler success."
+    ),
+  logFilters: z.array(
+    z.object({
+      type: z.string().describe(
+        "Log filter plugin type. Common built-ins: 'key-value-data' (parses 'key=value' lines), " +
+        "'key-value-data-multilines' (same, with a delimited-lines mode), 'json-mapper' (parses JSON output into data)."
+      ),
+      config: z.record(z.unknown())
+        .optional()
+        .describe(
+          "Filter-specific config. For 'key-value-data': { regex, logData?, captureMultipleKeysValues? }. " +
+          "The 'regex' must contain exactly the capture groups the filter expects (e.g. two groups for a key/value pair) " +
+          "or capture silently fails at runtime."
+        ),
+    })
+  )
+    .optional()
+    .describe(
+      "Log filters that capture this step's output into data, since steps otherwise run in isolated " +
+      "shells with no shared state. Captured values are referenced downstream as ${data.<name>}."
     ),
 });
 

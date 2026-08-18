@@ -98,6 +98,10 @@ format, concatenate the arrays, then do a single \`api_call\` with the matching 
 ### Error handling (on any \`workflow_steps\` entry)
 - \`errorhandler\` (object): a step to run if this step fails — \`{ exec | script | scriptfile | scripturl | plugin, keepgoingOnSuccess? }\`. Set \`keepgoingOnSuccess: true\` to continue the workflow when the handler itself succeeds.
 
+### Passing data between steps (on any \`workflow_steps\` entry)
+Steps run in isolated shells, so output isn't visible to later steps unless captured.
+- \`logFilters\` (array): \`{ type, config? }\`. Common types: \`"key-value-data"\` (regex must have the capture groups the filter expects, e.g. two for a key/value pair), \`"key-value-data-multilines"\`, \`"json-mapper"\`. Captured values are referenced downstream as \`\${data.<name>}\`.
+
 ## Next Steps
 1. Use \`job_create\` with required parameters to generate your job definition
 2. Validate with \`job_validate\` before importing

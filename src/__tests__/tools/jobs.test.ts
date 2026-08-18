@@ -193,6 +193,40 @@ describe("Job Tools", () => {
       expect(result).not.toContain("errorhandler");
     });
 
+    it("should include LogFilter plugins on a step", () => {
+      const result = rundeckGenerateJob({
+        name: "LogFilter Job",
+        project: "test-project",
+        workflow_steps: [
+          {
+            type: "command",
+            exec: "echo key=value",
+            logFilters: [
+              {
+                type: "key-value-data",
+                config: { regex: "(.+)=(.+)", logData: "true" },
+              },
+            ],
+          },
+        ],
+      });
+
+      const parsed = yaml.parse(result);
+      const step = parsed[0].sequence.commands[0];
+      expect(step.plugins.LogFilter[0].type).toBe("key-value-data");
+      expect(step.plugins.LogFilter[0].config.regex).toBe("(.+)=(.+)");
+    });
+
+    it("should not include plugins.LogFilter when omitted", () => {
+      const result = rundeckGenerateJob({
+        name: "Plain Command Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo hi" }],
+      });
+
+      expect(result).not.toContain("LogFilter");
+    });
+
     it("should include crontab schedule in YAML output", () => {
       const result = rundeckGenerateJob({
         name: "Scheduled Job",
