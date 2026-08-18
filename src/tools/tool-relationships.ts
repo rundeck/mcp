@@ -65,6 +65,15 @@ export const TOOL_RELATIONSHIPS: ToolRelationship[] = [
       "calling `api_call`'s job-import endpoint directly, accepting the risk of " +
       "submitting an unvalidated payload",
   },
+  {
+    tool: "resource_model_source_manage",
+    prioritizedOver: "api_call",
+    fallbackTo: "api_call",
+    domain: "Resource Model Source and node definition management",
+    fallbackAction:
+      "calling `api_call` against `project/{project}/sources`, " +
+      "`project/{project}/source/{index}/resources`, and `project/{project}/config` yourself",
+  },
 ];
 
 function capitalize(s: string): string {

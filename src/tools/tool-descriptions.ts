@@ -1,5 +1,6 @@
 import { renderPriorityGuidance } from "./tool-relationships.js";
 import { ASK_USER_LINE } from "../utils/escalation.js";
+import { NODE_DEFINITION_FORMAT_REFERENCE } from "./resources.js";
 
 /**
  * Fully-built `description` strings for the tools whose text is generated
@@ -111,5 +112,40 @@ Rundeck keeps no prior version) always require confirmation before reaching Rund
 connected client supports MCP elicitation, the server asks the user directly and you don't need to
 do anything extra — just wait for the outcome. Otherwise, it requires \`confirm: true\`, which you
 must only set after the user has explicitly approved that specific change yourself.
+
+${ASK_USER_LINE}`;
+
+export const RESOURCE_MODEL_SOURCE_MANAGE_DESCRIPTION = `Configure a project's Resource Model Sources (where Nodes come from) and, when possible, load node definitions into them directly — all without hand-building requests against plugin/list, plugin/detail, project/{project}/sources, project/{project}/source/{index}/resources, or project/{project}/config.
+
+**The canonical 3-step flow this tool is built around:**
+1. **Configure the requested plugin** — call \`describe_provider_config\` (after \`list_provider_types\` if the exact installed name is unknown) to get that plugin's real \`props\` schema, then \`add_source\` with a \`config\` built from those props. Never guess field names for a non-built-in plugin (Ansible, AWS, etc.).
+2. **Check writeability** — this determines whether nodes can be created directly through the API at all, which is what makes use cases like "create these manual nodes" or "migrate nodes from an external source into Rundeck" possible without server filesystem access. \`set_resources\` (step 3) checks this itself via \`get_source\`, so no separate call is required.
+3. **Load the nodes if writeable — otherwise stop.** If \`writeable: true\`, \`set_resources\` writes the node definitions. If \`writeable: false\`, it fails fast with that fact instead of attempting the POST or silently trying something else; the caller then decides whether to retry \`add_source\` with a different provider \`type\`.
+
+**When to use:**
+- Discovering which Resource Model Source plugins are installed on this instance (e.g. is 'ansible' available?), and what config keys a given plugin expects — instead of guessing or relying on static docs
+- Auditing which Resource Model Sources a project has, and whether each is \`writeable\`
+- Adding a source (any provider \`type\` — 'file', 'url', 'directory', 'script', Enterprise-only ones like 'node-wizard', or a third-party plugin) to hold node definitions
+- Creating nodes manually, or migrating nodes from an external source into Rundeck, by loading node definitions (YAML/JSON/XML) directly on a source the API reports as \`writeable\` — no server filesystem access needed
+
+**When NOT to use:**
+- Making generic API calls unrelated to nodes/sources (use api_call instead)
+
+**Actions:**
+- \`list_provider_types\` — GET plugin/list, filtered to service 'ResourceModelSource' — which provider names are installed. Not project-scoped.
+- \`describe_provider_config\` — GET plugin/detail/ResourceModelSource/{type} — that provider's \`props\` schema (name, type, required, defaultValue, description, allowed values). Requires \`type\`; not project-scoped.
+- \`list_sources\` — GET project/{project}/sources (each entry reports \`writeable\`)
+- \`get_source\` — GET project/{project}/source/{index} (also reports \`writeable\`)
+- \`add_source\` — read-modify-write of project/{project}/config; index auto-assigned; \`type\` is free-form but **required, no default** (a bare \`file\` source with no \`config.file\` was observed to break \`list_sources\`/\`get_source\` for the whole project until removed, so guessing is disallowed rather than silently defaulting); \`config\` is a free-form key/value passthrough matching Rundeck's own \`resources.source.N.config.*\` keys, and \`config.file\` is required specifically when \`type\` is \`"file"\`
+- \`remove_source\` — read-modify-write of project/{project}/config, removing that index's keys and renumbering any higher-indexed sources down to close the gap (Rundeck's own listing stops enumerating at the first missing index)
+- \`get_resources\` — GET project/{project}/source/{index}/resources
+- \`set_resources\` — POST project/{project}/source/{index}/resources — requires \`content\`; checks \`writeable\` via \`get_source\` first and stops with a clear error if false, rather than attempting the write
+
+**Writeability is empirical, not implied by \`type\`:** whether a source accepts \`set_resources\` depends on the actual Rundeck deployment, not on its provider type name. A \`file\` source can report \`writeable: false\` on installs using DB-backed project storage instead of a real filesystem (some Docker/OSS setups) — confirmed against a live instance, where \`node-wizard\` (commonly assumed manual-entry-only, API-less) turned out to be \`writeable: true\` instead.
+
+**Caveat — some providers' data outlives their source entry:** e.g. \`node-wizard\`'s node data lives in the project itself, independent of any single source's config entry/index. \`remove_source\` only deletes the config pointer, not that underlying data — re-adding such a source later can resurface (and duplicate) old nodes.
+
+${NODE_DEFINITION_FORMAT_REFERENCE}
+**Guidance Mode:** Call without \`action\` to get step-by-step guidance (\`project\` isn't checked for this, since it's only required for some actions — see Actions above).${renderPriorityGuidance("resource_model_source_manage")}
 
 ${ASK_USER_LINE}`;

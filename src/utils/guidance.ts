@@ -17,6 +17,7 @@
 import { renderFallbackGuidance } from "../tools/tool-relationships.js";
 import { ASK_USER_GUIDANCE, ASK_USER_LINE } from "./escalation.js";
 import type { DestructiveAction } from "./confirmation.js";
+import { NODE_DEFINITION_FORMAT_REFERENCE } from "../tools/resources.js";
 
 /**
  * Fallback path only: shown when the connected MCP client does NOT declare the
@@ -709,6 +710,123 @@ acl_manage({
 ## Resources
 - ACL Policy format: \`rundeck://docs/manual\` (see aclpolicy-v10.md)
 - ACL Policy administration: \`rundeck://docs/administration\` (see acl-policy-editor.md)` + renderFallbackGuidance("acl_manage");
+}
+
+export function getResourceSourceManageGuidance(): string {
+  return `# Managing Rundeck Resource Model Sources (Nodes)
+
+## Overview
+A Rundeck project's Nodes come from one or more Resource Model Sources — \`file\`, \`url\`,
+\`directory\`, \`script\`, Enterprise-only ones like \`node-wizard\`, or a third-party plugin.
+This tool wraps source management AND, for writeable sources, reading/writing the node
+definition content itself — no server filesystem access needed when the source is writeable.
+
+## The 3-step flow this tool is built around
+1. **Configure the requested plugin.** This requires knowing its config field schema first —
+   call \`describe_provider_config\` (after \`list_provider_types\` if you don't already know the
+   exact installed provider name) to get its real \`props\`, then \`add_source\` with a \`config\`
+   built from those props. For the built-in types (\`file\`/\`url\`/\`directory\`/\`script\`) the
+   common shapes are already known (see below), so this lookup is optional but still safe to do.
+2. **Check writeability.** This is what determines whether nodes can be created directly through
+   the API at all — the mechanism behind use cases like "create these manual nodes" or "migrate
+   nodes from an external source into Rundeck." You don't need a separate call for this: step 3's
+   \`set_resources\` checks it itself via \`get_source\` before writing.
+3. **Load the nodes if writeable — otherwise stop.** \`set_resources\` writes the node definitions
+   when \`writeable: true\`. When \`writeable: false\`, it fails fast with that fact instead of
+   attempting the POST or silently trying something else — the flow ends there, and it's up to
+   the caller to decide whether to redo step 1 with a different provider \`type\`.
+
+## Writeability is empirical, not implied by \`type\` (corrected after live testing)
+Earlier guidance here assumed \`file\`-type sources are writeable by default and that
+Rundeck's **Node Wizard** UI feature (Enterprise-only) had no API surface at all. Both
+assumptions broke under live testing: a \`file\` source can report \`writeable: false\` on
+Rundeck deployments using DB-backed project storage instead of a real filesystem (seen on
+some Docker/OSS installs), while \`node-wizard\` — commonly assumed manual-entry-only —
+turned out to be \`writeable: true\` via the exact same \`set_resources\` endpoint.
+
+**This is enforced in the flow, not just a suggestion:** \`set_resources\` calls \`get_source\`
+itself first and fails fast with a clear error if \`writeable: false\`, rather than only finding
+out from a raw POST rejection. If it fails this way, \`add_source\` again with a different
+\`type\` and retry — there's no fixed list of "the writeable types," since this is a
+deployment-specific fact, not something the tool (or you) can assume in advance. (If the
+pre-flight \`get_source\` call itself fails or is inconclusive, \`set_resources\` still attempts
+the POST — a transient/unrelated GET failure shouldn't block a write that might succeed; the
+POST result remains the final authority.)
+
+**Caveat:** some providers' node data outlives their source entry — e.g. \`node-wizard\`'s data
+lives in the project itself, independent of any one source's config entry/index.
+\`remove_source\` only deletes the config pointer, not that underlying data. Re-adding such a
+source later can resurface (and duplicate) old nodes.
+
+## Actions
+- **list_provider_types**: \`GET plugin/list\`, filtered to service 'ResourceModelSource' — which provider names are actually installed on this instance. Not project-scoped, 'project' isn't used.
+- **describe_provider_config**: \`GET plugin/detail/ResourceModelSource/{type}\` — that provider's config schema: its \`props\` array (name, type, required, defaultValue, description, allowed values for Select-type props). Requires \`type\`; not project-scoped.
+- **list_sources**: \`GET project/{project}/sources\` — shows each source's index, type, and whether it's \`writeable\`
+- **get_source**: \`GET project/{project}/source/{index}\`
+- **add_source**: read-modify-write of \`project/{project}/config\` — declares a new source; index is auto-assigned. \`type\` is free-form (not restricted to a fixed list); \`config\` is a free-form key/value passthrough matching Rundeck's own \`resources.source.N.config.*\` keys, so any provider's documented config works unmodified
+- **remove_source**: read-modify-write of \`project/{project}/config\` — removes a source's keys by index, then renumbers any higher-indexed sources down to close the gap (Rundeck's own source listing stops enumerating at the first missing index, so a gap otherwise makes later sources invisible to \`list_sources\` even though their config still exists)
+- **get_resources**: \`GET project/{project}/source/{index}/resources\` — current node definitions
+- **set_resources**: \`POST project/{project}/source/{index}/resources\` — writes node definitions; requires \`content\`; only works when the source is \`writeable\`
+
+## Required Parameters
+- **action** (\`list_provider_types\` | \`describe_provider_config\` | \`list_sources\` | \`get_source\` | \`add_source\` | \`remove_source\` | \`get_resources\` | \`set_resources\`)
+- **project** (string): required for all actions except \`list_provider_types\` and \`describe_provider_config\`
+- **type** (string): required for \`describe_provider_config\` and \`add_source\` — **no default**. Omitting it used to silently fall back to \`"file"\`; that's gone now, because a bare \`file\` source created without \`config.file\` was observed to break \`list_sources\`/\`get_source\` for the *whole project* (not just report itself as non-writeable) until removed. Pick a type explicitly.
+- **config.file** (string, inside \`config\`): required specifically when \`type\` is \`"file"\` for \`add_source\`, for the same reason
+- **index** (number): required for \`get_source\`, \`remove_source\`, \`get_resources\`, \`set_resources\`
+- **content** (string): required for \`set_resources\`
+
+## Common \`config\` shapes for the built-in types (all keys are free-form strings, passed straight through)
+- \`type: "file"\` → \`config: { file: "etc/resources.yaml", format: "resourceyaml", generateFileAutomatically: "true" }\` — \`format\` here is Rundeck's plugin name (resourceyaml/resourcejson/resourcexml), separate from this tool's top-level \`format\` param (used only for \`set_resources\`'s Content-Type)
+- \`type: "url"\` → \`config: { url: "https://..." }\`
+- \`type: "directory"\` → \`config: { directory: "/path/to/dir" }\`
+- \`type: "node-wizard"\` (Enterprise) → omit \`config\` entirely, it takes none
+- Anything else (e.g. \`ansible\`, cloud providers) → describe it with \`describe_provider_config\` rather than guessing
+
+${NODE_DEFINITION_FORMAT_REFERENCE}
+## End-to-end example, following the 3-step flow above
+
+**Step 1 — configure the requested plugin.** For a built-in type, the config shape is already
+known (table above). For anything else, discover it first:
+\`\`\`
+resource_model_source_manage({ action: "list_provider_types" })
+→ find the exact installed provider name, e.g. "ansible" (provider names vary by plugin build)
+
+resource_model_source_manage({ action: "describe_provider_config", type: "ansible" })
+→ returns "props": [{ name, type, required, defaultValue, desc, allowed, ... }, ...] —
+  the exact config keys that plugin accepts, straight from the instance, not guessed
+\`\`\`
+Either way, step 1 ends with \`add_source\`:
+\`\`\`
+resource_model_source_manage({
+  action: "add_source",
+  project: "workshop-demo",
+  type: "file",  // or "ansible", with config built from the props above
+  config: { file: "etc/resources.yaml", format: "resourceyaml", generateFileAutomatically: "true" }
+})
+→ returns { index: <N>, ... }
+\`\`\`
+
+**Step 2 (checked automatically, no separate call) + Step 3 — load the nodes if writeable:**
+\`\`\`
+resource_model_source_manage({
+  action: "set_resources",
+  project: "workshop-demo",
+  index: <N>,
+  format: "yaml",
+  content: "web-01:\\n  hostname: web-01.internal\\n  tags: 'web,production'\\n  osFamily: unix\\n..."
+})
+\`\`\`
+- If \`writeable: true\`: the nodes are written. Confirm with:
+  \`resource_model_source_manage({ action: "get_resources", project: "workshop-demo", index: <N> })\`
+- If \`writeable: false\`: \`set_resources\` throws "not writeable (writeable: false)" — **the flow
+  stops here.** Nothing was written, no silent fallback was attempted. To continue, go back to
+  step 1 with a different provider \`type\` (e.g. \`"node-wizard"\` on Enterprise instances, config
+  omitted) and repeat step 3.
+
+## Resources
+- Resource Model Sources overview: \`rundeck://docs/manual\` (see projects/resource-model-sources/index.md)
+- Node definition formats: \`rundeck://docs/manual\` (see document-format-reference/resource-yaml-v13.md, resource-v13.md)` + renderFallbackGuidance("resource_model_source_manage");
 }
 
 export function getPluginCreationGuidance(): string {
