@@ -11,6 +11,12 @@ export interface WorkflowStep {
   script?: string;
   scriptfile?: string;
   scripturl?: string;
+  /** Interpreter used to run the script, e.g. "/usr/bin/python3" or "powershell.exe". Required for non-shell scripts (Python, PowerShell). */
+  scriptInterpreter?: string;
+  /** Whether the interpreter args string should be quoted as a single argument. */
+  interpreterArgsQuoted?: boolean;
+  /** File extension for the generated script file, e.g. ".py" or ".ps1". PowerShell steps need this to run correctly. */
+  fileExtension?: string;
   jobref?: {
     name: string;
     group?: string;
@@ -78,12 +84,16 @@ export function rundeckGenerateJob(params: {
   for (const step of params.workflow_steps) {
     if (step.type === "command" && step.exec) {
       commands.push({ exec: step.exec });
-    } else if (step.type === "script" && step.script) {
-      commands.push({ script: step.script });
-    } else if (step.type === "script" && step.scriptfile) {
-      commands.push({ scriptfile: step.scriptfile });
-    } else if (step.type === "script" && step.scripturl) {
-      commands.push({ scripturl: step.scripturl });
+    } else if (step.type === "script" && (step.script || step.scriptfile || step.scripturl)) {
+      const scriptStep: Record<string, unknown> = {};
+      if (step.script) scriptStep.script = step.script;
+      else if (step.scriptfile) scriptStep.scriptfile = step.scriptfile;
+      else if (step.scripturl) scriptStep.scripturl = step.scripturl;
+      if (step.scriptInterpreter) scriptStep.scriptInterpreter = step.scriptInterpreter;
+      if (step.interpreterArgsQuoted !== undefined)
+        scriptStep.interpreterArgsQuoted = step.interpreterArgsQuoted;
+      if (step.fileExtension) scriptStep.fileExtension = step.fileExtension;
+      commands.push(scriptStep);
     } else if (step.type === "jobref" && step.jobref) {
       commands.push({ jobref: step.jobref });
     } else if (step.type === "plugin" && step.plugin) {
@@ -339,6 +349,21 @@ export const workflowStepSchema = z.object({
   script: z.string().optional(),
   scriptfile: z.string().optional(),
   scripturl: z.string().url().optional(),
+  scriptInterpreter: z.string()
+    .optional()
+    .describe(
+      "Interpreter used to run the script. Required for non-shell scripts. " +
+      "Examples: 'python3', 'powershell.exe'"
+    ),
+  interpreterArgsQuoted: z.boolean()
+    .optional()
+    .describe("Whether the interpreter args string should be quoted as a single argument."),
+  fileExtension: z.string()
+    .optional()
+    .describe(
+      "File extension for the generated script file. Required for some interpreters to behave correctly. " +
+      "Examples: '.py', '.ps1'"
+    ),
   jobref: z
     .object({
       name: z.string(),

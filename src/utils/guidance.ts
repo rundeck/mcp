@@ -90,6 +90,11 @@ format, concatenate the arrays, then do a single \`api_call\` with the matching 
   - \`time\` (object): \`{ hour, minute, seconds? }\` — alternative to crontab
   - \`month\`, \`year\`, \`weekday\`, \`day\`: additional structured fields
 
+### Script step fields (on \`workflow_steps\` entries of type "script")
+- \`scriptInterpreter\` (string): interpreter to run the script with, e.g. \`"python3"\` or \`"powershell.exe"\`. Required for non-shell scripts.
+- \`interpreterArgsQuoted\` (boolean): whether interpreter args are quoted as a single argument
+- \`fileExtension\` (string): file extension for the generated script file, e.g. \`".ps1"\` — required for PowerShell to run correctly
+
 ## Next Steps
 1. Use \`job_create\` with required parameters to generate your job definition
 2. Validate with \`job_validate\` before importing

@@ -128,6 +128,38 @@ describe("Job Tools", () => {
       expect(result).toContain("script:");
     });
 
+    it("should include script interpreter fields for a script step", () => {
+      const result = rundeckGenerateJob({
+        name: "PowerShell Job",
+        project: "test-project",
+        workflow_steps: [
+          {
+            type: "script",
+            script: "Write-Output 'hi'",
+            scriptInterpreter: "powershell.exe",
+            interpreterArgsQuoted: true,
+            fileExtension: ".ps1",
+          },
+        ],
+      });
+
+      expect(result).toContain("scriptInterpreter: powershell.exe");
+      expect(result).toContain("interpreterArgsQuoted: true");
+      expect(result).toContain("fileExtension: .ps1");
+    });
+
+    it("should not include script interpreter fields when omitted", () => {
+      const result = rundeckGenerateJob({
+        name: "Plain Script Job",
+        project: "test-project",
+        workflow_steps: [{ type: "script", script: "echo hi" }],
+      });
+
+      expect(result).not.toContain("scriptInterpreter");
+      expect(result).not.toContain("interpreterArgsQuoted");
+      expect(result).not.toContain("fileExtension");
+    });
+
     it("should include crontab schedule in YAML output", () => {
       const result = rundeckGenerateJob({
         name: "Scheduled Job",
