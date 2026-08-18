@@ -20,10 +20,13 @@ import type { DestructiveAction } from "./confirmation.js";
 import { NODE_DEFINITION_FORMAT_REFERENCE } from "../tools/resources.js";
 
 /**
- * Fallback path only: shown when the connected MCP client does NOT declare the
- * `elicitation` capability, so the server has no way to prompt the human directly.
- * (When the client DOES support elicitation, the server asks the human itself via
- * `requestDestructiveConfirmation` before this is ever reached — see index.ts.)
+ * Fallback path: shown whenever `requestDestructiveConfirmation` couldn't get a direct
+ * answer from the human — either because the connected MCP client doesn't declare the
+ * `elicitation` capability at all, or because it does but the elicitation request itself
+ * failed (both return "unsupported"; see confirmation.ts). Either way, the server has no
+ * confirmed answer from the human, so the agent is responsible for getting one before retrying.
+ * (When elicitation succeeds, the human is asked directly and this guidance is never reached —
+ * see index.ts.)
  *
  * Covers every action this server gates: deleting a job/resource/ACL policy,
  * overwriting an ACL policy's contents, and regenerating a runner's credentials.
@@ -37,9 +40,10 @@ Calling \`${toolName}\` with these parameters would **${action.phrase}**. ${acti
 Nothing has happened yet — this call was intercepted before it reached Rundeck because \`confirm\`
 was not set to \`true\`.
 
-Your MCP client doesn't support live confirmation prompts (MCP elicitation), so there's no way
-for the server to ask the user directly — you (the agent) are responsible for getting real,
-explicit approval before retrying.
+The server couldn't get a confirmed answer from the human directly — either your MCP client
+doesn't support live confirmation prompts (MCP elicitation), or it does but the confirmation
+request itself failed. Either way, there's no way for the server to ask the user directly right
+now — you (the agent) are responsible for getting real, explicit approval before retrying.
 
 ## Before retrying
 1. Confirm the user explicitly asked for (or explicitly approved) **this specific action** —

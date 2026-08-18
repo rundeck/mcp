@@ -416,11 +416,12 @@ export const rundeckManageAclSchema = z
       "and a list of per-document errors, but a local check surfaces the same issues faster."
     ),
     confirm: z.boolean().optional().default(false).describe(
-      "Fallback only, for clients that don't support MCP elicitation (in which case the server " +
-      "prompts the user directly and this field is unused). Required when action is 'delete' or " +
-      "'update' — both mutate or remove the policy irreversibly: must be explicitly set to true, " +
-      "and only after the user has explicitly approved that specific change — never inferred or " +
-      "defaulted to true on the agent's own judgment. Ignored for 'list', 'get', and 'create'."
+      "Fallback only. When the connected client supports MCP elicitation, the server prompts the " +
+      "user directly and this field is unused — but if that prompt isn't available or fails, this " +
+      "is required when action is 'delete' or 'update' — both mutate or remove the policy " +
+      "irreversibly: must be explicitly set to true, and only after the user has explicitly " +
+      "approved that specific change — never inferred or defaulted to true on the agent's own " +
+      "judgment. Ignored for 'list', 'get', and 'create'."
     ),
   })
   .refine((s) => s.scope !== "project" || s.project !== undefined, {

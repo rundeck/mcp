@@ -237,11 +237,12 @@ export const rundeckApiCallSchema = z.object({
     .optional()
     .default(false)
     .describe(
-      "Fallback only, for clients that don't support MCP elicitation (in which case the server " +
-      "prompts the user directly and this field is unused). Required when method is 'DELETE', or " +
-      "for a POST to a runner's 'regenerateCreds' endpoint (which revokes its current credentials): " +
-      "must be explicitly set to true, and only after the user has explicitly approved that specific " +
-      "action — never inferred or defaulted to true on the agent's own judgment. Ignored otherwise."
+      "Fallback only. When the connected client supports MCP elicitation, the server prompts the " +
+      "user directly and this field is unused — but if that prompt isn't available or fails, this " +
+      "is required when method is 'DELETE', or for a POST to a runner's 'regenerateCreds' endpoint " +
+      "(which revokes its current credentials): must be explicitly set to true, and only after the " +
+      "user has explicitly approved that specific action — never inferred or defaulted to true on " +
+      "the agent's own judgment. Ignored otherwise."
     ),
 });
 
