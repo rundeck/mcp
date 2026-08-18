@@ -227,6 +227,43 @@ describe("Job Tools", () => {
       expect(result).not.toContain("LogFilter");
     });
 
+    it("should generate a conditional step with subSteps", () => {
+      const result = rundeckGenerateJob({
+        name: "Conditional Job",
+        project: "test-project",
+        workflow_steps: [
+          {
+            type: "conditional",
+            conditionGroups: [
+              [{ key: "option.environment", operator: "==", value: "prod" }],
+            ],
+            subSteps: [{ type: "command", exec: "echo prod" }],
+          },
+        ],
+      });
+
+      const parsed = yaml.parse(result);
+      const step = parsed[0].sequence.commands[0];
+      expect(step.type).toBe("conditional");
+      expect(step.conditionGroups[0][0]).toEqual({
+        key: "option.environment",
+        operator: "==",
+        value: "prod",
+      });
+      expect(step.subSteps[0].exec).toBe("echo prod");
+    });
+
+    it("should omit a conditional step missing conditionGroups or subSteps", () => {
+      const result = rundeckGenerateJob({
+        name: "Incomplete Conditional Job",
+        project: "test-project",
+        workflow_steps: [{ type: "conditional" }],
+      });
+
+      const parsed = yaml.parse(result);
+      expect(parsed[0].sequence.commands).toHaveLength(0);
+    });
+
     it("should include crontab schedule in YAML output", () => {
       const result = rundeckGenerateJob({
         name: "Scheduled Job",
@@ -366,6 +403,50 @@ describe("Job Tools", () => {
       expect(result.warnings.some((w) => w.includes("description"))).toBe(
         true
       );
+    });
+
+    it("should reject a conditional step combined with node-first strategy", () => {
+      const jobYaml = `- name: Test Job
+  loglevel: INFO
+  sequence:
+    strategy: node-first
+    commands:
+      - type: conditional
+        conditionGroups:
+          - - key: option.environment
+              operator: "=="
+              value: prod
+        subSteps:
+          - exec: echo prod`;
+
+      const result = rundeckValidateJob({
+        job_definition: jobYaml,
+        format: "yaml",
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("node-first"))).toBe(true);
+    });
+
+    it("should allow a conditional step with the default strategy", () => {
+      const jobYaml = `- name: Test Job
+  loglevel: INFO
+  sequence:
+    commands:
+      - type: conditional
+        conditionGroups:
+          - - key: option.environment
+              operator: "=="
+              value: prod
+        subSteps:
+          - exec: echo prod`;
+
+      const result = rundeckValidateJob({
+        job_definition: jobYaml,
+        format: "yaml",
+      });
+
+      expect(result.valid).toBe(true);
     });
 
     it("should detect invalid YAML syntax", () => {

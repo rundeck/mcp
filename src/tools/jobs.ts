@@ -6,7 +6,7 @@ import { z } from "zod";
 import * as yaml from "yaml";
 
 export interface WorkflowStep {
-  type: "command" | "script" | "jobref" | "plugin";
+  type: "command" | "script" | "jobref" | "plugin" | "conditional";
   exec?: string;
   script?: string;
   scriptfile?: string;
@@ -32,11 +32,21 @@ export interface WorkflowStep {
   errorhandler?: ErrorHandlerStep;
   /** Log filters that capture step output into data for use by later steps (${data.<name>}) or notifications. */
   logFilters?: LogFilter[];
+  /** For type "conditional": groups of clauses to test. Clauses within a group are AND'd; groups are OR'd. */
+  conditionGroups?: ConditionClause[][];
+  /** For type "conditional": steps to run when the condition evaluates true. */
+  subSteps?: WorkflowStep[];
 }
 
 export interface LogFilter {
   type: string;
   config?: Record<string, unknown>;
+}
+
+export interface ConditionClause {
+  key: string;
+  operator: "==" | "!=" | ">" | ">=" | "<" | "<=";
+  value: string;
 }
 
 export interface ErrorHandlerStep {
@@ -85,6 +95,89 @@ export interface JobOption {
 }
 
 /**
+ * Build a single workflow step's YAML/JSON representation, including
+ * nested errorhandler, LogFilter plugins, and (for conditional steps)
+ * recursively-built subSteps.
+ */
+function buildWorkflowCommand(step: WorkflowStep): Record<string, unknown> | null {
+  let command: Record<string, unknown> | null = null;
+
+  if (step.type === "command" && step.exec) {
+    command = { exec: step.exec };
+  } else if (step.type === "script" && (step.script || step.scriptfile || step.scripturl)) {
+    const scriptStep: Record<string, unknown> = {};
+    if (step.script) scriptStep.script = step.script;
+    else if (step.scriptfile) scriptStep.scriptfile = step.scriptfile;
+    else if (step.scripturl) scriptStep.scripturl = step.scripturl;
+    if (step.scriptInterpreter) scriptStep.scriptInterpreter = step.scriptInterpreter;
+    if (step.interpreterArgsQuoted !== undefined)
+      scriptStep.interpreterArgsQuoted = step.interpreterArgsQuoted;
+    if (step.fileExtension) scriptStep.fileExtension = step.fileExtension;
+    command = scriptStep;
+  } else if (step.type === "jobref" && step.jobref) {
+    command = { jobref: step.jobref };
+  } else if (step.type === "plugin" && step.plugin) {
+    const pluginStep: Record<string, unknown> = {
+      type: step.plugin.type,
+    };
+    if (step.nodeStep !== undefined) {
+      pluginStep.nodeStep = step.nodeStep;
+    }
+    if (step.plugin.configuration) {
+      pluginStep.configuration = step.plugin.configuration;
+    }
+    command = pluginStep;
+  } else if (step.type === "conditional" && step.conditionGroups && step.subSteps) {
+    command = {
+      type: "conditional",
+      conditionGroups: step.conditionGroups.map((group) =>
+        group.map((clause) => ({
+          key: clause.key,
+          operator: clause.operator,
+          value: clause.value,
+        }))
+      ),
+      subSteps: step.subSteps
+        .map((subStep) => buildWorkflowCommand(subStep))
+        .filter((subCommand): subCommand is Record<string, unknown> => subCommand !== null),
+    };
+  }
+
+  if (command && step.errorhandler) {
+    const handler = step.errorhandler;
+    const errorhandlerStep: Record<string, unknown> = {};
+    if (handler.script) errorhandlerStep.script = handler.script;
+    else if (handler.scriptfile) errorhandlerStep.scriptfile = handler.scriptfile;
+    else if (handler.scripturl) errorhandlerStep.scripturl = handler.scripturl;
+    else if (handler.exec) errorhandlerStep.exec = handler.exec;
+    else if (handler.plugin) {
+      errorhandlerStep.type = handler.plugin.type;
+      if (handler.plugin.configuration) errorhandlerStep.configuration = handler.plugin.configuration;
+    }
+    if (handler.scriptInterpreter) errorhandlerStep.scriptInterpreter = handler.scriptInterpreter;
+    if (handler.interpreterArgsQuoted !== undefined)
+      errorhandlerStep.interpreterArgsQuoted = handler.interpreterArgsQuoted;
+    if (handler.fileExtension) errorhandlerStep.fileExtension = handler.fileExtension;
+    if (handler.nodeStep !== undefined) errorhandlerStep.nodeStep = handler.nodeStep;
+    if (handler.keepgoingOnSuccess !== undefined)
+      errorhandlerStep.keepgoingOnSuccess = handler.keepgoingOnSuccess;
+    command.errorhandler = errorhandlerStep;
+  }
+
+  if (command && step.logFilters && step.logFilters.length > 0) {
+    command.plugins = {
+      LogFilter: step.logFilters.map((f) => {
+        const filter: Record<string, unknown> = { type: f.type };
+        if (f.config) filter.config = f.config;
+        return filter;
+      }),
+    };
+  }
+
+  return command;
+}
+
+/**
  * Generate a Rundeck job definition
  */
 export function rundeckGenerateJob(params: {
@@ -108,66 +201,7 @@ export function rundeckGenerateJob(params: {
   // Build workflow sequence
   const commands: unknown[] = [];
   for (const step of params.workflow_steps) {
-    let command: Record<string, unknown> | null = null;
-
-    if (step.type === "command" && step.exec) {
-      command = { exec: step.exec };
-    } else if (step.type === "script" && (step.script || step.scriptfile || step.scripturl)) {
-      const scriptStep: Record<string, unknown> = {};
-      if (step.script) scriptStep.script = step.script;
-      else if (step.scriptfile) scriptStep.scriptfile = step.scriptfile;
-      else if (step.scripturl) scriptStep.scripturl = step.scripturl;
-      if (step.scriptInterpreter) scriptStep.scriptInterpreter = step.scriptInterpreter;
-      if (step.interpreterArgsQuoted !== undefined)
-        scriptStep.interpreterArgsQuoted = step.interpreterArgsQuoted;
-      if (step.fileExtension) scriptStep.fileExtension = step.fileExtension;
-      command = scriptStep;
-    } else if (step.type === "jobref" && step.jobref) {
-      command = { jobref: step.jobref };
-    } else if (step.type === "plugin" && step.plugin) {
-      const pluginStep: Record<string, unknown> = {
-        type: step.plugin.type,
-      };
-      if (step.nodeStep !== undefined) {
-        pluginStep.nodeStep = step.nodeStep;
-      }
-      if (step.plugin.configuration) {
-        pluginStep.configuration = step.plugin.configuration;
-      }
-      command = pluginStep;
-    }
-
-    if (command && step.errorhandler) {
-      const handler = step.errorhandler;
-      const errorhandlerStep: Record<string, unknown> = {};
-      if (handler.script) errorhandlerStep.script = handler.script;
-      else if (handler.scriptfile) errorhandlerStep.scriptfile = handler.scriptfile;
-      else if (handler.scripturl) errorhandlerStep.scripturl = handler.scripturl;
-      else if (handler.exec) errorhandlerStep.exec = handler.exec;
-      else if (handler.plugin) {
-        errorhandlerStep.type = handler.plugin.type;
-        if (handler.plugin.configuration) errorhandlerStep.configuration = handler.plugin.configuration;
-      }
-      if (handler.scriptInterpreter) errorhandlerStep.scriptInterpreter = handler.scriptInterpreter;
-      if (handler.interpreterArgsQuoted !== undefined)
-        errorhandlerStep.interpreterArgsQuoted = handler.interpreterArgsQuoted;
-      if (handler.fileExtension) errorhandlerStep.fileExtension = handler.fileExtension;
-      if (handler.nodeStep !== undefined) errorhandlerStep.nodeStep = handler.nodeStep;
-      if (handler.keepgoingOnSuccess !== undefined)
-        errorhandlerStep.keepgoingOnSuccess = handler.keepgoingOnSuccess;
-      command.errorhandler = errorhandlerStep;
-    }
-
-    if (command && step.logFilters && step.logFilters.length > 0) {
-      command.plugins = {
-        LogFilter: step.logFilters.map((f) => {
-          const filter: Record<string, unknown> = { type: f.type };
-          if (f.config) filter.config = f.config;
-          return filter;
-        }),
-      };
-    }
-
+    const command = buildWorkflowCommand(step);
     if (command) {
       commands.push(command);
     }
@@ -242,6 +276,22 @@ export function rundeckGenerateJob(params: {
 /**
  * Validate a job definition
  */
+/**
+ * Recursively checks a parsed sequence's commands (and any conditional
+ * step's subSteps) for a "conditional" step type.
+ */
+function containsConditionalStep(commands: unknown[]): boolean {
+  for (const command of commands) {
+    if (typeof command !== "object" || command === null) continue;
+    const commandObj = command as Record<string, unknown>;
+    if (commandObj.type === "conditional") return true;
+    if (Array.isArray(commandObj.subSteps) && containsConditionalStep(commandObj.subSteps)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 export function rundeckValidateJob(params: {
   job_definition: string;
   format: "yaml" | "json";
@@ -304,6 +354,13 @@ export function rundeckValidateJob(params: {
           errors.push("Job sequence must have a 'commands' array");
         } else if (sequence.commands.length === 0) {
           warnings.push("Job has no workflow steps");
+        } else if (
+          sequence.strategy === "node-first" &&
+          containsConditionalStep(sequence.commands)
+        ) {
+          errors.push(
+            "Conditional workflow steps (type: 'conditional') are not compatible with sequence.strategy 'node-first'"
+          );
         }
       }
 
@@ -406,8 +463,8 @@ export const jobScheduleSchema = z.object({
   "Only one approach is needed. Example crontab: '0 0 8 ? * MON-FRI' (8 AM weekdays)."
 );
 
-export const workflowStepSchema = z.object({
-  type: z.enum(["command", "script", "jobref", "plugin"]),
+export const workflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() => z.object({
+  type: z.enum(["command", "script", "jobref", "plugin", "conditional"]),
   exec: z.string().optional(),
   script: z.string().optional(),
   scriptfile: z.string().optional(),
@@ -489,7 +546,29 @@ export const workflowStepSchema = z.object({
       "Log filters that capture this step's output into data, since steps otherwise run in isolated " +
       "shells with no shared state. Captured values are referenced downstream as ${data.<name>}."
     ),
-});
+  conditionGroups: z.array(
+    z.array(
+      z.object({
+        key: z.string().describe("Data or option key to test, e.g. 'option.environment' or 'data.exitCode'."),
+        operator: z.enum(["==", "!=", ">", ">=", "<", "<="]),
+        value: z.string(),
+      })
+    )
+  )
+    .optional()
+    .describe(
+      "For type 'conditional': groups of clauses to test. Clauses within a group are AND'd; " +
+      "groups are OR'd together. Requires 'subSteps' to also be set."
+    ),
+  subSteps: z.array(workflowStepSchema)
+    .optional()
+    .describe(
+      "For type 'conditional': steps to run when the condition evaluates true. Requires 'conditionGroups' to also be set."
+    ),
+})).refine(
+  (step) => !(step.type === "conditional" && (!step.conditionGroups || !step.subSteps)),
+  { message: "conditional steps require both 'conditionGroups' and 'subSteps'" }
+);
 
 export const jobOptionSchema = z.object({
   name: z.string(),

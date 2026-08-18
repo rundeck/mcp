@@ -102,6 +102,11 @@ format, concatenate the arrays, then do a single \`api_call\` with the matching 
 Steps run in isolated shells, so output isn't visible to later steps unless captured.
 - \`logFilters\` (array): \`{ type, config? }\`. Common types: \`"key-value-data"\` (regex must have the capture groups the filter expects, e.g. two for a key/value pair), \`"key-value-data-multilines"\`, \`"json-mapper"\`. Captured values are referenced downstream as \`\${data.<name>}\`.
 
+### Conditional branching (a \`workflow_steps\` entry of type "conditional")
+- \`conditionGroups\` (array of arrays of \`{ key, operator, value }\`): clauses within a group are AND'd, groups are OR'd. \`operator\` is a symbol (\`"=="\`, \`"!="\`, \`">"\`, etc.).
+- \`subSteps\` (array of workflow steps): run only when the condition evaluates true.
+- Both fields are required together. Conditional steps are **not compatible** with \`sequence.strategy: "node-first"\` — \`job_validate\` flags this.
+
 ## Next Steps
 1. Use \`job_create\` with required parameters to generate your job definition
 2. Validate with \`job_validate\` before importing
