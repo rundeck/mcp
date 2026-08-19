@@ -65,6 +65,23 @@ jobs:
           name: Install dependencies
           command: npm ci
       - run:
+          # Bakes the release version into the User-Agent header at build time (see
+          # src/tools/api.ts's USER_AGENT constant) so it's static in the published
+          # dist/ — no runtime file reads. Only runs on tag builds; the version stays
+          # "SNAPSHOT" for branch/PR builds. CIRCLE_TAG is validated against a strict
+          # vX.Y.Z pattern first: git ref names may contain shell metacharacters like
+          # $() or backticks, and CIRCLE_TAG is interpolated into a shell command
+          # below, so an unvalidated tag would be a command-injection vector.
+          name: Bake release version into User-Agent
+          command: |
+            if [ -n "${CIRCLE_TAG:-}" ]; then
+              if ! echo "${CIRCLE_TAG}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+                echo "CIRCLE_TAG '${CIRCLE_TAG}' does not match expected vX.Y.Z pattern — failing." >&2
+                exit 1
+              fi
+              sed -i "s/rundeck-mcp\/SNAPSHOT/rundeck-mcp\/${CIRCLE_TAG#v}/" src/tools/api.ts
+            fi
+      - run:
           name: Build
           command: npm run build
       - persist_to_workspace:

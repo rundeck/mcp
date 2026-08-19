@@ -7,6 +7,7 @@ import {
   rundeckSetupToken,
   rundeckListEndpoints,
   isRunnerCredentialRegenerationEndpoint,
+  USER_AGENT,
 } from "../../tools/api.js";
 import { configManager } from "../../config.js";
 
@@ -137,11 +138,12 @@ describe("API Tools", () => {
       // The endpoint "/projects" gets prepended with the API base URL
       const callArgs = mockFetch.mock.calls[0];
       expect(callArgs[0]).toContain("/api/59/projects");
-      expect(callArgs[1]).toMatchObject({
-        method: "GET",
-        headers: expect.objectContaining({
-          "X-Rundeck-Auth-Token": "test-token",
-        }),
+      expect(callArgs[1]).toMatchObject({ method: "GET" });
+      expect((callArgs[1] as RequestInit).headers).toEqual({
+        "X-Rundeck-Auth-Token": "test-token",
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+        "User-Agent": USER_AGENT,
       });
     });
 
