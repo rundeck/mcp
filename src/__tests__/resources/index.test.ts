@@ -40,14 +40,6 @@ describe("Resource Handlers", () => {
 
       expect(jobResources.length).toBeGreaterThan(0);
     });
-
-    it("should include the plugin step-types reference resources", () => {
-      const resources = listResources();
-      const uris = resources.map((r) => r.uri);
-
-      expect(uris).toContain("rundeck://plugins/step-types/pagerduty");
-      expect(uris).toContain("rundeck://plugins/step-types/kubernetes");
-    });
   });
 
   describe("handleResource", () => {
@@ -117,18 +109,6 @@ describe("Resource Handlers", () => {
       const result = handleResource("rundeck://plugins");
       expect(result).toBeTruthy();
       expect(typeof result).toBe("string");
-    });
-
-    it("should handle the PagerDuty step-types plugin reference resource", () => {
-      const result = handleResource("rundeck://plugins/step-types/pagerduty");
-      expect(result).toContain("pd-note-step");
-      expect(result).toContain("pagerduty-send-change-event");
-    });
-
-    it("should handle the Kubernetes step-types plugin reference resource", () => {
-      const result = handleResource("rundeck://plugins/step-types/kubernetes");
-      expect(result).toContain("kubernetes-clusters-create-object");
-      expect(result).toContain("kubernetes-clusters-run-script");
     });
 
     it("should return error message for unknown resource", () => {

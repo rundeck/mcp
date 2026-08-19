@@ -24,7 +24,6 @@ import {
   getNodeStepPlugins,
   getWorkflowStepPlugins,
 } from "./plugins.js";
-import { getPagerDutyStepReference, getKubernetesStepReference } from "./plugin-reference.js";
 import {
   getManualIndex,
   getManualPath,
@@ -225,10 +224,6 @@ export function handleResource(uri: string): string {
         return getNodeStepPlugins();
       } else if (path === "/plugins/workflow-steps") {
         return getWorkflowStepPlugins();
-      } else if (path === "/plugins/step-types/pagerduty") {
-        return getPagerDutyStepReference();
-      } else if (path === "/plugins/step-types/kubernetes") {
-        return getKubernetesStepReference();
       } else if (path.match(/^\/plugins\/\w+\/\w+$/)) {
         const parts = path.split("/");
         const type = parts[2];
@@ -463,8 +458,6 @@ export function listResources(): Array<{ uri: string; description: string }> {
     
     // Plugin resources
     { uri: "rundeck://plugins", description: "Plugin overview" },
-    { uri: "rundeck://plugins/step-types/pagerduty", description: "PagerDuty workflow step plugin reference (type strings and configuration fields)" },
-    { uri: "rundeck://plugins/step-types/kubernetes", description: "Kubernetes workflow step plugin reference (kubernetes-clusters-* family)" },
     
     // Reference resources
     { uri: "rundeck://ref/filters", description: "Node filter syntax" },
