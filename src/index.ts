@@ -66,6 +66,7 @@ import {
   getRundeckConnectGuidance,
 } from "./utils/guidance.js";
 import { prompts, getPrompt } from "./prompts/index.js";
+import { ASK_USER_ERROR_TRAILER, ASK_USER_LINE } from "./utils/escalation.js";
 
 export { REGISTERED_TOOL_NAMES };
 
@@ -153,7 +154,9 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 - Making actual API calls (use api_call instead)
 - Reading API documentation (use rundeck://api resource instead)
 
-**Example:** List all job-related endpoints by calling with category: "jobs"`,
+**Example:** List all job-related endpoints by calling with category: "jobs"
+
+${ASK_USER_LINE}`,
       inputSchema: convertSchema(rundeckListEndpointsSchema),
     },
     job_create: {
@@ -184,7 +187,9 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 - Worked examples, one per access pattern: \`rundeck://docs/learning/howto/acls/group-readonly\`, \`rundeck://docs/learning/howto/acls/group-project-exec\`, \`rundeck://docs/learning/howto/acls/group-project-full\`, \`rundeck://docs/learning/howto/acls/group-manage-runner\`, \`rundeck://docs/learning/howto/acls/group-jobname\`, \`rundeck://docs/learning/howto/acls/group-jobgroup\`, \`rundeck://docs/learning/howto/acls/group-node-filtered\`, \`rundeck://docs/learning/howto/acls/group-multiproject\`, \`rundeck://docs/learning/howto/acls/group-apikey\`
 
 **Guidance Mode:** Call without required params (acl_definition) to get guidance.
-**Note:** This is a local structural check, not a substitute for Rundeck's own server-side validation.`,
+**Note:** This is a local structural check, not a substitute for Rundeck's own server-side validation.
+
+${ASK_USER_LINE}`,
       inputSchema: convertSchema(rundeckValidateAclSchema),
     },
     acl_manage: {
@@ -208,7 +213,9 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 - Making API calls to a Rundeck server (use api_call)
 - Generating jobs (use job_create)
 
-**Follow-up:** Prefer \`resources/read\` on the best match for complete, authoritative content.`,
+**Follow-up:** Prefer \`resources/read\` on the best match for complete, authoritative content.
+
+${ASK_USER_LINE}`,
       inputSchema: convertSchema(rundeckSearchDocsSchema),
     },
   };
@@ -231,7 +238,9 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 - Making API calls (use api_call instead — it uses whichever instance is currently active)
 
 **Input:** Only a registered instance **name** — never a URL or token.
-**Guidance:** Omit \`instance\` to see the list of registered instance names.`,
+**Guidance:** Omit \`instance\` to see the list of registered instance names.
+
+${ASK_USER_LINE}`,
       inputSchema: convertSchema(rundeckConnectSchema),
     });
   }
@@ -372,7 +381,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           : String(error);
     logger.error(`Tool error for ${name}`, error);
     return {
-      content: [{ type: "text", text: `Error executing tool '${name}': ${errorMessage}` }],
+      content: [
+        {
+          type: "text",
+          text: `Error executing tool '${name}': ${errorMessage}${ASK_USER_ERROR_TRAILER}`,
+        },
+      ],
       isError: true,
     };
   }

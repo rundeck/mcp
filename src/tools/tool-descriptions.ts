@@ -1,4 +1,5 @@
 import { renderPriorityGuidance } from "./tool-relationships.js";
+import { ASK_USER_LINE } from "../utils/escalation.js";
 import { NODE_DEFINITION_FORMAT_REFERENCE } from "./resources.js";
 
 /**
@@ -21,7 +22,9 @@ export const API_CALL_DESCRIPTION = `Execute a Rundeck API call to interact with
 ${renderPriorityGuidance("api_call")}
 
 **Authentication:** Set RUNDECK_URL and RUNDECK_TOKEN environment variables before calling.
-Call without required params for setup guidance.`;
+Call without required params for setup guidance.
+
+${ASK_USER_LINE}`;
 
 export const JOB_CREATE_DESCRIPTION = `Generate a Rundeck job definition in YAML or JSON format.
 
@@ -36,7 +39,9 @@ export const JOB_CREATE_DESCRIPTION = `Generate a Rundeck job definition in YAML
 - Reading job documentation (use rundeck://docs/manual/jobs resource instead)
 
 **Guidance Mode:** Call without required params (name, project, workflow_steps) to get step-by-step guidance on job creation.
-**Resources:** See rundeck://docs/manual/jobs for comprehensive job documentation.${renderPriorityGuidance("job_create")}`;
+**Resources:** See rundeck://docs/manual/jobs for comprehensive job documentation.${renderPriorityGuidance("job_create")}
+
+${ASK_USER_LINE}`;
 
 export const JOB_VALIDATE_DESCRIPTION = `Validate a Rundeck job definition against Rundeck schemas.
 
@@ -51,7 +56,9 @@ export const JOB_VALIDATE_DESCRIPTION = `Validate a Rundeck job definition again
 - Reading job schema (use rundeck://jobs/schema resource instead)
 
 **Guidance Mode:** Call without required params (job_definition, format) to get validation guidance.
-**Output:** Returns validation result with errors and warnings.${renderPriorityGuidance("job_validate")}`;
+**Output:** Returns validation result with errors and warnings.${renderPriorityGuidance("job_validate")}
+
+${ASK_USER_LINE}`;
 
 export const RUNNER_CREATE_DESCRIPTION = `Create a Rundeck Runner at system or project scope, on any supported platform (Docker, Kubernetes, Linux, or Windows).
 
@@ -69,7 +76,9 @@ export const RUNNER_CREATE_DESCRIPTION = `Create a Rundeck Runner at system or p
 
 **Important:** The response includes a one-time \`token\` and \`downloadTk\`. Store them — they cannot be retrieved again.
 
-**Guidance Mode:** Call without required params (name, scope) to get step-by-step guidance.${renderPriorityGuidance("runner_create")}`;
+**Guidance Mode:** Call without required params (name, scope) to get step-by-step guidance.${renderPriorityGuidance("runner_create")}
+
+${ASK_USER_LINE}`;
 
 export const ACL_MANAGE_DESCRIPTION = `List, get, create, update, or delete a Rundeck ACL Policy file at system or project scope.
 
@@ -90,7 +99,9 @@ export const ACL_MANAGE_DESCRIPTION = `List, get, create, update, or delete a Ru
 - \`rundeck://docs/manual/document-format-reference/aclpolicy-v10\` — full YAML format spec (context, for, by/notBy, allow/deny)
 - Worked examples, one per access pattern: \`rundeck://docs/learning/howto/acls/group-readonly\`, \`rundeck://docs/learning/howto/acls/group-project-exec\`, \`rundeck://docs/learning/howto/acls/group-project-full\`, \`rundeck://docs/learning/howto/acls/group-manage-runner\`, \`rundeck://docs/learning/howto/acls/group-jobname\`, \`rundeck://docs/learning/howto/acls/group-jobgroup\`, \`rundeck://docs/learning/howto/acls/group-node-filtered\`, \`rundeck://docs/learning/howto/acls/group-multiproject\`, \`rundeck://docs/learning/howto/acls/group-apikey\`
 
-**Guidance Mode:** Call without required params (action, scope) to get step-by-step guidance.${renderPriorityGuidance("acl_manage")}`;
+**Guidance Mode:** Call without required params (action, scope) to get step-by-step guidance.${renderPriorityGuidance("acl_manage")}
+
+${ASK_USER_LINE}`;
 
 export const RESOURCE_MODEL_SOURCE_MANAGE_DESCRIPTION = `Configure a project's Resource Model Sources (where Nodes come from) and, when possible, load node definitions into them directly — all without hand-building requests against plugin/list, plugin/detail, project/{project}/sources, project/{project}/source/{index}/resources, or project/{project}/config.
 
@@ -123,4 +134,6 @@ export const RESOURCE_MODEL_SOURCE_MANAGE_DESCRIPTION = `Configure a project's R
 **Caveat — some providers' data outlives their source entry:** e.g. \`node-wizard\`'s node data lives in the project itself, independent of any single source's config entry/index. \`remove_source\` only deletes the config pointer, not that underlying data — re-adding such a source later can resurface (and duplicate) old nodes.
 
 ${NODE_DEFINITION_FORMAT_REFERENCE}
-**Guidance Mode:** Call without \`action\` to get step-by-step guidance (\`project\` isn't checked for this, since it's only required for some actions — see Actions above).${renderPriorityGuidance("resource_model_source_manage")}`;
+**Guidance Mode:** Call without \`action\` to get step-by-step guidance (\`project\` isn't checked for this, since it's only required for some actions — see Actions above).${renderPriorityGuidance("resource_model_source_manage")}
+
+${ASK_USER_LINE}`;

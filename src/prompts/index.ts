@@ -4,6 +4,7 @@
  */
 
 import { z } from "zod";
+import { ASK_USER_GUIDANCE } from "../utils/escalation.js";
 
 export interface PromptArgument {
   name: string;
@@ -103,7 +104,7 @@ Jobs can be defined in YAML or JSON format. YAML is recommended for readability.
 
 ## Tools
 - \`job_create\`: Generate job definition (use MCP prompt \`create-job\` if you need structured guidance)
-- \`job_validate\`: Validate job definition before importing`;
+- \`job_validate\`: Validate job definition before importing` + ASK_USER_GUIDANCE;
   },
 };
 
@@ -201,7 +202,7 @@ The API version is specified in the URL path (e.g., /api/59/...). Current defaul
 ## Resources
 - API Documentation: \`rundeck://api\`
 - Authentication Guide: \`rundeck://docs/administration/security\`
-- API Examples: \`rundeck://api/examples\``;
+- API Examples: \`rundeck://api/examples\`` + ASK_USER_GUIDANCE;
   },
 };
 
@@ -290,7 +291,7 @@ Use \`rd projects configure set\` command
 ## Resources
 - Project Configuration: \`rundeck://docs/administration/configuration\`
 - System Configuration: \`rundeck://docs/administration/configuration\`
-- Plugin Configuration: \`rundeck://docs/developer/plugins\``;
+- Plugin Configuration: \`rundeck://docs/developer/plugins\`` + ASK_USER_GUIDANCE;
   },
 };
 
@@ -353,7 +354,7 @@ Tokens inherit the authorization roles of the user who created them. Ensure your
 ## Resources
 - Authentication Methods: \`rundeck://api/auth\`
 - API Basics: \`rundeck://api/examples\`
-- Configuration Guide: \`rundeck://docs/administration/configuration\``;
+- Configuration Guide: \`rundeck://docs/administration/configuration\`` + ASK_USER_GUIDANCE;
   },
 };
 
@@ -447,7 +448,7 @@ name: web-.* AND tags: production
 ## Resources
 - Node Filter Reference: \`rundeck://docs/manual/nodes\`
 - Node Documentation: \`rundeck://docs/manual/nodes\`
-- Job Creation: Use \`job_create\` tool and set \`node_filter\` parameter`;
+- Job Creation: Use \`job_create\` tool and set \`node_filter\` parameter` + ASK_USER_GUIDANCE;
   },
 };
 
@@ -560,7 +561,7 @@ Job > Project > System
 - Node Step Plugins: \`rundeck://docs/developer/plugins\`
 - Workflow Step Plugins: \`rundeck://docs/developer/plugins\`
 - Plugin Configuration: \`rundeck://docs/administration/configuration\`
-- Plugin development: see resources above; plugin scaffolding is not an MCP tool in Phase 1`;
+- Plugin development: see resources above; plugin scaffolding is not an MCP tool in Phase 1` + ASK_USER_GUIDANCE;
   },
 };
 
