@@ -1,5 +1,5 @@
 import { jest } from "@jest/globals";
-import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import type { Server } from "@modelcontextprotocol/server";
 import { requestDestructiveConfirmation, type DestructiveAction } from "../../utils/confirmation.js";
 
 function fakeServer(overrides: {
