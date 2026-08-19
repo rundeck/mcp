@@ -5,7 +5,7 @@
  * model already believes counts as "the user approved this."
  *
  * Not every client declares the `elicitation` capability at initialize time.
- * When it isn't declared, callers fall back to the `confirm: true` parameter
+ * When it isn't declared, callers fall back to the `skipConfirmation: true` parameter
  * gate (see index.ts) instead.
  *
  * Covers every action in this server that can't be walked back through the

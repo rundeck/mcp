@@ -415,13 +415,15 @@ export const rundeckManageAclSchema = z
       "Strongly recommended: validate with acl_validate before submitting — Rundeck will reject invalid policies with a 400 " +
       "and a list of per-document errors, but a local check surfaces the same issues faster."
     ),
-    confirm: z.boolean().optional().default(false).describe(
-      "Fallback only. When the connected client supports MCP elicitation, the server prompts the " +
-      "user directly and this field is unused — but if that prompt isn't available or fails, this " +
-      "is required when action is 'delete' or 'update' — both mutate or remove the policy " +
-      "irreversibly: must be explicitly set to true, and only after the user has explicitly " +
-      "approved that specific change — never inferred or defaulted to true on the agent's own " +
-      "judgment. Ignored for 'list', 'get', and 'create'."
+    skipConfirmation: z.boolean().optional().default(false).describe(
+      "Fallback only — has NO effect when the connected client supports MCP elicitation, since the " +
+      "server always prompts the user directly in that case regardless of this field's value. Do " +
+      "not pre-emptively ask the user for approval yourself before calling this tool: just call it " +
+      "(omit this field) and wait for the outcome. Only set this to true when action is 'delete' " +
+      "or 'update' — both mutate or remove the policy irreversibly — AND the tool's response says " +
+      "elicitation wasn't available or didn't go through — and only after the user has explicitly " +
+      "approved that specific change at that point. Never inferred or set proactively on the " +
+      "agent's own judgment. Ignored for 'list', 'get', and 'create'."
     ),
   })
   .refine((s) => s.scope !== "project" || s.project !== undefined, {

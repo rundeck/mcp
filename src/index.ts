@@ -291,8 +291,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             logger.info("api_call destructive action declined via elicitation");
             return returnGuidance(getConfirmationDeclinedGuidance("api_call", apiDestructiveAction));
           }
-          if (outcome === "unsupported" && !parsed.confirm) {
-            logger.info("api_call destructive action requested without confirm - requesting confirmation");
+          if (outcome === "unsupported" && !parsed.skipConfirmation) {
+            logger.info("api_call destructive action requested without skipConfirmation - requesting confirmation");
             return returnGuidance(getConfirmationRequiredGuidance("api_call", apiDestructiveAction));
           }
         }
@@ -373,8 +373,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             logger.info(`acl_manage ${aclParams.action} declined via elicitation`);
             return returnGuidance(getConfirmationDeclinedGuidance("acl_manage", aclDestructiveAction));
           }
-          if (outcome === "unsupported" && !aclParams.confirm) {
-            logger.info(`acl_manage ${aclParams.action} requested without confirm - requesting confirmation`);
+          if (outcome === "unsupported" && !aclParams.skipConfirmation) {
+            logger.info(`acl_manage ${aclParams.action} requested without skipConfirmation - requesting confirmation`);
             return returnGuidance(getConfirmationRequiredGuidance("acl_manage", aclDestructiveAction));
           }
         }

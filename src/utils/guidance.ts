@@ -37,8 +37,8 @@ export function getConfirmationRequiredGuidance(toolName: string, action: Destru
   return `# Confirmation Required
 
 Calling \`${toolName}\` with these parameters would **${action.phrase}**. ${action.consequence}
-Nothing has happened yet — this call was intercepted before it reached Rundeck because \`confirm\`
-was not set to \`true\`.
+Nothing has happened yet — this call was intercepted before it reached Rundeck because
+\`skipConfirmation\` was not set to \`true\`.
 
 The server couldn't get a confirmed answer from the human directly — either your MCP client
 doesn't support live confirmation prompts (MCP elicitation), or it does but the confirmation
@@ -49,7 +49,7 @@ now — you (the agent) are responsible for getting real, explicit approval befo
 1. Confirm the user explicitly asked for (or explicitly approved) **this specific action** —
    not something you inferred while doing other work.
 2. Restate to the user exactly what will happen, and wait for their explicit go-ahead.
-3. Only then, re-call \`${toolName}\` with the same parameters plus \`confirm: true\`.
+3. Only then, re-call \`${toolName}\` with the same parameters plus \`skipConfirmation: true\`.
 
 ${ASK_USER_LINE}`;
 }
@@ -238,12 +238,14 @@ The API version is specified in the URL path (e.g., /api/59/...). Current defaul
 ## Optional Parameters
 - **body** (object): Request body for POST/PUT requests
 - **query_params** (object): Query parameters
-- **confirm** (boolean): Fallback only, for clients that don't support MCP elicitation. Required
-  (and must be \`true\`) on those clients for \`method: "DELETE"\`, and for \`POST\` to a runner's
-  \`regenerateCreds\` endpoint (revokes its current credentials). Only set this after the user has
-  explicitly approved that specific action — the call is otherwise intercepted and returns a
-  confirmation prompt instead of reaching Rundeck. On clients that support elicitation, the
-  server prompts the user directly instead and this field is unused.
+- **skipConfirmation** (boolean): Fallback only — has no effect on clients that support MCP
+  elicitation, since the server always prompts the user directly in that case regardless of this
+  field. Do not ask the user to confirm yourself before calling; just call the tool and wait for
+  the outcome. Only set this to \`true\` for \`method: "DELETE"\`, or for \`POST\` to a runner's
+  \`regenerateCreds\` endpoint (revokes its current credentials), if the tool's response says
+  elicitation wasn't available or didn't go through — and only after the user has explicitly
+  approved that specific action at that point. The call is otherwise intercepted and returns a
+  confirmation prompt instead of reaching Rundeck.
 
 ## Alternative: Use Prompts
 You can also use the \`call-api\` prompt via \`prompts/get\` for API guidance:
@@ -664,12 +666,13 @@ filesystem (those can only be managed by editing them directly on disk).
 - **project** (string): required when scope is "project"
 - **name** (string): required for all actions except "list". The \`.aclpolicy\` suffix is added automatically if omitted.
 - **content** (string): required for "create"/"update" — the ACL policy YAML
-- **confirm** (boolean): Fallback only, for clients that don't support MCP elicitation. Required
-  (and must be \`true\`) on those clients for actions "delete" and "update" — both mutate or remove
-  the policy irreversibly. Only set this after the user has explicitly approved that specific
-  change; the call is otherwise intercepted and returns a confirmation prompt instead of reaching
-  Rundeck. On clients that support elicitation, the server prompts the user directly instead and
-  this field is unused.
+- **skipConfirmation** (boolean): Fallback only — has no effect on clients that support MCP
+  elicitation, since the server always prompts the user directly in that case regardless of this
+  field. Do not ask the user to confirm yourself before calling; just call the tool and wait for
+  the outcome. Only set this to \`true\` for actions "delete" and "update" — both mutate or remove
+  the policy irreversibly — if the tool's response says elicitation wasn't available or didn't go
+  through, and only after the user has explicitly approved that specific change at that point. The
+  call is otherwise intercepted and returns a confirmation prompt instead of reaching Rundeck.
 
 ## Recommended workflow
 1. Draft the policy YAML.

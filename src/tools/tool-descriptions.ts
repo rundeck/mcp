@@ -25,12 +25,21 @@ ${renderPriorityGuidance("api_call")}
 Call without required params for setup guidance.
 
 **Destructive calls:** \`method: "DELETE"\`, and \`POST\` to a runner's \`regenerateCreds\` endpoint
-(which revokes its current credentials), always require confirmation before reaching Rundeck. If
-the connected client supports MCP elicitation, the server asks the user directly — call the tool
-right away and wait for that outcome; do **not** separately ask the user to confirm first
-yourself, since that just produces two confirmation prompts for the same action. Only fall back to
-getting the user's explicit approval yourself, then retrying with \`confirm: true\`, if the tool's
-response says elicitation wasn't available or didn't go through.
+(which revokes its current credentials), always require human confirmation before reaching
+Rundeck. **Call the tool directly for these — do not ask the user to confirm in chat first.** You
+can't know in advance whether the connected client supports MCP elicitation (many still don't, as
+of today — expect to hit this often, not as a rare exception), so there is nothing useful to decide
+before making the call:
+- **If the client supports elicitation:** the server pauses and prompts the user itself, through
+  the client's own UI, independent of anything you do. Just wait for that outcome.
+- **If it doesn't (or the prompt fails):** the response tells you so explicitly — nothing was sent
+  to Rundeck. *Only at that point* should you ask the user directly for their explicit approval,
+  then retry the same call with \`skipConfirmation: true\`.
+
+Asking the user before the first attempt is never useful: on a client that supports elicitation it
+just adds a second, redundant prompt for the same action; on one that doesn't, you still have to
+wait for the tool to tell you before you can retry anyway. \`skipConfirmation\` is otherwise ignored
+by the server and must never be set proactively.
 
 ${ASK_USER_LINE}`;
 
@@ -110,12 +119,21 @@ export const ACL_MANAGE_DESCRIPTION = `List, get, create, update, or delete a Ru
 **Guidance Mode:** Call without required params (action, scope) to get step-by-step guidance.${renderPriorityGuidance("acl_manage")}
 
 **Changing or deleting a policy:** \`action: "delete"\` and \`action: "update"\` (both irreversible —
-Rundeck keeps no prior version) always require confirmation before reaching Rundeck. If the
-connected client supports MCP elicitation, the server asks the user directly — call the tool right
-away and wait for that outcome; do **not** separately ask the user to confirm first yourself, since
-that just produces two confirmation prompts for the same action. Only fall back to getting the
-user's explicit approval yourself, then retrying with \`confirm: true\`, if the tool's response says
-elicitation wasn't available or didn't go through.
+Rundeck keeps no prior version) always require human confirmation before reaching Rundeck. **Call
+the tool directly for these — do not ask the user to confirm in chat first.** You can't know in
+advance whether the connected client supports MCP elicitation (many still don't, as of today —
+expect to hit this often, not as a rare exception), so there is nothing useful to decide before
+making the call:
+- **If the client supports elicitation:** the server pauses and prompts the user itself, through
+  the client's own UI, independent of anything you do. Just wait for that outcome.
+- **If it doesn't (or the prompt fails):** the response tells you so explicitly — nothing was sent
+  to Rundeck. *Only at that point* should you ask the user directly for their explicit approval,
+  then retry the same call with \`skipConfirmation: true\`.
+
+Asking the user before the first attempt is never useful: on a client that supports elicitation it
+just adds a second, redundant prompt for the same action; on one that doesn't, you still have to
+wait for the tool to tell you before you can retry anyway. \`skipConfirmation\` is otherwise ignored
+by the server and must never be set proactively.
 
 ${ASK_USER_LINE}`;
 
