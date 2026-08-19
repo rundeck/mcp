@@ -121,7 +121,8 @@ Steps run in isolated shells, so output isn't visible to later steps unless capt
 - Job Schema: \`rundeck://jobs/schema\`
 - Job Examples: \`rundeck://docs/manual/jobs\`
 - Workflow Strategies: \`rundeck://jobs/workflows\`
-- Job Options: \`rundeck://jobs/options\`` + renderFallbackGuidance("job_create");
+- Job Options: \`rundeck://jobs/options\`
+- A \`workflow_steps\` entry of type "plugin" is a generic \`{ type, configuration }\` passthrough — before guessing a plugin's exact \`type\` string or \`configuration\` field names, look up its real docs at \`rundeck://plugins/{node-step|workflow-step}/{plugin-name}\` (e.g. \`rundeck://plugins/workflow-step/pagerduty\`, \`rundeck://plugins/node-step/kubernetes-create-object\`)` + renderFallbackGuidance("job_create");
 }
 
 export function getRundeckConnectGuidance(instanceNames: string[]): string {

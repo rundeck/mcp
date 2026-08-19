@@ -116,6 +116,16 @@ describe("Resource Handlers", () => {
       expect(result).toContain("not found");
     });
 
+    it("should handle a specific plugin doc whose type/name contain hyphens", () => {
+      const result = handleResource("rundeck://plugins/workflow-step/pagerduty");
+      expect(result).toContain("PagerDuty");
+    });
+
+    it("should handle a specific plugin doc whose name contains multiple hyphens", () => {
+      const result = handleResource("rundeck://plugins/node-step/kubernetes-create-object");
+      expect(result).toContain("Kubernetes");
+    });
+
     it("should handle endpoint resources with path", () => {
       const result = handleResource(
         "rundeck://api/endpoint/%2Fapi%2F59%2Fprojects"

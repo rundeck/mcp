@@ -224,7 +224,7 @@ export function handleResource(uri: string): string {
         return getNodeStepPlugins();
       } else if (path === "/plugins/workflow-steps") {
         return getWorkflowStepPlugins();
-      } else if (path.match(/^\/plugins\/\w+\/\w+$/)) {
+      } else if (path.match(/^\/plugins\/[\w-]+\/[\w-]+$/)) {
         const parts = path.split("/");
         const type = parts[2];
         const name = parts[3];
