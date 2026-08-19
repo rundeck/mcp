@@ -57,9 +57,9 @@ The server supports the following environment variables:
   - Example: `your-api-token-here`
 
 - **`RUNDECK_API_VERSION`** (optional): Rundeck API version
-  - Default: `46`
+  - Default: `59`
   - Should match your Rundeck instance API version
-  - Example: `46`
+  - Example: `59`
 
 - **`RUNDECK_API_TIMEOUT_MS`** (optional): Timeout in milliseconds for `api_call`'s underlying HTTP request (also bounds `runner_create` and `acl_manage`, which call through it).
   - Default: `30000` (30 seconds)
@@ -82,6 +82,8 @@ The server supports the following environment variables:
 - **`SKIP_RUNDECK_DOCS_DOWNLOAD`** (optional, npm install only): Set to `1` to skip the automatic docs download during `npm install`/`npm ci` (e.g. for a CI job that doesn't need docs, or an offline install). Has no effect on the Docker image's startup download.
 
 - **`RUNDECK_SKIP_OPENAPI_VALIDATE`** (optional): When set to `1`, disables pre-request validation of `api_call` query keys and JSON body top-level keys against the OpenAPI file shipped with the docs tree (`RUNDECK_DOCS_PATH/.vuepress/public/files/rundeck-api.yml`). Useful if you intentionally send parameters not yet documented in that spec.
+
+- **`SKIP_ELICITATION`** (optional): Set to `1` or `true` to bypass the human confirmation gate on destructive `api_call`/`acl_manage` calls (deletes, ACL policy changes, runner credential regeneration) — the action proceeds immediately with no prompt and no block. This only works because it's an environment variable set by whoever deploys/configures the server; there is no tool parameter that can bypass confirmation, so a calling agent can never set this itself. See [Destructive Actions and Confirmation](./TECHNICAL-CAPABILITIES.md#destructive-actions-and-confirmation) in TECHNICAL-CAPABILITIES.md.
 
 - **`MCP_DEBUG`** (optional): Set to `1` or `true` for verbose server-side logging.
 

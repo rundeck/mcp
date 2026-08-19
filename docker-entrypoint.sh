@@ -23,16 +23,40 @@ fetch_docs() {
   # command below must be wired into an if/||  so a docs-fetch problem can
   # never prevent the MCP server from starting.
   tmp_dir="$(mktemp -d)" || { log "docs fetch failed — starting without docs"; return 0; }
+
+  # Run the actual clone in the background so we can poll it and log a
+  # heads-up if it's taking unusually long (e.g. a slow/blocked network path
+  # to github.com) instead of leaving the MCP client staring at a silent
+  # stdio handshake with no indication of what's happening or why.
   # mkdir + find (clearing $DOCS_DIR's contents rather than removing the
   # directory itself, since it may be a mount point) + cp are part of this
   # same && chain (the if's condition) deliberately — only the condition of
   # an if is exempt from set -e's abort-on-failure, so a failing command
   # inside the `then` body would NOT be exempt.
-  if git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$DOCS_BRANCH" "$DOCS_REPO" "$tmp_dir" \
-      && (cd "$tmp_dir" && git sparse-checkout set --no-cone '/docs/**' '!/docs/.vuepress/public/**' '/docs/.vuepress/public/files/rundeck-api.yml') \
-      && mkdir -p "$DOCS_DIR" \
-      && find "$DOCS_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + \
-      && cp -r "$tmp_dir/docs/." "$DOCS_DIR/"; then
+  (
+    if git clone --quiet --depth 1 --filter=blob:none --sparse --branch "$DOCS_BRANCH" "$DOCS_REPO" "$tmp_dir" \
+        && (cd "$tmp_dir" && git sparse-checkout set --no-cone '/docs/**' '!/docs/.vuepress/public/**' '/docs/.vuepress/public/files/rundeck-api.yml') \
+        && mkdir -p "$DOCS_DIR" \
+        && find "$DOCS_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + \
+        && cp -r "$tmp_dir/docs/." "$DOCS_DIR/"; then
+      exit 0
+    else
+      exit 1
+    fi
+  ) &
+  clone_pid=$!
+
+  waited=0
+  slow_warn_seconds=10
+  while kill -0 "$clone_pid" 2>/dev/null; do
+    sleep 1
+    waited=$((waited + 1))
+    if [ "$waited" -eq "$slow_warn_seconds" ]; then
+      log "docs fetch is taking longer than ${slow_warn_seconds}s — check network connectivity to github.com; the MCP server will start once it finishes (or fails)"
+    fi
+  done
+
+  if wait "$clone_pid"; then
     log "docs fetched"
   else
     log "docs fetch failed — starting without docs"

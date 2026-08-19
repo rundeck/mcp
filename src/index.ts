@@ -21,6 +21,7 @@ import {
   rundeckListEndpoints,
   rundeckApiCallSchema,
   rundeckListEndpointsSchema,
+  isRunnerCredentialRegenerationEndpoint,
 } from "./tools/api.js";
 import {
   rundeckGenerateJob,
@@ -64,8 +65,12 @@ import {
   getAclManageGuidance,
   getResourceSourceManageGuidance,
   getRundeckConnectGuidance,
+  getConfirmationUnavailableGuidance,
+  getConfirmationDeclinedGuidance,
 } from "./utils/guidance.js";
+import { requestDestructiveConfirmation, type DestructiveAction } from "./utils/confirmation.js";
 import { prompts, getPrompt } from "./prompts/index.js";
+import { ASK_USER_ERROR_TRAILER, ASK_USER_LINE } from "./utils/escalation.js";
 
 export { REGISTERED_TOOL_NAMES };
 
@@ -153,7 +158,9 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 - Making actual API calls (use api_call instead)
 - Reading API documentation (use rundeck://api resource instead)
 
-**Example:** List all job-related endpoints by calling with category: "jobs"`,
+**Example:** List all job-related endpoints by calling with category: "jobs"
+
+${ASK_USER_LINE}`,
       inputSchema: convertSchema(rundeckListEndpointsSchema),
     },
     job_create: {
@@ -184,7 +191,9 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 - Worked examples, one per access pattern: \`rundeck://docs/learning/howto/acls/group-readonly\`, \`rundeck://docs/learning/howto/acls/group-project-exec\`, \`rundeck://docs/learning/howto/acls/group-project-full\`, \`rundeck://docs/learning/howto/acls/group-manage-runner\`, \`rundeck://docs/learning/howto/acls/group-jobname\`, \`rundeck://docs/learning/howto/acls/group-jobgroup\`, \`rundeck://docs/learning/howto/acls/group-node-filtered\`, \`rundeck://docs/learning/howto/acls/group-multiproject\`, \`rundeck://docs/learning/howto/acls/group-apikey\`
 
 **Guidance Mode:** Call without required params (acl_definition) to get guidance.
-**Note:** This is a local structural check, not a substitute for Rundeck's own server-side validation.`,
+**Note:** This is a local structural check, not a substitute for Rundeck's own server-side validation.
+
+${ASK_USER_LINE}`,
       inputSchema: convertSchema(rundeckValidateAclSchema),
     },
     acl_manage: {
@@ -208,7 +217,9 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 - Making API calls to a Rundeck server (use api_call)
 - Generating jobs (use job_create)
 
-**Follow-up:** Prefer \`resources/read\` on the best match for complete, authoritative content.`,
+**Follow-up:** Prefer \`resources/read\` on the best match for complete, authoritative content.
+
+${ASK_USER_LINE}`,
       inputSchema: convertSchema(rundeckSearchDocsSchema),
     },
   };
@@ -231,7 +242,9 @@ server.setRequestHandler(ListToolsRequestSchema, async (request) => {
 - Making API calls (use api_call instead — it uses whichever instance is currently active)
 
 **Input:** Only a registered instance **name** — never a URL or token.
-**Guidance:** Omit \`instance\` to see the list of registered instance names.`,
+**Guidance:** Omit \`instance\` to see the list of registered instance names.
+
+${ASK_USER_LINE}`,
       inputSchema: convertSchema(rundeckConnectSchema),
     });
   }
@@ -255,6 +268,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return returnGuidance(getApiCallGuidance());
         }
         const parsed = rundeckApiCallSchema.parse(args ?? {});
+        let apiDestructiveAction: DestructiveAction | null = null;
+        if (parsed.method === "DELETE") {
+          apiDestructiveAction = {
+            phrase: `permanently delete the resource at \`${parsed.endpoint}\``,
+            consequence: "Rundeck's API has no undo for this.",
+          };
+        } else if (
+          parsed.method === "POST" &&
+          isRunnerCredentialRegenerationEndpoint(parsed.endpoint)
+        ) {
+          apiDestructiveAction = {
+            phrase: `regenerate credentials for the runner at \`${parsed.endpoint}\``,
+            consequence:
+              "This immediately invalidates the runner's current token — any running " +
+              "instance of it will lose connectivity until reconfigured with the new one.",
+          };
+        }
+        if (apiDestructiveAction) {
+          const outcome = await requestDestructiveConfirmation(server, apiDestructiveAction);
+          if (outcome === "declined") {
+            logger.info("api_call destructive action declined via elicitation");
+            return returnGuidance(getConfirmationDeclinedGuidance("api_call", apiDestructiveAction));
+          }
+          if (outcome === "unsupported") {
+            logger.info("api_call destructive action blocked - elicitation unavailable");
+            return returnGuidance(getConfirmationUnavailableGuidance("api_call", apiDestructiveAction));
+          }
+        }
         const apiResult = await rundeckApiCall(parsed);
         return { content: [{ type: "text", text: JSON.stringify(apiResult, null, 2) }] };
       }
@@ -305,14 +346,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: JSON.stringify(aclValidation, null, 2) }] };
       }
 
-      case "acl_manage":
+      case "acl_manage": {
         if (needsGuidance(args, ["action", "scope"])) {
           logger.info("acl_manage called without required params - returning guidance");
           return returnGuidance(getAclManageGuidance());
         }
         const aclParams = rundeckManageAclSchema.parse(args);
+        if (aclParams.action === "delete" || aclParams.action === "update") {
+          const scopeDetail =
+            aclParams.scope === "project" ? `project '${aclParams.project}'` : "system scope";
+          const target = `ACL policy '${aclParams.name}' (${scopeDetail})`;
+          const aclDestructiveAction: DestructiveAction =
+            aclParams.action === "delete"
+              ? {
+                  phrase: `permanently delete ${target}`,
+                  consequence: "Rundeck's API has no undo for this.",
+                }
+              : {
+                  phrase: `overwrite the contents of ${target}`,
+                  consequence:
+                    "Rundeck has no way to revert to the previous version afterward — the old " +
+                    "policy content will be gone.",
+                };
+          const outcome = await requestDestructiveConfirmation(server, aclDestructiveAction);
+          if (outcome === "declined") {
+            logger.info(`acl_manage ${aclParams.action} declined via elicitation`);
+            return returnGuidance(getConfirmationDeclinedGuidance("acl_manage", aclDestructiveAction));
+          }
+          if (outcome === "unsupported") {
+            logger.info(`acl_manage ${aclParams.action} blocked - elicitation unavailable`);
+            return returnGuidance(getConfirmationUnavailableGuidance("acl_manage", aclDestructiveAction));
+          }
+        }
         const aclResult = await rundeckManageAcl(aclParams);
         return { content: [{ type: "text", text: JSON.stringify(aclResult, null, 2) }] };
+      }
 
       case "resource_model_source_manage": {
         // 'project' isn't required for 'list_provider_types'/'describe_provider_config' (instance-wide
@@ -372,7 +440,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           : String(error);
     logger.error(`Tool error for ${name}`, error);
     return {
-      content: [{ type: "text", text: `Error executing tool '${name}': ${errorMessage}` }],
+      content: [
+        {
+          type: "text",
+          text: `Error executing tool '${name}': ${errorMessage}${ASK_USER_ERROR_TRAILER}`,
+        },
+      ],
       isError: true,
     };
   }

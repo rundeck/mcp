@@ -13,6 +13,8 @@
  * text and decides to call the fallback tool on its next turn.
  */
 
+import { ASK_USER_GUIDANCE } from "../utils/escalation.js";
+
 export interface ToolRelationship {
   /** The specialized tool being described. */
   tool: string;
@@ -109,6 +111,7 @@ export function renderFallbackGuidance(toolName: string): string {
   if (!entry) return "";
   return (
     `\n\n## Fallback\nIf \`${entry.tool}\` fails or doesn't cover your case, fall back to ` +
-    `\`${entry.fallbackTo}\` by ${entry.fallbackAction}.`
+    `\`${entry.fallbackTo}\` by ${entry.fallbackAction}.` +
+    ASK_USER_GUIDANCE
   );
 }

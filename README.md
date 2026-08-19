@@ -191,6 +191,12 @@ Everything above covers the common case: one Rundeck instance. If you need to sw
 
 ---
 
+## Safety: Approvals and Destructive Actions
+
+This server acts against a real, live Rundeck instance. Deletes, ACL policy changes, and runner credential revocation require confirmation before reaching Rundeck; auto-approve/"auto mode" MCP clients bypass that safety net, and you assume the risk if you use one. See [Destructive Actions and Confirmation](./TECHNICAL-CAPABILITIES.md#destructive-actions-and-confirmation) in TECHNICAL-CAPABILITIES.md for how it works.
+
+---
+
 ## Local Development
 
 > **Note:** `npm install` authenticates against PagerDuty's private Cloudsmith npm mirror via the committed `.npmrc` (PagerDuty employees need a `CLOUDSMITH_NPM_TOKEN`). External contributors without Cloudsmith access should delete `.npmrc` and `package-lock.json` first — see [SETUP.md](./SETUP.md#local-development).

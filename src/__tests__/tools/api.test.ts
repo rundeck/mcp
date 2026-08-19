@@ -6,6 +6,7 @@ import { jest } from "@jest/globals";
 import {
   rundeckSetupToken,
   rundeckListEndpoints,
+  isRunnerCredentialRegenerationEndpoint,
 } from "../../tools/api.js";
 import { configManager } from "../../config.js";
 
@@ -67,6 +68,30 @@ describe("API Tools", () => {
           expect(endpoint.category).toBe("jobs");
         }
       });
+    });
+  });
+
+  describe("isRunnerCredentialRegenerationEndpoint", () => {
+    it.each([
+      "runnerManagement/runner/abc-123/regenerateCreds",
+      "/runnerManagement/runner/abc-123/regenerateCreds",
+      "/api/59/runnerManagement/runner/abc-123/regenerateCreds",
+      "project/my-project/runnerManagement/runner/abc-123/regenerateCreds",
+      "/api/59/project/my-project/runnerManagement/runner/abc-123/regenerateCreds",
+      "runnerManagement/runner/abc-123/regenerateCreds?foo=bar",
+      "RUNNERMANAGEMENT/RUNNER/abc-123/REGENERATECREDS",
+    ])("returns true for %s", (endpoint) => {
+      expect(isRunnerCredentialRegenerationEndpoint(endpoint)).toBe(true);
+    });
+
+    it.each([
+      "runnerManagement/runners",
+      "project/my-project/runnerManagement/runners",
+      "runnerManagement/runner/abc-123",
+      "job/abc-123",
+      "runnerManagement/runner/abc-123/regenerateCreds/extra",
+    ])("returns false for %s", (endpoint) => {
+      expect(isRunnerCredentialRegenerationEndpoint(endpoint)).toBe(false);
     });
   });
 
@@ -204,6 +229,45 @@ describe("API Tools", () => {
       ).rejects.toThrow(/timed out after 50ms calling GET \/projects/);
 
       delete process.env.RUNDECK_API_TIMEOUT_MS;
+    });
+
+    it("should surface the underlying network error code and a docker hint for localhost connection failures", async () => {
+      configManager.setRundeckConnection("http://localhost:4440", "test-token");
+
+      const fetchError = new TypeError("fetch failed");
+      const cause = new Error("connect ECONNREFUSED 127.0.0.1:4440") as NodeJS.ErrnoException;
+      cause.code = "ECONNREFUSED";
+      (fetchError as { cause?: unknown }).cause = cause;
+      mockFetch.mockRejectedValueOnce(fetchError);
+
+      const { rundeckApiCall } = await import("../../tools/api.js");
+
+      await expect(
+        rundeckApiCall({ endpoint: "/projects", method: "GET" })
+      ).rejects.toThrow(
+        /ECONNREFUSED — the target refused the connection.*host\.docker\.internal/s
+      );
+    });
+
+    it("should surface DNS failures without the docker hint for non-localhost URLs", async () => {
+      configManager.setRundeckConnection("https://rundeck.example.com", "test-token");
+
+      const fetchError = new TypeError("fetch failed");
+      const cause = new Error("getaddrinfo ENOTFOUND rundeck.example.com") as NodeJS.ErrnoException;
+      cause.code = "ENOTFOUND";
+      (fetchError as { cause?: unknown }).cause = cause;
+      mockFetch.mockRejectedValueOnce(fetchError);
+
+      const { rundeckApiCall } = await import("../../tools/api.js");
+
+      let thrown: Error | undefined;
+      try {
+        await rundeckApiCall({ endpoint: "/projects", method: "GET" });
+      } catch (error) {
+        thrown = error as Error;
+      }
+      expect(thrown?.message).toMatch(/ENOTFOUND — DNS lookup failed/);
+      expect(thrown?.message).not.toMatch(/host\.docker\.internal/);
     });
 
     it("should fall back to the default timeout when RUNDECK_API_TIMEOUT_MS is invalid", () => {

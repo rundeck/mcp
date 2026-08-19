@@ -15,7 +15,50 @@
  */
 
 import { renderFallbackGuidance } from "../tools/tool-relationships.js";
+import { ASK_USER_GUIDANCE, ASK_USER_LINE } from "./escalation.js";
+import type { DestructiveAction } from "./confirmation.js";
 import { NODE_DEFINITION_FORMAT_REFERENCE } from "../tools/resources.js";
+
+/**
+ * Returned when `requestDestructiveConfirmation` couldn't get a live answer from the human —
+ * the connected MCP client doesn't declare the `elicitation` capability, or the request itself
+ * failed. This is a hard stop with no retry path and no bypass parameter; only a live
+ * elicitation prompt (see `getConfirmationDeclinedGuidance`) can confirm the action.
+ */
+export function getConfirmationUnavailableGuidance(toolName: string, action: DestructiveAction): string {
+  return `# Confirmation Not Available
+
+Calling \`${toolName}\` with these parameters would **${action.phrase}**. ${action.consequence}
+**Nothing has happened** — this call was intercepted before it reached Rundeck.
+
+This action needs a live, human-confirmed answer through the connected MCP client's support for
+MCP elicitation, and that didn't come through this time — either the client doesn't support it,
+or the confirmation request itself failed. There's no parameter that can substitute for that
+confirmation, so retrying this exact call won't produce a different outcome.
+
+Tell the user plainly that this specific action is blocked pending that confirmation, and let
+them decide how they'd like to proceed.
+
+${ASK_USER_LINE}`;
+}
+
+/**
+ * Returned when the client supports elicitation and the human was asked directly, but
+ * declined or cancelled the prompt. The action was never attempted.
+ */
+export function getConfirmationDeclinedGuidance(toolName: string, action: DestructiveAction): string {
+  return `# Action Not Confirmed
+
+The user was asked directly (via the MCP client's confirmation prompt) whether to ${action.phrase},
+and did not confirm. **Nothing happened.**
+
+Do not retry this \`${toolName}\` call expecting a different outcome, and do not try to route
+around this by other means (e.g. hand-building the same request a different way). The user's
+answer was already collected — if you still think this is needed, ask them directly what
+they'd like to do instead.
+
+${ASK_USER_LINE}`;
+}
 
 export function getJobCreationGuidance(): string {
   return `# Creating a Rundeck Job
@@ -122,7 +165,7 @@ ${list}
 
 ## Notes
 - This tool only takes a **name** — never a URL or token.
-- If the name doesn't match a registered instance, the connection is cleared rather than left pointing at whatever was active before, so a follow-up \`api_call\` fails closed instead of silently hitting the wrong instance.`;
+- If the name doesn't match a registered instance, the connection is cleared rather than left pointing at whatever was active before, so a follow-up \`api_call\` fails closed instead of silently hitting the wrong instance.` + ASK_USER_GUIDANCE;
 }
 
 export function getApiCallGuidance(): string {
@@ -191,7 +234,7 @@ You can also use the \`call-api\` prompt via \`prompts/get\` for API guidance:
 ## Resources
 - API Index: \`rundeck://api\`
 - Authentication: \`rundeck://api/auth\`
-- API Examples: \`rundeck://api/examples\``;
+- API Examples: \`rundeck://api/examples\`` + ASK_USER_GUIDANCE;
 }
 
 export function getJobValidationGuidance(): string {
@@ -263,7 +306,7 @@ Use \`rd projects configure set\` command
 ## Resources
 - Project Configuration: \`rundeck://config/project\`
 - System Configuration: \`rundeck://config/system\`
-- Plugin Configuration: \`rundeck://config/plugins\``;
+- Plugin Configuration: \`rundeck://config/plugins\`` + ASK_USER_GUIDANCE;
 }
 
 export function getAuthSetupGuidance(): string {
@@ -306,7 +349,7 @@ Tokens inherit the authorization roles of the user who created them. Ensure your
 ## Resources
 - Authentication Methods: \`rundeck://api/auth\`
 - API Basics: \`rundeck://api/examples\`
-- Configuration: \`rundeck://docs/administration/configuration\``;
+- Configuration: \`rundeck://docs/administration/configuration\`` + ASK_USER_GUIDANCE;
 }
 
 export function getNodeFilterGuidance(): string {
@@ -365,7 +408,7 @@ You can also use the \`write-node-filter\` prompt via \`prompts/get\`:
 
 ## Resources
 - Node Filter Reference: \`rundeck://ref/filters\`
-- Node Documentation: \`rundeck://learn\``;
+- Node Documentation: \`rundeck://learn\`` + ASK_USER_GUIDANCE;
 }
 
 export function getPluginIntegrationGuidance(): string {
@@ -429,7 +472,7 @@ You can also use the \`integrate-plugin\` prompt via \`prompts/get\`:
 - Plugin Overview: \`rundeck://plugins\`
 - Node Step Plugins: \`rundeck://plugins/node-steps\`
 - Workflow Step Plugins: \`rundeck://plugins/workflow-steps\`
-- Plugin Configuration: \`rundeck://config/plugins\``;
+- Plugin Configuration: \`rundeck://config/plugins\`` + ASK_USER_GUIDANCE;
 }
 
 export function getRunnerGuidance(): string {
@@ -575,7 +618,7 @@ acl_validate({
 
 ## Resources
 - ACL Policy format: \`rundeck://docs/manual\` (see aclpolicy-v10.md)
-- ACL Policy administration: \`rundeck://docs/administration\` (see acl-policy-editor.md)`;
+- ACL Policy administration: \`rundeck://docs/administration\` (see acl-policy-editor.md)` + ASK_USER_GUIDANCE;
 }
 
 export function getAclManageGuidance(): string {
@@ -863,6 +906,6 @@ When plugin codegen is re-enabled, parameters follow the schema in \`src/tools/p
 plugin_type: node-step
 name: my-custom-step
 class_name: MyCustomStep
-\`\`\``;
+\`\`\`` + ASK_USER_GUIDANCE;
 }
 
