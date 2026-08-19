@@ -110,28 +110,28 @@ describe("Integration: index.ts tools/list schema fidelity", () => {
     // value schema rather than `false` — those are legitimate open records,
     // not missing restrictions, so only flag schemas where it's unset.
     const missing: string[] = [];
-    function walk(node: unknown, path: string): void {
+    function walk(node: unknown, schemaPath: string): void {
       if (!node || typeof node !== "object") return;
       const schema = node as Record<string, unknown>;
       if (schema.type === "object" && schema.additionalProperties === undefined) {
-        missing.push(path);
+        missing.push(schemaPath);
       }
       if (schema.properties && typeof schema.properties === "object") {
         for (const [key, value] of Object.entries(schema.properties as Record<string, unknown>)) {
-          walk(value, `${path}.${key}`);
+          walk(value, `${schemaPath}.${key}`);
         }
       }
       if (schema.items) {
         if (Array.isArray(schema.items)) {
-          schema.items.forEach((item, i) => walk(item, `${path}[${i}]`));
+          schema.items.forEach((item, i) => walk(item, `${schemaPath}[${i}]`));
         } else {
-          walk(schema.items, `${path}[]`);
+          walk(schema.items, `${schemaPath}[]`);
         }
       }
       for (const key of ["anyOf", "oneOf", "allOf"]) {
         const branches = (schema as Record<string, unknown>)[key];
         if (Array.isArray(branches)) {
-          branches.forEach((branch, i) => walk(branch, `${path}.${key}[${i}]`));
+          branches.forEach((branch, i) => walk(branch, `${schemaPath}.${key}[${i}]`));
         }
       }
     }

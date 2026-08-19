@@ -108,7 +108,7 @@ function convertSchema(schema: any): any {
     return jsonSchema;
   } catch (error) {
     logger.error("Error converting schema", error);
-    return { type: "object", properties: {} };
+    return { type: "object", properties: {}, additionalProperties: false };
   }
 }
 
