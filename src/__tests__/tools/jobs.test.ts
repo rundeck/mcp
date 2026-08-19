@@ -527,7 +527,7 @@ describe("Job Tools", () => {
       expect(result.valid).toBe(true);
     });
 
-    it("should warn about a key-value-data LogFilter regex with the wrong capture group count", () => {
+    it("should warn about a single-capture-group key-value-data regex with no 'name' set", () => {
       const jobYaml = `- name: Test Job
   loglevel: INFO
   sequence:
@@ -548,6 +548,27 @@ describe("Job Tools", () => {
       expect(result.warnings.some((w) => w.includes("capture group"))).toBe(true);
     });
 
+    it("should not warn about a single-capture-group key-value-data regex with 'name' set", () => {
+      const jobYaml = `- name: Test Job
+  loglevel: INFO
+  sequence:
+    commands:
+      - exec: echo value
+        plugins:
+          LogFilter:
+            - type: key-value-data
+              config:
+                regex: "(.+)"
+                name: myVar`;
+
+      const result = rundeckValidateJob({
+        job_definition: jobYaml,
+        format: "yaml",
+      });
+
+      expect(result.warnings.some((w) => w.includes("capture group"))).toBe(false);
+    });
+
     it("should not warn about a key-value-data LogFilter regex with exactly 2 capture groups", () => {
       const jobYaml = `- name: Test Job
   loglevel: INFO
@@ -566,6 +587,26 @@ describe("Job Tools", () => {
       });
 
       expect(result.warnings.some((w) => w.includes("capture group"))).toBe(false);
+    });
+
+    it("should warn about a key-value-data LogFilter regex with 3 capture groups", () => {
+      const jobYaml = `- name: Test Job
+  loglevel: INFO
+  sequence:
+    commands:
+      - exec: echo a=b=c
+        plugins:
+          LogFilter:
+            - type: key-value-data
+              config:
+                regex: "(.+)=(.+)=(.+)"`;
+
+      const result = rundeckValidateJob({
+        job_definition: jobYaml,
+        format: "yaml",
+      });
+
+      expect(result.warnings.some((w) => w.includes("capture group"))).toBe(true);
     });
 
     it("should warn about a literal-only plugin field containing a substitution", () => {

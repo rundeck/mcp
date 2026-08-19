@@ -101,7 +101,7 @@ format, concatenate the arrays, then do a single \`api_call\` with the matching 
 
 ### Passing data between steps (on any \`workflow_steps\` entry)
 Steps run in isolated shells, so output isn't visible to later steps unless captured.
-- \`logFilters\` (array): \`{ type, config? }\`. Common types: \`"key-value-data"\` (regex must have the capture groups the filter expects, e.g. two for a key/value pair), \`"key-value-data-multilines"\`, \`"json-mapper"\`. Captured values are referenced downstream as \`\${data.<name>}\`.
+- \`logFilters\` (array): \`{ type, config? }\`. Common types: \`"key-value-data"\` (regex needs 1 or 2 capture groups — 2 groups = key/value pair; 1 group = value, and \`config.name\` must set the key), \`"key-value-data-multilines"\`, \`"json-mapper"\`. Captured values are referenced downstream as \`\${data.<name>}\`.
 
 ### Conditional branching (a \`workflow_steps\` entry of type "conditional")
 - \`conditionGroups\` (array of arrays of \`{ key, operator, value }\`): clauses within a group are AND'd, groups are OR'd. \`operator\` is a symbol (\`"=="\`, \`"!="\`, \`">"\`, etc.).
@@ -237,7 +237,7 @@ job_validate({
 ## What gets checked
 Beyond structural checks (name, loglevel, sequence.commands), \`job_validate\` also warns/errors on:
 - \`type: 'conditional'\` steps combined with \`sequence.strategy: 'node-first'\` (error — incompatible at import)
-- A \`key-value-data\` LogFilter whose regex doesn't have exactly 2 capture groups (warning — capture silently fails)
+- A \`key-value-data\` LogFilter whose regex doesn't have exactly 1 (with \`name\` set) or 2 capture groups (warning — capture silently fails)
 - Plugin config fields commonly validated as literals at import time (e.g. \`outputFormat\`, \`objectType\`, \`imagePullPolicy\`, \`duration\`) containing a \`\${...}\` substitution (warning — some plugins reject this)
 
 ## Resources

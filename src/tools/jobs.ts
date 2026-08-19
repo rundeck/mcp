@@ -397,9 +397,15 @@ function collectStepWarnings(commands: unknown[], warnings: string[]): void {
           const regex = config?.regex;
           if (typeof regex === "string") {
             const groups = countCaptureGroups(regex);
-            if (groups !== 2) {
+            if (groups === 1 && !config?.name) {
               warnings.push(
-                `LogFilter 'key-value-data' regex '${regex}' has ${groups} capture group(s); expected exactly 2 (key, value) or the capture will silently fail`
+                `LogFilter 'key-value-data' regex '${regex}' has 1 capture group but no 'name' set; ` +
+                "with a single capture group the 'name' field is required to name the captured value"
+              );
+            } else if (groups !== 1 && groups !== 2) {
+              warnings.push(
+                `LogFilter 'key-value-data' regex '${regex}' has ${groups} capture group(s); expected 1 (with 'name' set) ` +
+                "or 2 (key, value), or the capture will silently fail"
               );
             }
           }
@@ -693,9 +699,10 @@ export const workflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() => z.object
       config: z.record(z.unknown())
         .optional()
         .describe(
-          "Filter-specific config. For 'key-value-data': { regex, logData?, captureMultipleKeysValues? }. " +
-          "The 'regex' must contain exactly the capture groups the filter expects (e.g. two groups for a key/value pair) " +
-          "or capture silently fails at runtime."
+          "Filter-specific config. For 'key-value-data': { regex, name?, logData?, matchSubstrings?, allowMultipleMatches? }. " +
+          "'regex' must have 1 or 2 capture groups: 2 groups = (key, value); 1 group = the value, and 'name' " +
+          "must then be set to the key name. Any other count silently fails to capture at runtime. " +
+          "For 'key-value-data-multilines', the same fields plus 'captureMultipleKeysValues'."
         ),
     })
   )
