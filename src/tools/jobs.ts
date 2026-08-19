@@ -6,11 +6,19 @@ import { z } from "zod";
 import * as yaml from "yaml";
 
 export interface WorkflowStep {
-  type: "command" | "script" | "jobref" | "plugin";
+  type: "command" | "script" | "jobref" | "plugin" | "conditional.logic" | "export-var";
   exec?: string;
   script?: string;
   scriptfile?: string;
   scripturl?: string;
+  /** Arguments to pass to a script/scriptfile/scripturl step. */
+  args?: string;
+  /** Interpreter used to run the script, e.g. "/usr/bin/python3" or "powershell.exe". Required for non-shell scripts (Python, PowerShell). */
+  scriptInterpreter?: string;
+  /** Whether the interpreter args string should be quoted as a single argument. */
+  interpreterArgsQuoted?: boolean;
+  /** File extension for the generated script file, e.g. ".py" or ".ps1". PowerShell steps need this to run correctly. */
+  fileExtension?: string;
   jobref?: {
     name: string;
     group?: string;
@@ -22,6 +30,56 @@ export interface WorkflowStep {
   };
   nodeStep?: boolean;
   description?: string;
+  /** Step to run if this step fails. Rundeck runs it in place, then still fails the workflow unless keepgoingOnSuccess is true. */
+  errorhandler?: ErrorHandlerStep;
+  /** Log filters that capture step output into data for use by later steps (${data.<name>}) or notifications. */
+  logFilters?: LogFilter[];
+  /**
+   * For type "conditional.logic" (an Early Access commercial feature — requires the
+   * rundeck.feature.earlyAccessJobConditional.enabled=true flag): groups of clauses to test.
+   * Clauses within a group are AND'd; groups are OR'd.
+   */
+  conditionGroups?: ConditionGroup[];
+  /** For type "conditional.logic": steps to run when the condition evaluates true. Cannot itself contain a conditional.logic step. */
+  steps?: WorkflowStep[];
+  /** For type "export-var": exports a data value so it's visible outside sequence/data context, e.g. to notifications as ${export.<export>}. */
+  exportVar?: {
+    export: string;
+    group?: string;
+    value: string;
+  };
+}
+
+export interface LogFilter {
+  type: string;
+  config?: Record<string, unknown>;
+}
+
+export interface ConditionGroup {
+  conditions: ConditionClause[];
+}
+
+export interface ConditionClause {
+  field: string;
+  operator: "equals" | "not equals" | "contains" | "matches" | "greater than" | "less than";
+  value: string;
+}
+
+export interface ErrorHandlerStep {
+  exec?: string;
+  script?: string;
+  scriptfile?: string;
+  scripturl?: string;
+  scriptInterpreter?: string;
+  interpreterArgsQuoted?: boolean;
+  fileExtension?: string;
+  plugin?: {
+    type: string;
+    configuration?: Record<string, unknown>;
+  };
+  nodeStep?: boolean;
+  /** If true, a successful error handler counts the step as successful and the workflow continues. */
+  keepgoingOnSuccess?: boolean;
 }
 
 export interface JobSchedule {
@@ -52,6 +110,147 @@ export interface JobOption {
   valueExposed?: boolean;
 }
 
+export interface NotificationEmail {
+  /** Comma-separated recipient email address list. */
+  recipients: string;
+  subject?: string;
+  attachLog?: boolean;
+  attachLogInline?: boolean;
+  attachLogInFile?: boolean;
+}
+
+export interface NotificationPlugin {
+  type: string;
+  configuration?: Record<string, unknown>;
+}
+
+export interface NotificationHook {
+  /** Built-in email notification. */
+  email?: NotificationEmail;
+  /** Built-in webhook notification: payload format, e.g. "json" or "xml". */
+  format?: string;
+  /** Built-in webhook notification: HTTP method, e.g. "post". */
+  httpMethod?: string;
+  /** Built-in webhook notification: destination URL(s), comma-separated. */
+  urls?: string;
+  /** Plugin-based notification (e.g. PagerDutyEventNotification). Rundeck accepts either one plugin or a list of them here. */
+  plugin?: NotificationPlugin | NotificationPlugin[];
+}
+
+export interface JobNotification {
+  /** Rundeck supports multiple notifications per trigger, hence arrays. */
+  onstart?: NotificationHook[];
+  onsuccess?: NotificationHook[];
+  onfailure?: NotificationHook[];
+  onavgduration?: NotificationHook[];
+  onretryablefailure?: NotificationHook[];
+}
+
+/**
+ * Targets a runner by tag instead of direct node reachability. Used for jobs
+ * destined for a runner-based (SaaS) deployment rather than self-hosted Rundeck.
+ */
+export interface RunnerSelector {
+  filter: string;
+  runnerFilterMode?: "TAGS" | "FILTER" | "LOCAL";
+  runnerFilterType?: "TAG_FILTER_AND" | "TAG_FILTER_OR" | "LOCAL_RUNNER";
+}
+
+/**
+ * Build a single workflow step's YAML/JSON representation, including
+ * nested errorhandler, LogFilter plugins, and (for conditional steps)
+ * recursively-built subSteps.
+ */
+function buildWorkflowCommand(step: WorkflowStep): Record<string, unknown> | null {
+  let command: Record<string, unknown> | null = null;
+
+  if (step.type === "command" && step.exec) {
+    command = { exec: step.exec };
+  } else if (step.type === "script" && (step.script || step.scriptfile || step.scripturl)) {
+    const scriptStep: Record<string, unknown> = {};
+    if (step.script) scriptStep.script = step.script;
+    else if (step.scriptfile) scriptStep.scriptfile = step.scriptfile;
+    else if (step.scripturl) scriptStep.scripturl = step.scripturl;
+    if (step.args) scriptStep.args = step.args;
+    if (step.scriptInterpreter) scriptStep.scriptInterpreter = step.scriptInterpreter;
+    if (step.interpreterArgsQuoted !== undefined)
+      scriptStep.interpreterArgsQuoted = step.interpreterArgsQuoted;
+    if (step.fileExtension) scriptStep.fileExtension = step.fileExtension;
+    command = scriptStep;
+  } else if (step.type === "jobref" && step.jobref) {
+    command = { jobref: step.jobref };
+  } else if (step.type === "plugin" && step.plugin) {
+    const pluginStep: Record<string, unknown> = {
+      type: step.plugin.type,
+    };
+    if (step.nodeStep !== undefined) {
+      pluginStep.nodeStep = step.nodeStep;
+    }
+    if (step.plugin.configuration) {
+      pluginStep.configuration = step.plugin.configuration;
+    }
+    command = pluginStep;
+  } else if (step.type === "conditional.logic" && step.conditionGroups && step.steps) {
+    command = {
+      type: "conditional.logic",
+      conditionGroups: step.conditionGroups.map((group) => ({
+        conditions: group.conditions.map((clause) => ({
+          field: clause.field,
+          operator: clause.operator,
+          value: clause.value,
+        })),
+      })),
+      steps: step.steps
+        .map((subStep) => buildWorkflowCommand(subStep))
+        .filter((subCommand): subCommand is Record<string, unknown> => subCommand !== null),
+    };
+    if (step.nodeStep !== undefined) command.nodeStep = step.nodeStep;
+  } else if (step.type === "export-var" && step.exportVar) {
+    command = {
+      type: "export-var",
+      nodeStep: false,
+      configuration: {
+        export: step.exportVar.export,
+        group: step.exportVar.group || "export",
+        value: step.exportVar.value,
+      },
+    };
+  }
+
+  if (command && step.errorhandler) {
+    const handler = step.errorhandler;
+    const errorhandlerStep: Record<string, unknown> = {};
+    if (handler.script) errorhandlerStep.script = handler.script;
+    else if (handler.scriptfile) errorhandlerStep.scriptfile = handler.scriptfile;
+    else if (handler.scripturl) errorhandlerStep.scripturl = handler.scripturl;
+    else if (handler.exec) errorhandlerStep.exec = handler.exec;
+    else if (handler.plugin) {
+      errorhandlerStep.type = handler.plugin.type;
+      if (handler.plugin.configuration) errorhandlerStep.configuration = handler.plugin.configuration;
+    }
+    if (handler.scriptInterpreter) errorhandlerStep.scriptInterpreter = handler.scriptInterpreter;
+    if (handler.interpreterArgsQuoted !== undefined)
+      errorhandlerStep.interpreterArgsQuoted = handler.interpreterArgsQuoted;
+    if (handler.fileExtension) errorhandlerStep.fileExtension = handler.fileExtension;
+    if (handler.nodeStep !== undefined) errorhandlerStep.nodeStep = handler.nodeStep;
+    if (handler.keepgoingOnSuccess !== undefined)
+      errorhandlerStep.keepgoingOnSuccess = handler.keepgoingOnSuccess;
+    command.errorhandler = errorhandlerStep;
+  }
+
+  if (command && step.logFilters && step.logFilters.length > 0) {
+    command.plugins = {
+      LogFilter: step.logFilters.map((f) => {
+        const filter: Record<string, unknown> = { type: f.type };
+        if (f.config) filter.config = f.config;
+        return filter;
+      }),
+    };
+  }
+
+  return command;
+}
+
 /**
  * Generate a Rundeck job definition
  */
@@ -61,6 +260,7 @@ export function rundeckGenerateJob(params: {
   project: string;
   workflow_steps: WorkflowStep[];
   node_filter?: string;
+  runnerSelector?: RunnerSelector;
   options?: JobOption[];
   format?: "yaml" | "json";
   group?: string;
@@ -69,6 +269,9 @@ export function rundeckGenerateJob(params: {
   retry?: number | string;
   multipleExecutions?: boolean;
   schedule?: JobSchedule;
+  notification?: JobNotification;
+  /** Required alongside notification.onavgduration. Threshold to trigger it: percentage ("20%"), time delta ("+20s"), or absolute time ("30s"). */
+  notifyAvgDurationThreshold?: string;
 }): string {
   const format = params.format || "yaml";
   const loglevel = params.loglevel || "INFO";
@@ -76,27 +279,9 @@ export function rundeckGenerateJob(params: {
   // Build workflow sequence
   const commands: unknown[] = [];
   for (const step of params.workflow_steps) {
-    if (step.type === "command" && step.exec) {
-      commands.push({ exec: step.exec });
-    } else if (step.type === "script" && step.script) {
-      commands.push({ script: step.script });
-    } else if (step.type === "script" && step.scriptfile) {
-      commands.push({ scriptfile: step.scriptfile });
-    } else if (step.type === "script" && step.scripturl) {
-      commands.push({ scripturl: step.scripturl });
-    } else if (step.type === "jobref" && step.jobref) {
-      commands.push({ jobref: step.jobref });
-    } else if (step.type === "plugin" && step.plugin) {
-      const pluginStep: Record<string, unknown> = {
-        type: step.plugin.type,
-      };
-      if (step.nodeStep !== undefined) {
-        pluginStep.nodeStep = step.nodeStep;
-      }
-      if (step.plugin.configuration) {
-        pluginStep.configuration = step.plugin.configuration;
-      }
-      commands.push(pluginStep);
+    const command = buildWorkflowCommand(step);
+    if (command) {
+      commands.push(command);
     }
   }
 
@@ -117,6 +302,10 @@ export function rundeckGenerateJob(params: {
     job.nodefilters = {
       filter: params.node_filter,
     };
+  }
+
+  if (params.runnerSelector) {
+    job.runnerSelector = params.runnerSelector;
   }
 
   if (params.options && params.options.length > 0) {
@@ -159,6 +348,23 @@ export function rundeckGenerateJob(params: {
     job.schedule = params.schedule;
   }
 
+  if (params.notification) {
+    const notification: Record<string, unknown> = {};
+    const triggers = ["onstart", "onsuccess", "onfailure", "onavgduration", "onretryablefailure"] as const;
+    for (const trigger of triggers) {
+      const hooks = params.notification[trigger];
+      if (hooks && hooks.length > 0) {
+        notification[trigger] = hooks;
+      }
+    }
+    if (Object.keys(notification).length > 0) {
+      job.notification = notification;
+      if (notification.onavgduration && params.notifyAvgDurationThreshold) {
+        job.notifyAvgDurationThreshold = params.notifyAvgDurationThreshold;
+      }
+    }
+  }
+
   if (format === "yaml") {
     return yaml.stringify([job], { indent: 2 });
   } else {
@@ -169,6 +375,145 @@ export function rundeckGenerateJob(params: {
 /**
  * Validate a job definition
  */
+/**
+ * Recursively checks a parsed sequence's commands (and any conditional
+ * step's nested steps) for a "conditional.logic" step type.
+ */
+function containsConditionalStep(commands: unknown[]): boolean {
+  for (const command of commands) {
+    if (typeof command !== "object" || command === null) continue;
+    const commandObj = command as Record<string, unknown>;
+    if (commandObj.type === "conditional.logic") return true;
+    if (Array.isArray(commandObj.steps) && containsConditionalStep(commandObj.steps)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Recursively checks a conditional.logic step's nested steps for violations of
+ * two documented restrictions: no nested conditional.logic steps, and no
+ * errorhandler/logFilters on a substep (only supported on root-level steps).
+ */
+function collectConditionalNestingIssues(
+  commands: unknown[],
+  errors: string[],
+  warnings: string[],
+  insideConditional: boolean
+): void {
+  for (const command of commands) {
+    if (typeof command !== "object" || command === null) continue;
+    const commandObj = command as Record<string, unknown>;
+    const isConditional = commandObj.type === "conditional.logic";
+
+    if (isConditional && insideConditional) {
+      errors.push(
+        "Nested 'conditional.logic' steps are not supported — use a Job Reference step to call another " +
+        "job that contains the nested conditional instead"
+      );
+    }
+
+    if (insideConditional && (commandObj.errorhandler || commandObj.plugins)) {
+      warnings.push(
+        "'errorhandler' and 'logFilters' are only supported on root-level workflow steps, not on steps " +
+        "nested inside a 'conditional.logic' step"
+      );
+    }
+
+    if (Array.isArray(commandObj.steps)) {
+      collectConditionalNestingIssues(commandObj.steps, errors, warnings, true);
+    }
+  }
+}
+
+/**
+ * Counts capturing groups in a regex source string (non-capturing groups,
+ * lookaheads/lookbehinds excluded). Used to flag LogFilter regexes that
+ * won't capture the fields they claim to.
+ */
+function countCaptureGroups(pattern: string): number {
+  let count = 0;
+  for (let i = 0; i < pattern.length; i++) {
+    if (pattern[i] === "\\") {
+      i++;
+      continue;
+    }
+    if (pattern[i] !== "(") continue;
+    if (pattern[i + 1] !== "?") {
+      count++;
+      continue;
+    }
+    const marker = pattern[i + 2];
+    if (marker === ":" || marker === "=" || marker === "!") continue; // non-capturing / lookahead
+    if (marker === "<" && (pattern[i + 3] === "=" || pattern[i + 3] === "!")) continue; // lookbehind
+    count++; // named capturing group (?<name>...)
+  }
+  return count;
+}
+
+// Fields that some common Rundeck plugins validate as literals at import
+// time, rejecting ${option.x}/${data.x} substitution even though the field
+// accepts a plain string.
+const LITERAL_ONLY_PLUGIN_FIELDS = ["outputFormat", "objectType", "imagePullPolicy", "duration"];
+
+/**
+ * Recursively walks a parsed sequence's commands (including conditional
+ * subSteps and errorhandlers) collecting non-fatal correctness warnings
+ * that are cheap to check deterministically.
+ */
+function collectStepWarnings(commands: unknown[], warnings: string[]): void {
+  for (const command of commands) {
+    if (typeof command !== "object" || command === null) continue;
+    const commandObj = command as Record<string, unknown>;
+
+    const plugins = commandObj.plugins as Record<string, unknown> | undefined;
+    if (plugins && Array.isArray(plugins.LogFilter)) {
+      for (const filter of plugins.LogFilter) {
+        if (typeof filter !== "object" || filter === null) continue;
+        const filterObj = filter as Record<string, unknown>;
+        if (filterObj.type === "key-value-data") {
+          const config = filterObj.config as Record<string, unknown> | undefined;
+          const regex = config?.regex;
+          if (typeof regex === "string") {
+            const groups = countCaptureGroups(regex);
+            if (groups === 1 && !config?.name) {
+              warnings.push(
+                `LogFilter 'key-value-data' regex '${regex}' has 1 capture group but no 'name' set; ` +
+                "with a single capture group the 'name' field is required to name the captured value"
+              );
+            } else if (groups !== 1 && groups !== 2) {
+              warnings.push(
+                `LogFilter 'key-value-data' regex '${regex}' has ${groups} capture group(s); expected 1 (with 'name' set) ` +
+                "or 2 (key, value), or the capture will silently fail"
+              );
+            }
+          }
+        }
+      }
+    }
+
+    if (typeof commandObj.type === "string" && commandObj.configuration && typeof commandObj.configuration === "object") {
+      const config = commandObj.configuration as Record<string, unknown>;
+      for (const field of LITERAL_ONLY_PLUGIN_FIELDS) {
+        const value = config[field];
+        if (typeof value === "string" && value.includes("${")) {
+          warnings.push(
+            `Plugin '${commandObj.type}' field '${field}' contains '\${...}' substitution; some Rundeck plugins validate this field as a literal at import time and will reject a dynamic value here`
+          );
+        }
+      }
+    }
+
+    if (Array.isArray(commandObj.steps)) {
+      collectStepWarnings(commandObj.steps, warnings);
+    }
+    if (commandObj.errorhandler && typeof commandObj.errorhandler === "object") {
+      collectStepWarnings([commandObj.errorhandler], warnings);
+    }
+  }
+}
+
 export function rundeckValidateJob(params: {
   job_definition: string;
   format: "yaml" | "json";
@@ -231,6 +576,18 @@ export function rundeckValidateJob(params: {
           errors.push("Job sequence must have a 'commands' array");
         } else if (sequence.commands.length === 0) {
           warnings.push("Job has no workflow steps");
+        } else {
+          if (containsConditionalStep(sequence.commands)) {
+            const validStrategies = ["step-first", "parallel"];
+            if (!validStrategies.includes(String(sequence.strategy))) {
+              errors.push(
+                `'conditional.logic' steps require sequence.strategy 'step-first' or 'parallel' ` +
+                `(found '${sequence.strategy ?? "node-first (default)"}'); 'node-first' and 'ruleset' are not supported`
+              );
+            }
+            collectConditionalNestingIssues(sequence.commands, errors, warnings, false);
+          }
+          collectStepWarnings(sequence.commands, warnings);
         }
       }
 
@@ -333,12 +690,81 @@ export const jobScheduleSchema = z.object({
   "Only one approach is needed. Example crontab: '0 0 8 ? * MON-FRI' (8 AM weekdays)."
 );
 
-export const workflowStepSchema = z.object({
-  type: z.enum(["command", "script", "jobref", "plugin"]),
+const notificationPluginSchema = z.object({
+  type: z.string().describe(
+    "Notification plugin type. Example: 'PagerDutyEventNotification'."
+  ),
+  configuration: z.record(z.unknown()).optional(),
+});
+
+const notificationHookSchema = z.object({
+  email: z.object({
+    recipients: z.string().describe("Comma-separated recipient email address list."),
+    subject: z.string().optional(),
+    attachLog: z.boolean().optional(),
+    attachLogInline: z.boolean().optional(),
+    attachLogInFile: z.boolean().optional(),
+  })
+    .optional()
+    .describe("Built-in email notification."),
+  format: z.string()
+    .optional()
+    .describe("Built-in webhook notification: payload format, e.g. 'json' or 'xml'."),
+  httpMethod: z.string()
+    .optional()
+    .describe("Built-in webhook notification: HTTP method, e.g. 'post'."),
+  urls: z.string()
+    .optional()
+    .describe("Built-in webhook notification: destination URL(s), comma-separated."),
+  plugin: z.union([notificationPluginSchema, z.array(notificationPluginSchema)])
+    .optional()
+    .describe("Plugin-based notification, or a list of them. Use this or the built-in email/webhook fields above, not both."),
+});
+
+export const jobNotificationSchema = z.object({
+  onstart: z.array(notificationHookSchema).optional(),
+  onsuccess: z.array(notificationHookSchema).optional(),
+  onfailure: z.array(notificationHookSchema).optional(),
+  onavgduration: z.array(notificationHookSchema)
+    .optional()
+    .describe(
+      "Fired when execution duration exceeds the job's average duration by " +
+      "notifyAvgDurationThreshold (a required sibling top-level job field when this is set)."
+    ),
+  onretryablefailure: z.array(notificationHookSchema)
+    .optional()
+    .describe("Fired on a failure that is eligible for retry."),
+}).describe(
+  "Notifications fired on job lifecycle events. Each trigger accepts a list — Rundeck supports " +
+  "multiple notifications per trigger. Note: values captured via a step's LogFilter ('${data.<name>}') " +
+  "are not visible inside notification config — export them first with an 'export-var' workflow step " +
+  "and reference them as '${export.<name>}'."
+);
+
+export const workflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() => z.object({
+  type: z.enum(["command", "script", "jobref", "plugin", "conditional.logic", "export-var"]),
   exec: z.string().optional(),
   script: z.string().optional(),
   scriptfile: z.string().optional(),
   scripturl: z.string().url().optional(),
+  args: z.string()
+    .optional()
+    .describe("Arguments to pass to a 'script', 'scriptfile', or 'scripturl' step."),
+  scriptInterpreter: z.string()
+    .optional()
+    .describe(
+      "Interpreter used to run the script. Required for non-shell scripts. " +
+      "Examples: 'python3', 'powershell.exe'"
+    ),
+  interpreterArgsQuoted: z.boolean()
+    .optional()
+    .describe("Whether the interpreter args string should be quoted as a single argument."),
+  fileExtension: z.string()
+    .optional()
+    .describe(
+      "File extension for the generated script file. Required for some interpreters to behave correctly. " +
+      "Examples: '.py', '.ps1'"
+    ),
   jobref: z
     .object({
       name: z.string(),
@@ -354,7 +780,95 @@ export const workflowStepSchema = z.object({
     .optional(),
   nodeStep: z.boolean().optional(),
   description: z.string().optional(),
-});
+  errorhandler: z.object({
+    exec: z.string().optional(),
+    script: z.string().optional(),
+    scriptfile: z.string().optional(),
+    scripturl: z.string().url().optional(),
+    scriptInterpreter: z.string().optional(),
+    interpreterArgsQuoted: z.boolean().optional(),
+    fileExtension: z.string().optional(),
+    plugin: z
+      .object({
+        type: z.string(),
+        configuration: z.record(z.unknown()).optional(),
+      })
+      .optional(),
+    nodeStep: z.boolean().optional(),
+    keepgoingOnSuccess: z.boolean()
+      .optional()
+      .describe(
+        "If true, a successful error handler counts the step as successful and the workflow continues. " +
+        "If false/omitted, the step is still marked failed even if the error handler succeeds."
+      ),
+  })
+    .optional()
+    .describe(
+      "Step to run if this step fails, e.g. a cleanup command or notification. " +
+      "Runs in place of failure handling; combine with keepgoingOnSuccess to continue the workflow on handler success."
+    ),
+  logFilters: z.array(
+    z.object({
+      type: z.string().describe(
+        "Log filter plugin type. Common built-ins: 'key-value-data' (parses 'key=value' lines), " +
+        "'key-value-data-multilines' (same, with a delimited-lines mode), 'json-mapper' (parses JSON output into data)."
+      ),
+      config: z.record(z.unknown())
+        .optional()
+        .describe(
+          "Filter-specific config. For 'key-value-data': { regex, name?, logData?, matchSubstrings?, allowMultipleMatches? }. " +
+          "'regex' must have 1 or 2 capture groups: 2 groups = (key, value); 1 group = the value, and 'name' " +
+          "must then be set to the key name. Any other count silently fails to capture at runtime. " +
+          "For 'key-value-data-multilines', the same fields plus 'captureMultipleKeysValues'."
+        ),
+    })
+  )
+    .optional()
+    .describe(
+      "Log filters that capture this step's output into data, since steps otherwise run in isolated " +
+      "shells with no shared state. Captured values are referenced downstream as ${data.<name>}."
+    ),
+  conditionGroups: z.array(
+    z.object({
+      conditions: z.array(
+        z.object({
+          field: z.string().describe(
+            "Field reference using ${} syntax, e.g. '${node.osFamily}', '${option.environment}', '${data.status}'."
+          ),
+          operator: z.enum(["equals", "not equals", "contains", "matches", "greater than", "less than"]),
+          value: z.string().describe("Literal value, or a '${...}' reference, e.g. '${option.target}'."),
+        })
+      ).describe("Conditions within this group are AND'd together."),
+    })
+  )
+    .optional()
+    .describe(
+      "For type 'conditional.logic' (Early Access commercial feature — requires the " +
+      "rundeck.feature.earlyAccessJobConditional.enabled=true flag): groups of clauses to test. " +
+      "Groups are OR'd together. Requires 'steps' to also be set. Only valid with sequence.strategy " +
+      "'step-first' or 'parallel' — not the default 'node-first', and not 'ruleset'."
+    ),
+  steps: z.array(workflowStepSchema)
+    .optional()
+    .describe(
+      "For type 'conditional.logic': steps to run when the condition evaluates true. Requires 'conditionGroups' " +
+      "to also be set. Must match the parent's nodeStep (node vs workflow) type, and cannot itself contain " +
+      "another conditional.logic step (nesting is not supported — use a Job Reference step instead)."
+    ),
+  exportVar: z.object({
+    export: z.string().describe("Name the exported value is referenced by, e.g. 'result' for ${export.result}."),
+    group: z.string().optional().describe("Export group name. Defaults to 'export'."),
+    value: z.string().describe("Value to export, typically a reference like '${data.someKey}'."),
+  })
+    .optional()
+    .describe(
+      "For type 'export-var': makes a captured data value (from a LogFilter) visible outside " +
+      "step/sequence data context, e.g. in notifications, as ${export.<export>}."
+    ),
+})).refine(
+  (step) => !(step.type === "conditional.logic" && (!step.conditionGroups || !step.steps)),
+  { message: "conditional.logic steps require both 'conditionGroups' and 'steps'" }
+);
 
 export const jobOptionSchema = z.object({
   name: z.string(),
@@ -398,6 +912,16 @@ export const rundeckGenerateJobSchema = z.object({
       "Node filter expression. Determines which nodes the job targets. " +
       "Examples: 'tags: production', 'name: web-.*', 'tags: web AND os-family: linux'"
     ),
+  runnerSelector: z.object({
+    filter: z.string().describe("Tag filter expression selecting which runner(s) execute this job."),
+    runnerFilterMode: z.enum(["TAGS", "FILTER", "LOCAL"]).optional(),
+    runnerFilterType: z.enum(["TAG_FILTER_AND", "TAG_FILTER_OR", "LOCAL_RUNNER"]).optional(),
+  })
+    .optional()
+    .describe(
+      "Targets a runner by tag instead of node_filter's direct node reachability. Use for jobs " +
+      "destined for a runner-based (SaaS / PagerDuty Process Automation) deployment rather than self-hosted Rundeck."
+    ),
   options: z.array(jobOptionSchema)
     .optional()
     .describe(
@@ -440,6 +964,13 @@ export const rundeckGenerateJobSchema = z.object({
       "If true, the job can run multiple times concurrently. Default: false"
     ),
   schedule: jobScheduleSchema.optional(),
+  notification: jobNotificationSchema.optional(),
+  notifyAvgDurationThreshold: z.string()
+    .optional()
+    .describe(
+      "Required alongside notification.onavgduration. Threshold to trigger it: percentage ('20%'), " +
+      "time delta ('+20s'), or absolute time ('30s'). Can reference an option, e.g. '${option.avgDurationThreshold}'."
+    ),
 });
 
 export const rundeckValidateJobSchema = z.object({
