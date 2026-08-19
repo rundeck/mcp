@@ -304,14 +304,6 @@ The guidance system provides interactive help when tools are called without requ
 
 ## Technical Specifications
 
-### Dependencies
-
-- **@modelcontextprotocol/server** / **@modelcontextprotocol/client**: MCP protocol implementation (see `package.json` for the pinned version)
-- **marked**: ^18.0.0 - Markdown parsing
-- **yaml**: 2.9.0 - YAML parsing and generation
-- **zod**: ^4.2.0 - Schema validation
-- **TypeScript**: ^5.5.0 - Type safety and modern JavaScript features
-
 ### Configuration
 
 The server is configured via environment variables:
