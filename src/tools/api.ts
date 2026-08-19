@@ -200,14 +200,14 @@ export const rundeckApiCallSchema = z.object({
       "HTTP method. GET for retrieving data, POST for creating/triggering, PUT for updating, DELETE for removing, PATCH for partial updates. " +
       "Default: GET"
     ),
-  body: z.union([z.record(z.unknown()), z.array(z.unknown()), z.string()])
+  body: z.union([z.record(z.string(), z.unknown()), z.array(z.unknown()), z.string()])
     .optional()
     .describe(
       "Request body for POST/PUT/PATCH requests. Accepts a JSON object, a JSON array, or a pre-serialized JSON string (sent verbatim). " +
       "Example (run a job): {\"options\": {\"option-name\": \"value\"}, \"nodeFilters\": {\"name\": \"web-*\"}}. " +
       "Example (import jobs): [{\"name\": \"my-job\", \"project\": \"MyProject\", \"sequence\": {\"commands\": []}}] — the jobs import endpoint requires a JSON array."
     ),
-  query_params: z.record(z.string())
+  query_params: z.record(z.string(), z.string())
     .optional()
     .describe(
       "Query parameters as key-value pairs. Names must match the OpenAPI definition for this route (validation uses docs/.vuepress/public/files/rundeck-api.yml). " +
