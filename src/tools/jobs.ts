@@ -101,16 +101,28 @@ export interface JobOption {
 }
 
 export interface NotificationHook {
-  plugin: {
+  /** Built-in email notification: comma-separated recipient list. */
+  email?: string;
+  /** Built-in webhook notification: payload format, e.g. "json". */
+  format?: string;
+  /** Built-in webhook notification: HTTP method, e.g. "POST". */
+  httpMethod?: string;
+  /** Built-in webhook notification: destination URL(s), comma-separated. */
+  urls?: string;
+  /** Plugin-based notification (e.g. PagerDutyEventNotification). */
+  plugin?: {
     type: string;
     configuration?: Record<string, unknown>;
   };
 }
 
 export interface JobNotification {
-  onsuccess?: NotificationHook;
-  onfailure?: NotificationHook;
-  onstart?: NotificationHook;
+  /** Rundeck supports multiple notifications per trigger, hence arrays. */
+  onstart?: NotificationHook[];
+  onsuccess?: NotificationHook[];
+  onfailure?: NotificationHook[];
+  onavgduration?: NotificationHook[];
+  onretryablefailure?: NotificationHook[];
 }
 
 /**
@@ -313,9 +325,13 @@ export function rundeckGenerateJob(params: {
 
   if (params.notification) {
     const notification: Record<string, unknown> = {};
-    if (params.notification.onsuccess) notification.onsuccess = params.notification.onsuccess;
-    if (params.notification.onfailure) notification.onfailure = params.notification.onfailure;
-    if (params.notification.onstart) notification.onstart = params.notification.onstart;
+    const triggers = ["onstart", "onsuccess", "onfailure", "onavgduration", "onretryablefailure"] as const;
+    for (const trigger of triggers) {
+      const hooks = params.notification[trigger];
+      if (hooks && hooks.length > 0) {
+        notification[trigger] = hooks;
+      }
+    }
     if (Object.keys(notification).length > 0) {
       job.notification = notification;
     }
@@ -609,22 +625,43 @@ export const jobScheduleSchema = z.object({
 );
 
 const notificationHookSchema = z.object({
+  email: z.string()
+    .optional()
+    .describe("Built-in email notification: comma-separated recipient address list."),
+  format: z.string()
+    .optional()
+    .describe("Built-in webhook notification: payload format, e.g. 'json'."),
+  httpMethod: z.string()
+    .optional()
+    .describe("Built-in webhook notification: HTTP method, e.g. 'POST'."),
+  urls: z.string()
+    .optional()
+    .describe("Built-in webhook notification: destination URL(s), comma-separated."),
   plugin: z.object({
     type: z.string().describe(
       "Notification plugin type. Example: 'PagerDutyEventNotification'."
     ),
     configuration: z.record(z.unknown()).optional(),
-  }),
+  })
+    .optional()
+    .describe("Plugin-based notification. Use this or the built-in email/webhook fields above, not both."),
 });
 
 export const jobNotificationSchema = z.object({
-  onsuccess: notificationHookSchema.optional(),
-  onfailure: notificationHookSchema.optional(),
-  onstart: notificationHookSchema.optional(),
+  onstart: z.array(notificationHookSchema).optional(),
+  onsuccess: z.array(notificationHookSchema).optional(),
+  onfailure: z.array(notificationHookSchema).optional(),
+  onavgduration: z.array(notificationHookSchema)
+    .optional()
+    .describe("Fired when execution duration exceeds the job's average duration."),
+  onretryablefailure: z.array(notificationHookSchema)
+    .optional()
+    .describe("Fired on a failure that is eligible for retry."),
 }).describe(
-  "Notifications fired on job lifecycle events. Note: values captured via a step's LogFilter " +
-  "('${data.<name>}') are not visible inside notification config — export them first with an " +
-  "'export-var' workflow step and reference them as '${export.<name>}'."
+  "Notifications fired on job lifecycle events. Each trigger accepts a list — Rundeck supports " +
+  "multiple notifications per trigger. Note: values captured via a step's LogFilter ('${data.<name>}') " +
+  "are not visible inside notification config — export them first with an 'export-var' workflow step " +
+  "and reference them as '${export.<name>}'."
 );
 
 export const workflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() => z.object({

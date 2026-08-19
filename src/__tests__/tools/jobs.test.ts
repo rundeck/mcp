@@ -297,25 +297,31 @@ describe("Job Tools", () => {
       expect(step.configuration.value).toBe("${data.result}");
     });
 
-    it("should include a notification block", () => {
+    it("should include a notification block with multiple hooks per trigger", () => {
       const result = rundeckGenerateJob({
         name: "Notification Job",
         project: "test-project",
         workflow_steps: [{ type: "command", exec: "echo hi" }],
         notification: {
-          onfailure: {
-            plugin: {
-              type: "PagerDutyEventNotification",
-              configuration: { serviceKey: "abc123" },
+          onfailure: [
+            {
+              plugin: {
+                type: "PagerDutyEventNotification",
+                configuration: { serviceKey: "abc123" },
+              },
             },
-          },
+            { email: "oncall@example.com" },
+          ],
+          onavgduration: [{ email: "slow-jobs@example.com" }],
         },
       });
 
       const parsed = yaml.parse(result);
-      expect(parsed[0].notification.onfailure.plugin.type).toBe(
+      expect(parsed[0].notification.onfailure[0].plugin.type).toBe(
         "PagerDutyEventNotification"
       );
+      expect(parsed[0].notification.onfailure[1].email).toBe("oncall@example.com");
+      expect(parsed[0].notification.onavgduration[0].email).toBe("slow-jobs@example.com");
     });
 
     it("should not include a notification block when omitted", () => {
