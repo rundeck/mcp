@@ -157,3 +157,54 @@ describe("Integration: index.ts tools/list schema fidelity", () => {
     expect(schema.required).toEqual(["endpoint"]);
   }, 15000);
 });
+
+// Regression coverage for the serveStdio() migration: index.ts serves both
+// the 2025-era protocol and 2026-07-28 ("modern era") from the same handler
+// registrations via the SDK's legacy shim. The 2025-era path is already
+// exercised by every other test in this file (Client defaults to it); this
+// specifically pins the client to 2026-07-28 so a regression in the
+// serveStdio() wiring (e.g. reverting to a hand-wired
+// `server.connect(new StdioServerTransport())`, which only ever serves
+// 2025-era) is caught automatically instead of requiring manual verification.
+describe("Integration: index.ts serves the 2026-07-28 protocol revision", () => {
+  beforeAll(() => {
+    if (!fs.existsSync(serverEntry)) {
+      throw new Error(
+        `${serverEntry} does not exist — run \`npm run build\` before running this test.`
+      );
+    }
+  });
+
+  async function connectModern(env: Record<string, string>) {
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [serverEntry],
+      env,
+    });
+    const client = new Client(
+      { name: "test-client-modern", version: "0.0.0" },
+      { versionNegotiation: { mode: { pin: "2026-07-28" } } }
+    );
+    await client.connect(transport);
+    return client;
+  }
+
+  it("completes a full discover -> tools/list -> tools/call round trip pinned to 2026-07-28", async () => {
+    const env = { ...process.env } as Record<string, string>;
+    delete env.RUNDECK_INSTANCES;
+    const client = await connectModern(env);
+
+    try {
+      const tools = await client.listTools();
+      expect(tools.tools.length).toBeGreaterThan(0);
+
+      const result = await client.callTool({
+        name: "docs_search",
+        arguments: { query: "node filters" },
+      });
+      expect(result.content).toBeDefined();
+    } finally {
+      await client.close();
+    }
+  }, 15000);
+});
