@@ -38,7 +38,7 @@ export function getConfirmationRequiredGuidance(toolName: string, action: Destru
 
 Calling \`${toolName}\` with these parameters would **${action.phrase}**. ${action.consequence}
 Nothing has happened yet — this call was intercepted before it reached Rundeck because
-\`skipConfirmation\` was not set to \`true\`.
+\`userHasProvidedConfirmation\` was not set to \`true\`.
 
 The server couldn't get a confirmed answer from the human directly — either your MCP client
 doesn't support live confirmation prompts (MCP elicitation), or it does but the confirmation
@@ -49,7 +49,7 @@ now — you (the agent) are responsible for getting real, explicit approval befo
 1. Confirm the user explicitly asked for (or explicitly approved) **this specific action** —
    not something you inferred while doing other work.
 2. Restate to the user exactly what will happen, and wait for their explicit go-ahead.
-3. Only then, re-call \`${toolName}\` with the same parameters plus \`skipConfirmation: true\`.
+3. Only then, re-call \`${toolName}\` with the same parameters plus \`userHasProvidedConfirmation: true\`.
 
 ${ASK_USER_LINE}`;
 }
@@ -238,7 +238,7 @@ The API version is specified in the URL path (e.g., /api/59/...). Current defaul
 ## Optional Parameters
 - **body** (object): Request body for POST/PUT requests
 - **query_params** (object): Query parameters
-- **skipConfirmation** (boolean): Fallback only — has no effect on clients that support MCP
+- **userHasProvidedConfirmation** (boolean): Fallback only — has no effect on clients that support MCP
   elicitation, since the server always prompts the user directly in that case regardless of this
   field. Do not ask the user to confirm yourself before calling; just call the tool and wait for
   the outcome. Only set this to \`true\` for \`method: "DELETE"\`, or for \`POST\` to a runner's
@@ -666,7 +666,7 @@ filesystem (those can only be managed by editing them directly on disk).
 - **project** (string): required when scope is "project"
 - **name** (string): required for all actions except "list". The \`.aclpolicy\` suffix is added automatically if omitted.
 - **content** (string): required for "create"/"update" — the ACL policy YAML
-- **skipConfirmation** (boolean): Fallback only — has no effect on clients that support MCP
+- **userHasProvidedConfirmation** (boolean): Fallback only — has no effect on clients that support MCP
   elicitation, since the server always prompts the user directly in that case regardless of this
   field. Do not ask the user to confirm yourself before calling; just call the tool and wait for
   the outcome. Only set this to \`true\` for actions "delete" and "update" — both mutate or remove

@@ -1,5 +1,6 @@
 import { jest } from "@jest/globals";
 import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import { ErrorCode, McpError } from "@modelcontextprotocol/sdk/types.js";
 import { requestDestructiveConfirmation, type DestructiveAction } from "../../utils/confirmation.js";
 
 function fakeServer(overrides: {
@@ -44,7 +45,8 @@ describe("requestDestructiveConfirmation", () => {
       expect.objectContaining({
         message: expect.stringContaining("delete job 'my-job'"),
         requestedSchema: expect.objectContaining({ type: "object" }),
-      })
+      }),
+      expect.objectContaining({ timeout: expect.any(Number) })
     );
   });
 
@@ -62,7 +64,8 @@ describe("requestDestructiveConfirmation", () => {
     expect(elicitInput).toHaveBeenCalledWith(
       expect.objectContaining({
         message: expect.stringMatching(/^Permanently delete/),
-      })
+      }),
+      expect.objectContaining({ timeout: expect.any(Number) })
     );
   });
 
@@ -97,6 +100,34 @@ describe("requestDestructiveConfirmation", () => {
     const elicitInput = jest
       .fn<Server["elicitInput"]>()
       .mockRejectedValue(new Error("client doesn't actually support it"));
+    const server = fakeServer({
+      getClientCapabilities: () => ({ elicitation: {} }),
+      elicitInput,
+    });
+
+    expect(await requestDestructiveConfirmation(server, action)).toBe("unsupported");
+  });
+
+  it("gives the human several minutes to respond, not the SDK's 60s network-latency default", async () => {
+    const elicitInput = jest.fn<Server["elicitInput"]>().mockResolvedValue({ action: "accept" });
+    const server = fakeServer({
+      getClientCapabilities: () => ({ elicitation: {} }),
+      elicitInput,
+    });
+
+    await requestDestructiveConfirmation(server, action);
+
+    const [, options] = elicitInput.mock.calls[0];
+    expect(options?.timeout).toBeGreaterThanOrEqual(5 * 60 * 1000);
+  });
+
+  it("falls back to 'unsupported' (without throwing) when the human doesn't answer before the elicitation timeout", async () => {
+    // Observed live: a real elicitation prompt was shown, but the human took longer than the
+    // SDK's default 60s to respond, so the request timed out — indistinguishable, before this
+    // fix, from a client that never supported elicitation in the first place.
+    const elicitInput = jest
+      .fn<Server["elicitInput"]>()
+      .mockRejectedValue(new McpError(ErrorCode.RequestTimeout, "Request timed out"));
     const server = fakeServer({
       getClientCapabilities: () => ({ elicitation: {} }),
       elicitInput,

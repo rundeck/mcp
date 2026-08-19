@@ -34,11 +34,11 @@ before making the call:
   the client's own UI, independent of anything you do. Just wait for that outcome.
 - **If it doesn't (or the prompt fails):** the response tells you so explicitly — nothing was sent
   to Rundeck. *Only at that point* should you ask the user directly for their explicit approval,
-  then retry the same call with \`skipConfirmation: true\`.
+  then retry the same call with \`userHasProvidedConfirmation: true\`.
 
 Asking the user before the first attempt is never useful: on a client that supports elicitation it
 just adds a second, redundant prompt for the same action; on one that doesn't, you still have to
-wait for the tool to tell you before you can retry anyway. \`skipConfirmation\` is otherwise ignored
+wait for the tool to tell you before you can retry anyway. \`userHasProvidedConfirmation\` is otherwise ignored
 by the server and must never be set proactively.
 
 ${ASK_USER_LINE}`;
@@ -128,11 +128,11 @@ making the call:
   the client's own UI, independent of anything you do. Just wait for that outcome.
 - **If it doesn't (or the prompt fails):** the response tells you so explicitly — nothing was sent
   to Rundeck. *Only at that point* should you ask the user directly for their explicit approval,
-  then retry the same call with \`skipConfirmation: true\`.
+  then retry the same call with \`userHasProvidedConfirmation: true\`.
 
 Asking the user before the first attempt is never useful: on a client that supports elicitation it
 just adds a second, redundant prompt for the same action; on one that doesn't, you still have to
-wait for the tool to tell you before you can retry anyway. \`skipConfirmation\` is otherwise ignored
+wait for the tool to tell you before you can retry anyway. \`userHasProvidedConfirmation\` is otherwise ignored
 by the server and must never be set proactively.
 
 ${ASK_USER_LINE}`;

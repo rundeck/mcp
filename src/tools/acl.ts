@@ -415,15 +415,15 @@ export const rundeckManageAclSchema = z
       "Strongly recommended: validate with acl_validate before submitting — Rundeck will reject invalid policies with a 400 " +
       "and a list of per-document errors, but a local check surfaces the same issues faster."
     ),
-    skipConfirmation: z.boolean().optional().default(false).describe(
-      "Fallback only — has NO effect when the connected client supports MCP elicitation, since the " +
-      "server always prompts the user directly in that case regardless of this field's value. Do " +
-      "not pre-emptively ask the user for approval yourself before calling this tool: just call it " +
-      "(omit this field) and wait for the outcome. Only set this to true when action is 'delete' " +
-      "or 'update' — both mutate or remove the policy irreversibly — AND the tool's response says " +
-      "elicitation wasn't available or didn't go through — and only after the user has explicitly " +
-      "approved that specific change at that point. Never inferred or set proactively on the " +
-      "agent's own judgment. Ignored for 'list', 'get', and 'create'."
+    userHasProvidedConfirmation: z.boolean().optional().default(false).describe(
+      "Set this to true ONLY if literally true: the user has, in this conversation, already given " +
+      "explicit approval for this specific 'delete' or 'update' call, AND a prior call to this " +
+      "same tool told you elicitation wasn't available or didn't go through. Do not set it on a " +
+      "first attempt, and do not set it just because you think the change is probably fine or the " +
+      "user seems likely to approve — call the tool first with this omitted; if the connected " +
+      "client supports MCP elicitation, the server prompts the user itself and this field has no " +
+      "effect at all. Only ask the user yourself, then set this to true and retry, if the response " +
+      "explicitly tells you to. Ignored for 'list', 'get', and 'create'."
     ),
   })
   .refine((s) => s.scope !== "project" || s.project !== undefined, {
