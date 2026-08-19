@@ -19,7 +19,7 @@ import { fileURLToPath } from "node:url";
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const serverEntry = path.resolve(__dirname, "../../../dist/index.js");
 
-async function listToolNames(env: Record<string, string>): Promise<string[]> {
+async function listTools(env: Record<string, string>) {
   const transport = new StdioClientTransport({
     command: process.execPath,
     args: [serverEntry],
@@ -28,11 +28,15 @@ async function listToolNames(env: Record<string, string>): Promise<string[]> {
   const client = new Client({ name: "test-client", version: "0.0.0" });
   await client.connect(transport);
   try {
-    const result = await client.listTools();
-    return result.tools.map((tool) => tool.name);
+    return await client.listTools();
   } finally {
     await client.close();
   }
+}
+
+async function listToolNames(env: Record<string, string>): Promise<string[]> {
+  const result = await listTools(env);
+  return result.tools.map((tool) => tool.name);
 }
 
 describe("Integration: index.ts tools/list registry gating", () => {
@@ -77,5 +81,48 @@ describe("Integration: index.ts tools/list registry gating", () => {
     const toolNames = await listToolNames(env);
 
     expect(toolNames).toContain("rundeck_connect");
+  }, 15000);
+});
+
+// Regression coverage for the SDK v1->v2 migration: zod v4's z.toJSONSchema
+// silently produces different output than the zod-to-json-schema package it
+// replaced, and the client-side SDK validates tools/list responses against
+// the MCP spec — so these only fail loudly when driven through a real
+// client/server round trip, not via the underlying zod schemas directly.
+describe("Integration: index.ts tools/list schema fidelity", () => {
+  beforeAll(() => {
+    if (!fs.existsSync(serverEntry)) {
+      throw new Error(
+        `${serverEntry} does not exist — run \`npm run build\` before running this test.`
+      );
+    }
+  });
+
+  it("declares additionalProperties: false on every tool's inputSchema", async () => {
+    const env = { ...process.env } as Record<string, string>;
+    delete env.RUNDECK_INSTANCES;
+    const { tools } = await listTools(env);
+
+    expect(tools.length).toBeGreaterThan(0);
+    for (const tool of tools) {
+      const schema = tool.inputSchema as { type?: string; additionalProperties?: unknown };
+      if (schema.type === "object") {
+        expect(schema.additionalProperties).toBe(false);
+      }
+    }
+  }, 15000);
+
+  it("does not list optional/defaulted params as required", async () => {
+    const env = { ...process.env } as Record<string, string>;
+    delete env.RUNDECK_INSTANCES;
+    const { tools } = await listTools(env);
+
+    const apiCall = tools.find((tool) => tool.name === "api_call");
+    expect(apiCall).toBeDefined();
+    const schema = apiCall!.inputSchema as { required?: string[] };
+
+    // `method` is `.optional().default("GET")` — it must stay out of
+    // `required`, or clients are misled into thinking it's mandatory.
+    expect(schema.required).toEqual(["endpoint"]);
   }, 15000);
 });

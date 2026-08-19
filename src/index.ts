@@ -64,7 +64,15 @@ export { REGISTERED_TOOL_NAMES };
 // Convert Zod schemas to JSON Schema (lazy conversion to avoid memory issues)
 function convertSchema(schema: any): any {
   try {
-    return z.toJSONSchema(schema, { io: "input" });
+    const jsonSchema = z.toJSONSchema(schema, { io: "input" });
+    // z.toJSONSchema's "input" mode (needed so optional fields with a
+    // .default() aren't misreported as required) omits additionalProperties
+    // even for plain z.object() schemas, unlike the zod-to-json-schema
+    // output this replaced — restore it so clients still reject unknown args.
+    if (jsonSchema.type === "object" && jsonSchema.additionalProperties === undefined) {
+      jsonSchema.additionalProperties = false;
+    }
+    return jsonSchema;
   } catch (error) {
     logger.error("Error converting schema", error);
     return { type: "object", properties: {} };
