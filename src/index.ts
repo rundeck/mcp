@@ -56,17 +56,50 @@ import { prompts, getPrompt } from "./prompts/index.js";
 
 export { REGISTERED_TOOL_NAMES };
 
+// z.toJSONSchema's "input" mode (needed so optional fields with a .default()
+// aren't misreported as required) omits additionalProperties even for plain
+// z.object() schemas — at every nesting level, not just the root — unlike
+// the zod-to-json-schema output this replaced. Walk the whole tree (nested
+// properties, array items, and union branches) and restore it wherever it's
+// unset, so clients still reject unknown args on nested objects too. Schemas
+// that already declare additionalProperties (e.g. z.record()'s `{}` or a
+// value schema) are left untouched.
+function restoreAdditionalProperties(node: unknown): void {
+  if (!node || typeof node !== "object") return;
+  const schema = node as Record<string, unknown>;
+
+  if (schema.type === "object" && schema.additionalProperties === undefined) {
+    schema.additionalProperties = false;
+  }
+
+  if (schema.properties && typeof schema.properties === "object") {
+    for (const value of Object.values(schema.properties as Record<string, unknown>)) {
+      restoreAdditionalProperties(value);
+    }
+  }
+  if (schema.items) {
+    if (Array.isArray(schema.items)) {
+      schema.items.forEach(restoreAdditionalProperties);
+    } else {
+      restoreAdditionalProperties(schema.items);
+    }
+  }
+  for (const key of ["anyOf", "oneOf", "allOf"] as const) {
+    const branches = schema[key];
+    if (Array.isArray(branches)) branches.forEach(restoreAdditionalProperties);
+  }
+  if (schema.$defs && typeof schema.$defs === "object") {
+    for (const value of Object.values(schema.$defs as Record<string, unknown>)) {
+      restoreAdditionalProperties(value);
+    }
+  }
+}
+
 // Convert Zod schemas to JSON Schema (lazy conversion to avoid memory issues)
 function convertSchema(schema: any): any {
   try {
     const jsonSchema = z.toJSONSchema(schema, { io: "input" });
-    // z.toJSONSchema's "input" mode (needed so optional fields with a
-    // .default() aren't misreported as required) omits additionalProperties
-    // even for plain z.object() schemas, unlike the zod-to-json-schema
-    // output this replaced — restore it so clients still reject unknown args.
-    if (jsonSchema.type === "object" && jsonSchema.additionalProperties === undefined) {
-      jsonSchema.additionalProperties = false;
-    }
+    restoreAdditionalProperties(jsonSchema);
     return jsonSchema;
   } catch (error) {
     logger.error("Error converting schema", error);
