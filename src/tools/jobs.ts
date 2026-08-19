@@ -119,8 +119,8 @@ export interface JobNotification {
  */
 export interface RunnerSelector {
   filter: string;
-  runnerFilterMode?: "TAGS";
-  runnerFilterType?: "TAG_FILTER_AND" | "TAG_FILTER_OR";
+  runnerFilterMode?: "TAGS" | "FILTER" | "LOCAL";
+  runnerFilterType?: "TAG_FILTER_AND" | "TAG_FILTER_OR" | "LOCAL_RUNNER";
 }
 
 /**
@@ -789,8 +789,8 @@ export const rundeckGenerateJobSchema = z.object({
     ),
   runnerSelector: z.object({
     filter: z.string().describe("Tag filter expression selecting which runner(s) execute this job."),
-    runnerFilterMode: z.literal("TAGS").optional(),
-    runnerFilterType: z.enum(["TAG_FILTER_AND", "TAG_FILTER_OR"]).optional(),
+    runnerFilterMode: z.enum(["TAGS", "FILTER", "LOCAL"]).optional(),
+    runnerFilterType: z.enum(["TAG_FILTER_AND", "TAG_FILTER_OR", "LOCAL_RUNNER"]).optional(),
   })
     .optional()
     .describe(

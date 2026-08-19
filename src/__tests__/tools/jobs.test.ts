@@ -8,6 +8,7 @@ import {
   rundeckValidateJob,
   rundeckGetJobTemplate,
   workflowStepSchema,
+  rundeckGenerateJobSchema,
 } from "../../tools/jobs.js";
 
 describe("Job Tools", () => {
@@ -352,6 +353,21 @@ describe("Job Tools", () => {
       });
 
       expect(result).not.toContain("runnerSelector");
+    });
+
+    it("should accept LOCAL_RUNNER/FILTER/LOCAL runnerSelector enum values", () => {
+      const result = rundeckGenerateJobSchema.safeParse({
+        name: "Local Runner Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo hi" }],
+        runnerSelector: {
+          filter: "runner-1",
+          runnerFilterMode: "LOCAL",
+          runnerFilterType: "LOCAL_RUNNER",
+        },
+      });
+
+      expect(result.success).toBe(true);
     });
 
     it("should include crontab schedule in YAML output", () => {
