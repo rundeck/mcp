@@ -7,6 +7,7 @@ import {
   rundeckGenerateJob,
   rundeckValidateJob,
   rundeckGetJobTemplate,
+  workflowStepSchema,
 } from "../../tools/jobs.js";
 
 describe("Job Tools", () => {
@@ -251,6 +252,17 @@ describe("Job Tools", () => {
         value: "prod",
       });
       expect(step.subSteps[0].exec).toBe("echo prod");
+    });
+
+    it("should accept 'contains' and 'matches' as conditional operators", () => {
+      for (const operator of ["contains", "matches"] as const) {
+        const result = workflowStepSchema.safeParse({
+          type: "conditional",
+          conditionGroups: [[{ key: "option.environment", operator, value: "prod" }]],
+          subSteps: [{ type: "command", exec: "echo prod" }],
+        });
+        expect(result.success).toBe(true);
+      }
     });
 
     it("should omit a conditional step missing conditionGroups or subSteps", () => {

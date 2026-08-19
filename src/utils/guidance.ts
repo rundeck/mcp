@@ -104,7 +104,7 @@ Steps run in isolated shells, so output isn't visible to later steps unless capt
 - \`logFilters\` (array): \`{ type, config? }\`. Common types: \`"key-value-data"\` (regex needs 1 or 2 capture groups — 2 groups = key/value pair; 1 group = value, and \`config.name\` must set the key), \`"key-value-data-multilines"\`, \`"json-mapper"\`. Captured values are referenced downstream as \`\${data.<name>}\`.
 
 ### Conditional branching (a \`workflow_steps\` entry of type "conditional")
-- \`conditionGroups\` (array of arrays of \`{ key, operator, value }\`): clauses within a group are AND'd, groups are OR'd. \`operator\` is a symbol (\`"=="\`, \`"!="\`, \`">"\`, etc.).
+- \`conditionGroups\` (array of arrays of \`{ key, operator, value }\`): clauses within a group are AND'd, groups are OR'd. \`operator\` is one of \`"=="\`, \`"!="\`, \`">"\`, \`">="\`, \`"<"\`, \`"<="\`, \`"contains"\`, \`"matches"\`.
 - \`subSteps\` (array of workflow steps): run only when the condition evaluates true.
 - Both fields are required together. Conditional steps are **not compatible** with \`sequence.strategy: "node-first"\` — \`job_validate\` flags this.
 

@@ -51,7 +51,7 @@ export interface LogFilter {
 
 export interface ConditionClause {
   key: string;
-  operator: "==" | "!=" | ">" | ">=" | "<" | "<=";
+  operator: "==" | "!=" | ">" | ">=" | "<" | "<=" | "contains" | "matches";
   value: string;
 }
 
@@ -715,7 +715,7 @@ export const workflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() => z.object
     z.array(
       z.object({
         key: z.string().describe("Data or option key to test, e.g. 'option.environment' or 'data.exitCode'."),
-        operator: z.enum(["==", "!=", ">", ">=", "<", "<="]),
+        operator: z.enum(["==", "!=", ">", ">=", "<", "<=", "contains", "matches"]),
         value: z.string(),
       })
     )
