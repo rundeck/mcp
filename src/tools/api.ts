@@ -8,6 +8,43 @@ import { listApiEndpoints } from "../resources/api.js";
 import { loadOpenApiDocument, validateOpenApiRequest } from "../utils/openapi-validate.js";
 
 /**
+ * Node's `fetch` (undici) collapses every network-level failure into a generic
+ * `TypeError: fetch failed`, with the actual reason nested one level down in
+ * `error.cause` (e.g. a `code: "ECONNREFUSED"` error). Unwrap that so the tool's
+ * error output — and the server log line index.ts prints from it — say what
+ * actually went wrong instead of just "fetch failed".
+ */
+const NETWORK_ERROR_HINTS: Record<string, string> = {
+  ECONNREFUSED: "the target refused the connection — is Rundeck actually running and listening there?",
+  ENOTFOUND: "DNS lookup failed — check RUNDECK_URL for typos, or that the hostname resolves from where this server runs.",
+  EHOSTUNREACH: "the host is unreachable — check network routing/VPN from where this server runs.",
+  ETIMEDOUT: "the connection attempt timed out — check firewalls and that the host/port are correct.",
+  ECONNRESET: "the connection was reset mid-request — Rundeck may have restarted, or a proxy/load balancer dropped it.",
+  CERT_HAS_EXPIRED: "the server's TLS certificate has expired.",
+  DEPTH_ZERO_SELF_SIGNED_CERT: "the server presented a self-signed TLS certificate that isn't trusted.",
+  UNABLE_TO_VERIFY_LEAF_SIGNATURE: "the server's TLS certificate couldn't be verified against a trusted CA.",
+};
+
+function describeApiCallFailure(error: unknown, method: string, url: string): string {
+  const err = error instanceof Error ? error : undefined;
+  const cause = err && "cause" in err ? (err as { cause?: unknown }).cause : undefined;
+  const causeErr = cause instanceof Error ? cause : undefined;
+  const code = causeErr && "code" in causeErr ? (causeErr as NodeJS.ErrnoException).code : undefined;
+
+  const reason = (code && NETWORK_ERROR_HINTS[code]) || causeErr?.message || err?.message || String(error);
+
+  // The most common way to hit ECONNREFUSED/ENOTFOUND against "localhost" is running this
+  // server inside Docker, where "localhost"/"127.0.0.1" resolves to the container itself.
+  const dockerHint =
+    (code === "ECONNREFUSED" || code === "ENOTFOUND") && /:\/\/(localhost|127\.0\.0\.1)(:|\/|$)/.test(url)
+      ? " If this server is running inside Docker, 'localhost'/'127.0.0.1' points at the container itself, not " +
+        "your host machine — use 'host.docker.internal' in RUNDECK_URL instead."
+      : "";
+
+  return `API call ${method} ${url} failed: ${code ? `${code} — ` : ""}${reason}${dockerHint}`;
+}
+
+/**
  * Execute a Rundeck API call
  */
 export async function rundeckApiCall(params: {
@@ -139,9 +176,7 @@ export async function rundeckApiCall(params: {
         "The Rundeck instance may be unreachable or overloaded. Set RUNDECK_API_TIMEOUT_MS to adjust the timeout."
       );
     }
-    throw new Error(
-      `API call failed: ${error instanceof Error ? error.message : String(error)}`
-    );
+    throw new Error(describeApiCallFailure(error, params.method || "GET", url.toString()));
   } finally {
     clearTimeout(timeoutHandle);
   }
