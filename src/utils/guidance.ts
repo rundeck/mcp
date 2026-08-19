@@ -15,8 +15,49 @@
  */
 
 import { renderFallbackGuidance } from "../tools/tool-relationships.js";
-import { ASK_USER_GUIDANCE } from "./escalation.js";
+import { ASK_USER_GUIDANCE, ASK_USER_LINE } from "./escalation.js";
+import type { DestructiveAction } from "./confirmation.js";
 import { NODE_DEFINITION_FORMAT_REFERENCE } from "../tools/resources.js";
+
+/**
+ * Returned when `requestDestructiveConfirmation` couldn't get a live answer from the human
+ * (the connected MCP client doesn't declare the `elicitation` capability, or the request
+ * itself failed) and `userHasProvidedConfirmation` wasn't already set to `true`. This is a
+ * hard stop — no request is sent to Rundeck — but framed as "get the user's go-ahead and
+ * retry," not as "this can't be done through this server," since the action is entirely
+ * doable here once a human has actually said yes.
+ */
+export function getConfirmationRequiredGuidance(toolName: string, action: DestructiveAction): string {
+  return `# Confirm With The User Before Proceeding
+
+Calling \`${toolName}\` with these parameters would **${action.phrase}**. ${action.consequence}
+**Nothing has happened yet** — this call was intercepted before it reached Rundeck.
+
+Ask the user directly, in this conversation, whether to proceed with this specific action, and
+wait for their explicit go-ahead — don't infer approval from context or from something they asked
+earlier that didn't specifically cover this. Once they've confirmed, retry this exact
+\`${toolName}\` call with \`userHasProvidedConfirmation: true\` added, and it will go through.
+
+${ASK_USER_LINE}`;
+}
+
+/**
+ * Returned when the client supports elicitation and the human was asked directly, but
+ * declined or cancelled the prompt. The action was never attempted.
+ */
+export function getConfirmationDeclinedGuidance(toolName: string, action: DestructiveAction): string {
+  return `# Action Not Confirmed
+
+The user was asked directly (via the MCP client's confirmation prompt) whether to ${action.phrase},
+and did not confirm. **Nothing happened.**
+
+Do not retry this \`${toolName}\` call expecting a different outcome, and do not try to route
+around this by other means (e.g. hand-building the same request a different way). The user's
+answer was already collected — if you still think this is needed, ask them directly what
+they'd like to do instead.
+
+${ASK_USER_LINE}`;
+}
 
 export function getJobCreationGuidance(): string {
   return `# Creating a Rundeck Job
@@ -184,6 +225,14 @@ The API version is specified in the URL path (e.g., /api/59/...). Current defaul
 ## Optional Parameters
 - **body** (object): Request body for POST/PUT requests
 - **query_params** (object): Query parameters
+- **userHasProvidedConfirmation** (boolean): Fallback only — has no effect on clients that support MCP
+  elicitation, since the server always prompts the user directly in that case regardless of this
+  field. Do not ask the user to confirm yourself before calling; just call the tool and wait for
+  the outcome. Only set this to \`true\` for \`method: "DELETE"\`, or for \`POST\` to a runner's
+  \`regenerateCreds\` endpoint (revokes its current credentials), if the tool's response tells you
+  to get that confirmation — and only after the user has explicitly approved that specific action
+  at that point. The call is otherwise intercepted and returns a confirmation prompt instead of
+  reaching Rundeck.
 
 ## Alternative: Use Prompts
 You can also use the \`call-api\` prompt via \`prompts/get\` for API guidance:
@@ -604,6 +653,13 @@ filesystem (those can only be managed by editing them directly on disk).
 - **project** (string): required when scope is "project"
 - **name** (string): required for all actions except "list". The \`.aclpolicy\` suffix is added automatically if omitted.
 - **content** (string): required for "create"/"update" — the ACL policy YAML
+- **userHasProvidedConfirmation** (boolean): Fallback only — has no effect on clients that support MCP
+  elicitation, since the server always prompts the user directly in that case regardless of this
+  field. Do not ask the user to confirm yourself before calling; just call the tool and wait for
+  the outcome. Only set this to \`true\` for actions "delete" and "update" — both mutate or remove
+  the policy irreversibly — if the tool's response tells you to get that confirmation, and only
+  after the user has explicitly approved that specific change at that point. The call is otherwise
+  intercepted and returns a confirmation prompt instead of reaching Rundeck.
 
 ## Recommended workflow
 1. Draft the policy YAML.

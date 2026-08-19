@@ -12,6 +12,8 @@ import {
   getPluginIntegrationGuidance,
   getRunnerGuidance,
   getAclManageGuidance,
+  getConfirmationRequiredGuidance,
+  getConfirmationDeclinedGuidance,
 } from "../../utils/guidance.js";
 
 describe("Guidance Utility", () => {
@@ -111,6 +113,32 @@ describe("Guidance Utility", () => {
       const guidance = getAclManageGuidance();
       expect(guidance).toContain("## Fallback");
       expect(guidance).toContain("api_call");
+    });
+  });
+
+  describe("getConfirmationRequiredGuidance", () => {
+    it("names the tool and action, never implies the action already happened, and points at the retry flag", () => {
+      const guidance = getConfirmationRequiredGuidance("acl_manage", {
+        phrase: "permanently delete ACL policy 'admin' (system scope)",
+        consequence: "Rundeck's API has no undo for this.",
+      });
+      expect(guidance).toContain("acl_manage");
+      expect(guidance).toContain("ACL policy 'admin' (system scope)");
+      expect(guidance).toContain("Nothing has happened yet");
+      expect(guidance).toContain("userHasProvidedConfirmation: true");
+    });
+  });
+
+  describe("getConfirmationDeclinedGuidance", () => {
+    it("names the tool and action, and never implies it should be retried", () => {
+      const guidance = getConfirmationDeclinedGuidance("api_call", {
+        phrase: "regenerate credentials for the runner at `runnerManagement/runner/abc/regenerateCreds`",
+        consequence: "This immediately invalidates the runner's current token.",
+      });
+      expect(guidance).toContain("api_call");
+      expect(guidance).toContain("regenerate credentials");
+      expect(guidance).toContain("Nothing happened");
+      expect(guidance).toContain("Do not retry");
     });
   });
 });

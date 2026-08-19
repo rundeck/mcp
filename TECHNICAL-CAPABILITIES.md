@@ -96,6 +96,8 @@ Tools enable AI assistants to perform actions beyond reading documentation. Inpu
 
 **Guidance Mode**: Call without `endpoint` parameter for setup guidance.
 
+**Destructive calls**: `method: "DELETE"` and `POST` to a runner's `regenerateCreds` endpoint require confirmation before reaching Rundeck — see [Destructive Actions and Confirmation](#destructive-actions-and-confirmation).
+
 #### `api_list`
 **Purpose**: List available Rundeck API endpoints with descriptions and categories.
 
@@ -232,6 +234,8 @@ Tools enable AI assistants to perform actions beyond reading documentation. Inpu
 
 **Guidance Mode**: Call without required parameters (`action`, `scope`) for step-by-step guidance.
 
+**Destructive calls**: `action: "delete"` and `action: "update"` require confirmation before reaching Rundeck — see [Destructive Actions and Confirmation](#destructive-actions-and-confirmation).
+
 ### Not Yet Exposed
 
 A plugin code generator (Java/Groovy scaffolding for node-step, workflow-step, file-copier, and notification plugins) exists in the codebase but is **not** currently wired up as an MCP tool. Use `resources/read` (`rundeck://docs/developer/*`) and `docs_search` for plugin documentation and examples in the meantime.
@@ -328,6 +332,24 @@ The server is configured via environment variables:
 - **Input Validation**: All tool inputs validated using Zod schemas
 - **Error Handling**: Sensitive information not exposed in error messages
 - **File System Access**: Read-only access to documentation files
+- **Destructive-action confirmation**: irreversible calls are gated before they reach Rundeck — see [Destructive Actions and Confirmation](#destructive-actions-and-confirmation) below.
+
+### Destructive Actions and Confirmation
+
+Three call shapes are treated as irreversible and are intercepted before they reach Rundeck unless confirmed:
+
+| Call | Why it's gated |
+|---|---|
+| `api_call` with `method: "DELETE"` | No undo via the Rundeck API |
+| `api_call` with `POST` to a runner's `regenerateCreds` endpoint (`(project/{project}/)runnerManagement/runner/{id}/regenerateCreds`) | Immediately revokes the runner's current credentials; any running instance loses connectivity until reconfigured |
+| `acl_manage` with `action: "delete"` or `action: "update"` | Rundeck keeps no prior version of an overwritten or removed policy |
+
+Confirmation is resolved via one of two paths, tried in order:
+
+1. **MCP elicitation** (`elicitation/create`, added in the MCP spec — see [`Server.elicitInput`](https://modelcontextprotocol.io/specification/2026-07-28/client/elicitation)): if the connected client declares the `elicitation` capability, the server pauses mid-call and has the client prompt the human directly (e.g. "Permanently delete X? Rundeck's API has no undo for this."). The calling agent never sees or answers this prompt itself — it only learns the outcome (`confirmed` / `declined`) — so approval can't be inferred or set by the agent's own judgment. Implemented in `src/utils/confirmation.ts` (`requestDestructiveConfirmation`).
+2. **`userHasProvidedConfirmation: true` parameter fallback**: used only when the client doesn't declare the `elicitation` capability (or the elicitation call itself fails). The affected tool call is intercepted and returns guidance (`src/utils/guidance.ts`: `getConfirmationRequiredGuidance`) instead of reaching Rundeck unless `userHasProvidedConfirmation: true` is explicitly set. This depends on the calling agent having actually obtained explicit user approval first — a weaker guarantee than elicitation, since the agent controls the flag itself. The same interception applies if the human explicitly declines the elicitation prompt (`getConfirmationDeclinedGuidance`), except there the guidance says not to retry at all.
+
+This is independent of, and not a substitute for, an MCP client's own per-tool-call permission prompts (e.g. Claude Code's "Allow this tool?"). A client running in an auto-approve/"auto mode" disables that separate safety net; see the "Safety" note in [README.md](./README.md#using-with-mcp-clients).
 
 ### Testing
 

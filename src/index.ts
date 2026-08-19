@@ -21,6 +21,7 @@ import {
   rundeckListEndpoints,
   rundeckApiCallSchema,
   rundeckListEndpointsSchema,
+  isRunnerCredentialRegenerationEndpoint,
 } from "./tools/api.js";
 import {
   rundeckGenerateJob,
@@ -64,7 +65,10 @@ import {
   getAclManageGuidance,
   getResourceSourceManageGuidance,
   getRundeckConnectGuidance,
+  getConfirmationRequiredGuidance,
+  getConfirmationDeclinedGuidance,
 } from "./utils/guidance.js";
+import { requestDestructiveConfirmation, type DestructiveAction } from "./utils/confirmation.js";
 import { prompts, getPrompt } from "./prompts/index.js";
 import { ASK_USER_ERROR_TRAILER, ASK_USER_LINE } from "./utils/escalation.js";
 
@@ -264,6 +268,34 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           return returnGuidance(getApiCallGuidance());
         }
         const parsed = rundeckApiCallSchema.parse(args ?? {});
+        let apiDestructiveAction: DestructiveAction | null = null;
+        if (parsed.method === "DELETE") {
+          apiDestructiveAction = {
+            phrase: `permanently delete the resource at \`${parsed.endpoint}\``,
+            consequence: "Rundeck's API has no undo for this.",
+          };
+        } else if (
+          parsed.method === "POST" &&
+          isRunnerCredentialRegenerationEndpoint(parsed.endpoint)
+        ) {
+          apiDestructiveAction = {
+            phrase: `regenerate credentials for the runner at \`${parsed.endpoint}\``,
+            consequence:
+              "This immediately invalidates the runner's current token — any running " +
+              "instance of it will lose connectivity until reconfigured with the new one.",
+          };
+        }
+        if (apiDestructiveAction) {
+          const outcome = await requestDestructiveConfirmation(server, apiDestructiveAction);
+          if (outcome === "declined") {
+            logger.info("api_call destructive action declined via elicitation");
+            return returnGuidance(getConfirmationDeclinedGuidance("api_call", apiDestructiveAction));
+          }
+          if (outcome === "unsupported" && !parsed.userHasProvidedConfirmation) {
+            logger.info("api_call destructive action requested without userHasProvidedConfirmation - requesting confirmation");
+            return returnGuidance(getConfirmationRequiredGuidance("api_call", apiDestructiveAction));
+          }
+        }
         const apiResult = await rundeckApiCall(parsed);
         return { content: [{ type: "text", text: JSON.stringify(apiResult, null, 2) }] };
       }
@@ -314,14 +346,41 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         return { content: [{ type: "text", text: JSON.stringify(aclValidation, null, 2) }] };
       }
 
-      case "acl_manage":
+      case "acl_manage": {
         if (needsGuidance(args, ["action", "scope"])) {
           logger.info("acl_manage called without required params - returning guidance");
           return returnGuidance(getAclManageGuidance());
         }
         const aclParams = rundeckManageAclSchema.parse(args);
+        if (aclParams.action === "delete" || aclParams.action === "update") {
+          const scopeDetail =
+            aclParams.scope === "project" ? `project '${aclParams.project}'` : "system scope";
+          const target = `ACL policy '${aclParams.name}' (${scopeDetail})`;
+          const aclDestructiveAction: DestructiveAction =
+            aclParams.action === "delete"
+              ? {
+                  phrase: `permanently delete ${target}`,
+                  consequence: "Rundeck's API has no undo for this.",
+                }
+              : {
+                  phrase: `overwrite the contents of ${target}`,
+                  consequence:
+                    "Rundeck has no way to revert to the previous version afterward — the old " +
+                    "policy content will be gone.",
+                };
+          const outcome = await requestDestructiveConfirmation(server, aclDestructiveAction);
+          if (outcome === "declined") {
+            logger.info(`acl_manage ${aclParams.action} declined via elicitation`);
+            return returnGuidance(getConfirmationDeclinedGuidance("acl_manage", aclDestructiveAction));
+          }
+          if (outcome === "unsupported" && !aclParams.userHasProvidedConfirmation) {
+            logger.info(`acl_manage ${aclParams.action} requested without userHasProvidedConfirmation - requesting confirmation`);
+            return returnGuidance(getConfirmationRequiredGuidance("acl_manage", aclDestructiveAction));
+          }
+        }
         const aclResult = await rundeckManageAcl(aclParams);
         return { content: [{ type: "text", text: JSON.stringify(aclResult, null, 2) }] };
+      }
 
       case "resource_model_source_manage": {
         // 'project' isn't required for 'list_provider_types'/'describe_provider_config' (instance-wide

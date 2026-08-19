@@ -6,6 +6,7 @@ import { jest } from "@jest/globals";
 import {
   rundeckSetupToken,
   rundeckListEndpoints,
+  isRunnerCredentialRegenerationEndpoint,
 } from "../../tools/api.js";
 import { configManager } from "../../config.js";
 
@@ -67,6 +68,30 @@ describe("API Tools", () => {
           expect(endpoint.category).toBe("jobs");
         }
       });
+    });
+  });
+
+  describe("isRunnerCredentialRegenerationEndpoint", () => {
+    it.each([
+      "runnerManagement/runner/abc-123/regenerateCreds",
+      "/runnerManagement/runner/abc-123/regenerateCreds",
+      "/api/59/runnerManagement/runner/abc-123/regenerateCreds",
+      "project/my-project/runnerManagement/runner/abc-123/regenerateCreds",
+      "/api/59/project/my-project/runnerManagement/runner/abc-123/regenerateCreds",
+      "runnerManagement/runner/abc-123/regenerateCreds?foo=bar",
+      "RUNNERMANAGEMENT/RUNNER/abc-123/REGENERATECREDS",
+    ])("returns true for %s", (endpoint) => {
+      expect(isRunnerCredentialRegenerationEndpoint(endpoint)).toBe(true);
+    });
+
+    it.each([
+      "runnerManagement/runners",
+      "project/my-project/runnerManagement/runners",
+      "runnerManagement/runner/abc-123",
+      "job/abc-123",
+      "runnerManagement/runner/abc-123/regenerateCreds/extra",
+    ])("returns false for %s", (endpoint) => {
+      expect(isRunnerCredentialRegenerationEndpoint(endpoint)).toBe(false);
     });
   });
 

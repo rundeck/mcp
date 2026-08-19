@@ -24,6 +24,21 @@ ${renderPriorityGuidance("api_call")}
 **Authentication:** Set RUNDECK_URL and RUNDECK_TOKEN environment variables before calling.
 Call without required params for setup guidance.
 
+**Destructive calls:** \`method: "DELETE"\`, and \`POST\` to a runner's \`regenerateCreds\` endpoint
+(which revokes its current credentials), always require human confirmation before reaching
+Rundeck. **Call the tool directly for these — do not ask the user to confirm in chat first.** You
+can't know in advance whether the connected client supports MCP elicitation, so there is nothing
+useful to decide before making the call:
+- **If the client supports elicitation:** the server pauses and prompts the user itself, through
+  the client's own UI, independent of anything you do. Just wait for that outcome.
+- **If it doesn't (or the prompt fails):** the response tells you to get the user's explicit
+  go-ahead yourself and retry the same call with \`userHasProvidedConfirmation: true\`.
+
+Asking the user before the first attempt is never useful: on a client that supports elicitation it
+just adds a second, redundant prompt for the same action; on one that doesn't, you'll be told to
+ask at that point anyway. \`userHasProvidedConfirmation\` is otherwise ignored by the server and
+must never be set proactively.
+
 ${ASK_USER_LINE}`;
 
 export const JOB_CREATE_DESCRIPTION = `Generate a Rundeck job definition in YAML or JSON format.
@@ -100,6 +115,21 @@ export const ACL_MANAGE_DESCRIPTION = `List, get, create, update, or delete a Ru
 - Worked examples, one per access pattern: \`rundeck://docs/learning/howto/acls/group-readonly\`, \`rundeck://docs/learning/howto/acls/group-project-exec\`, \`rundeck://docs/learning/howto/acls/group-project-full\`, \`rundeck://docs/learning/howto/acls/group-manage-runner\`, \`rundeck://docs/learning/howto/acls/group-jobname\`, \`rundeck://docs/learning/howto/acls/group-jobgroup\`, \`rundeck://docs/learning/howto/acls/group-node-filtered\`, \`rundeck://docs/learning/howto/acls/group-multiproject\`, \`rundeck://docs/learning/howto/acls/group-apikey\`
 
 **Guidance Mode:** Call without required params (action, scope) to get step-by-step guidance.${renderPriorityGuidance("acl_manage")}
+
+**Changing or deleting a policy:** \`action: "delete"\` and \`action: "update"\` (both irreversible —
+Rundeck keeps no prior version) always require human confirmation before reaching Rundeck. **Call
+the tool directly for these — do not ask the user to confirm in chat first.** You can't know in
+advance whether the connected client supports MCP elicitation, so there is nothing useful to
+decide before making the call:
+- **If the client supports elicitation:** the server pauses and prompts the user itself, through
+  the client's own UI, independent of anything you do. Just wait for that outcome.
+- **If it doesn't (or the prompt fails):** the response tells you to get the user's explicit
+  go-ahead yourself and retry the same call with \`userHasProvidedConfirmation: true\`.
+
+Asking the user before the first attempt is never useful: on a client that supports elicitation it
+just adds a second, redundant prompt for the same action; on one that doesn't, you'll be told to
+ask at that point anyway. \`userHasProvidedConfirmation\` is otherwise ignored by the server and
+must never be set proactively.
 
 ${ASK_USER_LINE}`;
 
