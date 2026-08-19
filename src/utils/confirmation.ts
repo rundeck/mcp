@@ -64,7 +64,19 @@ export async function requestDestructiveConfirmation(
       },
     });
 
-    if (result.action === "accept" && result.content?.confirmAction === true) {
+    logger.info(
+      `Elicitation response for "${action.phrase}": action=${result.action}, ` +
+        `content=${JSON.stringify(result.content)}`
+    );
+
+    // `action === "accept"` means the human affirmatively answered the prompt — that's the
+    // primary signal. Some clients don't echo the requestedSchema's field back in `content`
+    // at all on accept (they treat a single-boolean form as a plain yes/no rather than
+    // populating structured content), so requiring `content.confirmAction === true` in
+    // addition to "accept" silently treated real approvals as declines. Only an *explicit*
+    // `confirmAction: false` in the content (a client that does populate the form, with the
+    // human unchecking it) should override an "accept" back to declined.
+    if (result.action === "accept" && result.content?.confirmAction !== false) {
       return "confirmed";
     }
     return "declined";

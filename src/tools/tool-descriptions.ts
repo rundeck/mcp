@@ -26,9 +26,11 @@ Call without required params for setup guidance.
 
 **Destructive calls:** \`method: "DELETE"\`, and \`POST\` to a runner's \`regenerateCreds\` endpoint
 (which revokes its current credentials), always require confirmation before reaching Rundeck. If
-the connected client supports MCP elicitation, the server asks the user directly and you don't
-need to do anything extra — just wait for the outcome. Otherwise, it requires \`confirm: true\`,
-which you must only set after the user has explicitly approved that specific action yourself.
+the connected client supports MCP elicitation, the server asks the user directly — call the tool
+right away and wait for that outcome; do **not** separately ask the user to confirm first
+yourself, since that just produces two confirmation prompts for the same action. Only fall back to
+getting the user's explicit approval yourself, then retrying with \`confirm: true\`, if the tool's
+response says elicitation wasn't available or didn't go through.
 
 ${ASK_USER_LINE}`;
 
@@ -109,9 +111,11 @@ export const ACL_MANAGE_DESCRIPTION = `List, get, create, update, or delete a Ru
 
 **Changing or deleting a policy:** \`action: "delete"\` and \`action: "update"\` (both irreversible —
 Rundeck keeps no prior version) always require confirmation before reaching Rundeck. If the
-connected client supports MCP elicitation, the server asks the user directly and you don't need to
-do anything extra — just wait for the outcome. Otherwise, it requires \`confirm: true\`, which you
-must only set after the user has explicitly approved that specific change yourself.
+connected client supports MCP elicitation, the server asks the user directly — call the tool right
+away and wait for that outcome; do **not** separately ask the user to confirm first yourself, since
+that just produces two confirmation prompts for the same action. Only fall back to getting the
+user's explicit approval yourself, then retrying with \`confirm: true\`, if the tool's response says
+elicitation wasn't available or didn't go through.
 
 ${ASK_USER_LINE}`;
 

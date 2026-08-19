@@ -68,6 +68,35 @@ describe("requestDestructiveConfirmation", () => {
     );
   });
 
+  it("returns 'confirmed' when the human accepts but the client doesn't echo confirmAction back in content", async () => {
+    // Some clients treat a single-boolean elicitation form as a plain yes/no prompt and
+    // respond with `{ action: "accept" }` without populating `content` to match the
+    // requestedSchema at all. Requiring `content.confirmAction === true` in addition to
+    // "accept" would silently treat this real approval as a decline.
+    const elicitInput = jest.fn<Server["elicitInput"]>().mockResolvedValue({
+      action: "accept",
+    });
+    const server = fakeServer({
+      getClientCapabilities: () => ({ elicitation: {} }),
+      elicitInput,
+    });
+
+    expect(await requestDestructiveConfirmation(server, action)).toBe("confirmed");
+  });
+
+  it("returns 'confirmed' when the human accepts with an empty content object", async () => {
+    const elicitInput = jest.fn<Server["elicitInput"]>().mockResolvedValue({
+      action: "accept",
+      content: {},
+    });
+    const server = fakeServer({
+      getClientCapabilities: () => ({ elicitation: {} }),
+      elicitInput,
+    });
+
+    expect(await requestDestructiveConfirmation(server, action)).toBe("confirmed");
+  });
+
   it("returns 'declined' when the human accepts but leaves confirmAction false", async () => {
     const elicitInput = jest.fn<Server["elicitInput"]>().mockResolvedValue({
       action: "accept",
