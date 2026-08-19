@@ -229,48 +229,48 @@ describe("Job Tools", () => {
       expect(result).not.toContain("LogFilter");
     });
 
-    it("should generate a conditional step with subSteps", () => {
+    it("should generate a conditional.logic step with nested steps", () => {
       const result = rundeckGenerateJob({
         name: "Conditional Job",
         project: "test-project",
         workflow_steps: [
           {
-            type: "conditional",
+            type: "conditional.logic",
             conditionGroups: [
-              [{ key: "option.environment", operator: "==", value: "prod" }],
+              { conditions: [{ field: "${option.environment}", operator: "equals", value: "prod" }] },
             ],
-            subSteps: [{ type: "command", exec: "echo prod" }],
+            steps: [{ type: "command", exec: "echo prod" }],
           },
         ],
       });
 
       const parsed = yaml.parse(result);
       const step = parsed[0].sequence.commands[0];
-      expect(step.type).toBe("conditional");
-      expect(step.conditionGroups[0][0]).toEqual({
-        key: "option.environment",
-        operator: "==",
+      expect(step.type).toBe("conditional.logic");
+      expect(step.conditionGroups[0].conditions[0]).toEqual({
+        field: "${option.environment}",
+        operator: "equals",
         value: "prod",
       });
-      expect(step.subSteps[0].exec).toBe("echo prod");
+      expect(step.steps[0].exec).toBe("echo prod");
     });
 
-    it("should accept 'contains' and 'matches' as conditional operators", () => {
-      for (const operator of ["contains", "matches"] as const) {
+    it("should accept all six real conditional operators", () => {
+      for (const operator of ["equals", "not equals", "contains", "matches", "greater than", "less than"] as const) {
         const result = workflowStepSchema.safeParse({
-          type: "conditional",
-          conditionGroups: [[{ key: "option.environment", operator, value: "prod" }]],
-          subSteps: [{ type: "command", exec: "echo prod" }],
+          type: "conditional.logic",
+          conditionGroups: [{ conditions: [{ field: "${option.environment}", operator, value: "prod" }] }],
+          steps: [{ type: "command", exec: "echo prod" }],
         });
         expect(result.success).toBe(true);
       }
     });
 
-    it("should omit a conditional step missing conditionGroups or subSteps", () => {
+    it("should omit a conditional.logic step missing conditionGroups or steps", () => {
       const result = rundeckGenerateJob({
         name: "Incomplete Conditional Job",
         project: "test-project",
-        workflow_steps: [{ type: "conditional" }],
+        workflow_steps: [{ type: "conditional.logic" }],
       });
 
       const parsed = yaml.parse(result);
@@ -310,18 +310,34 @@ describe("Job Tools", () => {
                 configuration: { serviceKey: "abc123" },
               },
             },
-            { email: "oncall@example.com" },
+            { email: { recipients: "oncall@example.com" } },
           ],
-          onavgduration: [{ email: "slow-jobs@example.com" }],
+          onavgduration: [{ email: { recipients: "slow-jobs@example.com" } }],
         },
+        notifyAvgDurationThreshold: "+30",
       });
 
       const parsed = yaml.parse(result);
       expect(parsed[0].notification.onfailure[0].plugin.type).toBe(
         "PagerDutyEventNotification"
       );
-      expect(parsed[0].notification.onfailure[1].email).toBe("oncall@example.com");
-      expect(parsed[0].notification.onavgduration[0].email).toBe("slow-jobs@example.com");
+      expect(parsed[0].notification.onfailure[1].email.recipients).toBe("oncall@example.com");
+      expect(parsed[0].notification.onavgduration[0].email.recipients).toBe("slow-jobs@example.com");
+      expect(parsed[0].notifyAvgDurationThreshold).toBe("+30");
+    });
+
+    it("should not include notifyAvgDurationThreshold without onavgduration", () => {
+      const result = rundeckGenerateJob({
+        name: "No Avg Duration Job",
+        project: "test-project",
+        workflow_steps: [{ type: "command", exec: "echo hi" }],
+        notification: {
+          onfailure: [{ email: { recipients: "oncall@example.com" } }],
+        },
+        notifyAvgDurationThreshold: "+30",
+      });
+
+      expect(result).not.toContain("notifyAvgDurationThreshold");
     });
 
     it("should not include a notification block when omitted", () => {
@@ -517,18 +533,18 @@ describe("Job Tools", () => {
       );
     });
 
-    it("should reject a conditional step combined with node-first strategy", () => {
+    it("should reject a conditional.logic step combined with the default (node-first) strategy", () => {
       const jobYaml = `- name: Test Job
   loglevel: INFO
   sequence:
-    strategy: node-first
     commands:
-      - type: conditional
+      - type: conditional.logic
         conditionGroups:
-          - - key: option.environment
-              operator: "=="
-              value: prod
-        subSteps:
+          - conditions:
+              - field: "\${option.environment}"
+                operator: equals
+                value: prod
+        steps:
           - exec: echo prod`;
 
       const result = rundeckValidateJob({
@@ -540,18 +556,103 @@ describe("Job Tools", () => {
       expect(result.errors.some((e) => e.includes("node-first"))).toBe(true);
     });
 
-    it("should allow a conditional step with the default strategy", () => {
+    it("should reject a conditional.logic step combined with explicit node-first or ruleset strategy", () => {
+      for (const strategy of ["node-first", "ruleset"]) {
+        const jobYaml = `- name: Test Job
+  loglevel: INFO
+  sequence:
+    strategy: ${strategy}
+    commands:
+      - type: conditional.logic
+        conditionGroups:
+          - conditions:
+              - field: "\${option.environment}"
+                operator: equals
+                value: prod
+        steps:
+          - exec: echo prod`;
+
+        const result = rundeckValidateJob({
+          job_definition: jobYaml,
+          format: "yaml",
+        });
+
+        expect(result.valid).toBe(false);
+      }
+    });
+
+    it("should allow a conditional.logic step with step-first or parallel strategy", () => {
+      for (const strategy of ["step-first", "parallel"]) {
+        const jobYaml = `- name: Test Job
+  loglevel: INFO
+  sequence:
+    strategy: ${strategy}
+    commands:
+      - type: conditional.logic
+        conditionGroups:
+          - conditions:
+              - field: "\${option.environment}"
+                operator: equals
+                value: prod
+        steps:
+          - exec: echo prod`;
+
+        const result = rundeckValidateJob({
+          job_definition: jobYaml,
+          format: "yaml",
+        });
+
+        expect(result.valid).toBe(true);
+      }
+    });
+
+    it("should reject a nested conditional.logic step", () => {
       const jobYaml = `- name: Test Job
   loglevel: INFO
   sequence:
+    strategy: step-first
     commands:
-      - type: conditional
+      - type: conditional.logic
         conditionGroups:
-          - - key: option.environment
-              operator: "=="
-              value: prod
-        subSteps:
-          - exec: echo prod`;
+          - conditions:
+              - field: "\${option.environment}"
+                operator: equals
+                value: prod
+        steps:
+          - type: conditional.logic
+            conditionGroups:
+              - conditions:
+                  - field: "\${option.other}"
+                    operator: equals
+                    value: x
+            steps:
+              - exec: echo nested`;
+
+      const result = rundeckValidateJob({
+        job_definition: jobYaml,
+        format: "yaml",
+      });
+
+      expect(result.valid).toBe(false);
+      expect(result.errors.some((e) => e.includes("Nested"))).toBe(true);
+    });
+
+    it("should warn about errorhandler on a step nested inside a conditional.logic step", () => {
+      const jobYaml = `- name: Test Job
+  loglevel: INFO
+  sequence:
+    strategy: step-first
+    commands:
+      - type: conditional.logic
+        conditionGroups:
+          - conditions:
+              - field: "\${option.environment}"
+                operator: equals
+                value: prod
+        steps:
+          - exec: echo prod
+            errorhandler:
+              exec: echo cleanup`;
 
       const result = rundeckValidateJob({
         job_definition: jobYaml,
@@ -559,6 +660,7 @@ describe("Job Tools", () => {
       });
 
       expect(result.valid).toBe(true);
+      expect(result.warnings.some((w) => w.includes("nested inside"))).toBe(true);
     });
 
     it("should warn about a single-capture-group key-value-data regex with no 'name' set", () => {

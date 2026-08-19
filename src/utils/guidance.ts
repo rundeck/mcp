@@ -95,6 +95,7 @@ format, concatenate the arrays, then do a single \`api_call\` with the matching 
 - \`scriptInterpreter\` (string): interpreter to run the script with, e.g. \`"python3"\` or \`"powershell.exe"\`. Required for non-shell scripts.
 - \`interpreterArgsQuoted\` (boolean): whether interpreter args are quoted as a single argument
 - \`fileExtension\` (string): file extension for the generated script file, e.g. \`".ps1"\` — required for PowerShell to run correctly
+- \`args\` (string): arguments passed to a \`script\`/\`scriptfile\`/\`scripturl\` step
 
 ### Error handling (on any \`workflow_steps\` entry)
 - \`errorhandler\` (object): a step to run if this step fails — \`{ exec | script | scriptfile | scripturl | plugin, keepgoingOnSuccess? }\`. Set \`keepgoingOnSuccess: true\` to continue the workflow when the handler itself succeeds.
@@ -103,13 +104,16 @@ format, concatenate the arrays, then do a single \`api_call\` with the matching 
 Steps run in isolated shells, so output isn't visible to later steps unless captured.
 - \`logFilters\` (array): \`{ type, config? }\`. Common types: \`"key-value-data"\` (regex needs 1 or 2 capture groups — 2 groups = key/value pair; 1 group = value, and \`config.name\` must set the key), \`"key-value-data-multilines"\`, \`"json-mapper"\`. Captured values are referenced downstream as \`\${data.<name>}\`.
 
-### Conditional branching (a \`workflow_steps\` entry of type "conditional")
-- \`conditionGroups\` (array of arrays of \`{ key, operator, value }\`): clauses within a group are AND'd, groups are OR'd. \`operator\` is one of \`"=="\`, \`"!="\`, \`">"\`, \`">="\`, \`"<"\`, \`"<="\`, \`"contains"\`, \`"matches"\`.
-- \`subSteps\` (array of workflow steps): run only when the condition evaluates true.
-- Both fields are required together. Conditional steps are **not compatible** with \`sequence.strategy: "node-first"\` — \`job_validate\` flags this.
+### Conditional branching (a \`workflow_steps\` entry of type "conditional.logic")
+This is an **Early Access commercial feature** (Rundeck 5.20.0+) that requires the server-side feature flag \`rundeck.feature.earlyAccessJobConditional.enabled=true\`.
+- \`conditionGroups\` (array of \`{ conditions: [{ field, operator, value }] }\`): clauses within a group's \`conditions\` are AND'd, groups are OR'd. \`field\`/\`value\` use \`\${}\` syntax (e.g. \`\${option.environment}\`, \`\${node.osFamily}\`, \`\${data.status}\`). \`operator\` is one of \`"equals"\`, \`"not equals"\`, \`"contains"\`, \`"matches"\`, \`"greater than"\`, \`"less than"\` (word phrases — no symbol operators).
+- \`steps\` (array of workflow steps): run only when the condition evaluates true. Must match the parent's node/workflow scope, and cannot itself contain another \`"conditional.logic"\` step — use a Job Reference step for multi-level logic.
+- \`errorhandler\`/\`logFilters\` are only supported on root-level steps, not on a step nested inside \`steps\` — \`job_validate\` warns on this.
+- Both \`conditionGroups\` and \`steps\` are required together. Conditional steps only work with \`sequence.strategy: "step-first"\` or \`"parallel"\` — the default (\`"node-first"\`) and \`"ruleset"\` are **not** supported. \`job_validate\` flags this.
 
 ### Notifications and exporting captured data
-- **notification** (top-level, optional): \`{ onstart?, onsuccess?, onfailure?, onavgduration?, onretryablefailure? }\`, each an **array** of \`{ email? } | { format?, httpMethod?, urls? } | { plugin: { type, configuration? } }\` — Rundeck allows multiple notifications per trigger. Example plugin type: \`"PagerDutyEventNotification"\`.
+- **notification** (top-level, optional): \`{ onstart?, onsuccess?, onfailure?, onavgduration?, onretryablefailure? }\`, each an **array** of hooks — Rundeck allows multiple notifications per trigger. Each hook is \`{ email: { recipients, subject? } }\` (built-in email) or \`{ format?, httpMethod?, urls? }\` (built-in webhook) or \`{ plugin: { type, configuration? } }\` (plugin — may also be an array of plugins). Example plugin type: \`"PagerDutyEventNotification"\`.
+- **notifyAvgDurationThreshold** (top-level, string): required alongside \`notification.onavgduration\` — the threshold to trigger it, e.g. \`"20%"\`, \`"+20s"\`, \`"30s"\`.
 - Data captured via a step's \`logFilters\` (\`\${data.<name>}\`) is **not visible** inside notification config. Export it first with a \`workflow_steps\` entry of type \`"export-var"\` (\`exportVar: { export, group?, value }\`), then reference it as \`\${export.<export>}\`.
 
 ## Next Steps
@@ -237,7 +241,9 @@ job_validate({
 
 ## What gets checked
 Beyond structural checks (name, loglevel, sequence.commands), \`job_validate\` also warns/errors on:
-- \`type: 'conditional'\` steps combined with \`sequence.strategy: 'node-first'\` (error — incompatible at import)
+- \`type: 'conditional.logic'\` steps combined with a \`sequence.strategy\` other than \`'step-first'\`/\`'parallel'\` — including the default, \`'node-first'\`, and \`'ruleset'\` (error — incompatible at import)
+- A \`conditional.logic\` step nested inside another \`conditional.logic\` step's \`steps\` (error — not supported)
+- \`errorhandler\`/\`logFilters\` on a step nested inside a \`conditional.logic\` step's \`steps\` (warning — only supported on root-level steps)
 - A \`key-value-data\` LogFilter whose regex doesn't have exactly 1 (with \`name\` set) or 2 capture groups (warning — capture silently fails)
 - Plugin config fields commonly validated as literals at import time (e.g. \`outputFormat\`, \`objectType\`, \`imagePullPolicy\`, \`duration\`) containing a \`\${...}\` substitution (warning — some plugins reject this)
 
