@@ -98,18 +98,49 @@ describe("Integration: index.ts tools/list schema fidelity", () => {
     }
   });
 
-  it("declares additionalProperties: false on every tool's inputSchema", async () => {
+  it("declares additionalProperties: false on every object schema, including nested ones", async () => {
     const env = { ...process.env } as Record<string, string>;
     delete env.RUNDECK_INSTANCES;
     const { tools } = await listTools(env);
 
     expect(tools.length).toBeGreaterThan(0);
-    for (const tool of tools) {
-      const schema = tool.inputSchema as { type?: string; additionalProperties?: unknown };
-      if (schema.type === "object") {
-        expect(schema.additionalProperties).toBe(false);
+
+    // Object schemas produced by an explicit z.record() (e.g. a
+    // provider-config bag) intentionally declare additionalProperties as a
+    // value schema rather than `false` — those are legitimate open records,
+    // not missing restrictions, so only flag schemas where it's unset.
+    const missing: string[] = [];
+    function walk(node: unknown, path: string): void {
+      if (!node || typeof node !== "object") return;
+      const schema = node as Record<string, unknown>;
+      if (schema.type === "object" && schema.additionalProperties === undefined) {
+        missing.push(path);
+      }
+      if (schema.properties && typeof schema.properties === "object") {
+        for (const [key, value] of Object.entries(schema.properties as Record<string, unknown>)) {
+          walk(value, `${path}.${key}`);
+        }
+      }
+      if (schema.items) {
+        if (Array.isArray(schema.items)) {
+          schema.items.forEach((item, i) => walk(item, `${path}[${i}]`));
+        } else {
+          walk(schema.items, `${path}[]`);
+        }
+      }
+      for (const key of ["anyOf", "oneOf", "allOf"]) {
+        const branches = (schema as Record<string, unknown>)[key];
+        if (Array.isArray(branches)) {
+          branches.forEach((branch, i) => walk(branch, `${path}.${key}[${i}]`));
+        }
       }
     }
+
+    for (const tool of tools) {
+      walk(tool.inputSchema, tool.name);
+    }
+
+    expect(missing).toEqual([]);
   }, 15000);
 
   it("does not list optional/defaulted params as required", async () => {

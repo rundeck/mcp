@@ -306,10 +306,10 @@ The guidance system provides interactive help when tools are called without requ
 
 ### Dependencies
 
-- **@modelcontextprotocol/sdk**: MCP protocol implementation (see `package.json` for the pinned version)
+- **@modelcontextprotocol/server** / **@modelcontextprotocol/client**: MCP protocol implementation (see `package.json` for the pinned version)
 - **marked**: ^12.0.0 - Markdown parsing
 - **yaml**: 2.8.3 - YAML parsing and generation
-- **zod**: ^3.23.8 - Schema validation
+- **zod**: ^4.2.0 - Schema validation
 - **TypeScript**: ^5.5.0 - Type safety and modern JavaScript features
 
 ### Configuration
