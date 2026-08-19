@@ -1,6 +1,6 @@
 {
   "name": "@rundeck/mcp",
-  "version": "0.0.1",
+  "version": "SNAPSHOT",
   "description": "MCP server for Rundeck documentation",
   "type": "module",
   "main": "dist/index.js",
