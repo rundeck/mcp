@@ -118,6 +118,7 @@ Prompts are static objects with `name`, `description`, `arguments`, optional `ar
 | `RUNDECK_DOCS_BRANCH` | `4.0.x` | Branch of `rundeck/docs` to download when no docs are present — read by both `scripts/download-docs.mjs` (npm `postinstall`, downloads to `<package root>/docs/docs`) and `docker-entrypoint.sh` (container startup, downloads to `/app/docs/docs`) |
 | `SKIP_RUNDECK_DOCS_DOWNLOAD` | — | Set to `1` to skip `scripts/download-docs.mjs`'s npm-install-time docs download; no effect on the Docker image |
 | `RUNDECK_SKIP_OPENAPI_VALIDATE` | — | Set to `1` to skip validating `api_call` params against the shipped OpenAPI spec |
+| `SKIP_ELICITATION` | — | Set to `1` or `true` to bypass the human confirmation gate on destructive `api_call`/`acl_manage` calls (see `src/utils/confirmation.ts`) entirely — no prompt, no block, the action just proceeds. This is a server-operator escape hatch only: it's read from the process environment, so the calling agent has no way to set it via tool parameters. It's the only bypass; there is no per-call parameter. |
 | `MCP_DEBUG` | — | Set to `1` or `true` for verbose logging |
 
 ## Project conventions

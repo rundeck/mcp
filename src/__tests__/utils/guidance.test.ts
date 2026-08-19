@@ -12,7 +12,7 @@ import {
   getPluginIntegrationGuidance,
   getRunnerGuidance,
   getAclManageGuidance,
-  getConfirmationRequiredGuidance,
+  getConfirmationUnavailableGuidance,
   getConfirmationDeclinedGuidance,
 } from "../../utils/guidance.js";
 
@@ -116,16 +116,16 @@ describe("Guidance Utility", () => {
     });
   });
 
-  describe("getConfirmationRequiredGuidance", () => {
-    it("names the tool and action, never implies the action already happened, and points at the retry flag", () => {
-      const guidance = getConfirmationRequiredGuidance("acl_manage", {
+  describe("getConfirmationUnavailableGuidance", () => {
+    it("names the tool and action, and states there is no bypass", () => {
+      const guidance = getConfirmationUnavailableGuidance("acl_manage", {
         phrase: "permanently delete ACL policy 'admin' (system scope)",
         consequence: "Rundeck's API has no undo for this.",
       });
       expect(guidance).toContain("acl_manage");
       expect(guidance).toContain("ACL policy 'admin' (system scope)");
-      expect(guidance).toContain("Nothing has happened yet");
-      expect(guidance).toContain("userHasProvidedConfirmation: true");
+      expect(guidance).toContain("Nothing has happened");
+      expect(guidance).toContain("no parameter that can substitute");
     });
   });
 

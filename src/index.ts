@@ -65,7 +65,7 @@ import {
   getAclManageGuidance,
   getResourceSourceManageGuidance,
   getRundeckConnectGuidance,
-  getConfirmationRequiredGuidance,
+  getConfirmationUnavailableGuidance,
   getConfirmationDeclinedGuidance,
 } from "./utils/guidance.js";
 import { requestDestructiveConfirmation, type DestructiveAction } from "./utils/confirmation.js";
@@ -291,9 +291,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             logger.info("api_call destructive action declined via elicitation");
             return returnGuidance(getConfirmationDeclinedGuidance("api_call", apiDestructiveAction));
           }
-          if (outcome === "unsupported" && !parsed.userHasProvidedConfirmation) {
-            logger.info("api_call destructive action requested without userHasProvidedConfirmation - requesting confirmation");
-            return returnGuidance(getConfirmationRequiredGuidance("api_call", apiDestructiveAction));
+          if (outcome === "unsupported") {
+            logger.info("api_call destructive action blocked - elicitation unavailable");
+            return returnGuidance(getConfirmationUnavailableGuidance("api_call", apiDestructiveAction));
           }
         }
         const apiResult = await rundeckApiCall(parsed);
@@ -373,9 +373,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             logger.info(`acl_manage ${aclParams.action} declined via elicitation`);
             return returnGuidance(getConfirmationDeclinedGuidance("acl_manage", aclDestructiveAction));
           }
-          if (outcome === "unsupported" && !aclParams.userHasProvidedConfirmation) {
-            logger.info(`acl_manage ${aclParams.action} requested without userHasProvidedConfirmation - requesting confirmation`);
-            return returnGuidance(getConfirmationRequiredGuidance("acl_manage", aclDestructiveAction));
+          if (outcome === "unsupported") {
+            logger.info(`acl_manage ${aclParams.action} blocked - elicitation unavailable`);
+            return returnGuidance(getConfirmationUnavailableGuidance("acl_manage", aclDestructiveAction));
           }
         }
         const aclResult = await rundeckManageAcl(aclParams);

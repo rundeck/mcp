@@ -415,16 +415,6 @@ export const rundeckManageAclSchema = z
       "Strongly recommended: validate with acl_validate before submitting — Rundeck will reject invalid policies with a 400 " +
       "and a list of per-document errors, but a local check surfaces the same issues faster."
     ),
-    userHasProvidedConfirmation: z.boolean().optional().default(false).describe(
-      "Set this to true ONLY if literally true: the user has, in this conversation, already given " +
-      "explicit approval for this specific 'delete' or 'update' call, AND a prior call to this " +
-      "same tool told you to get that confirmation. Do not set it on a first attempt, and do not " +
-      "set it just because you think the change is probably fine or the user seems likely to " +
-      "approve — call the tool first with this omitted. If the connected client supports MCP " +
-      "elicitation, the server prompts the user itself and this field has no effect at all. Only " +
-      "ask the user yourself, then set this to true and retry, if the response explicitly tells " +
-      "you to. Ignored for 'list', 'get', and 'create'."
-    ),
   })
   .refine((s) => s.scope !== "project" || s.project !== undefined, {
     message: "'project' is required when scope is 'project'",

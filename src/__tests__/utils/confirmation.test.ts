@@ -15,6 +15,41 @@ const action: DestructiveAction = {
 };
 
 describe("requestDestructiveConfirmation", () => {
+  const originalSkipElicitation = process.env.SKIP_ELICITATION;
+
+  afterEach(() => {
+    if (originalSkipElicitation === undefined) {
+      delete process.env.SKIP_ELICITATION;
+    } else {
+      process.env.SKIP_ELICITATION = originalSkipElicitation;
+    }
+  });
+
+  it.each(["1", "true"])("returns 'confirmed' without asking when SKIP_ELICITATION=%s", async (value) => {
+    process.env.SKIP_ELICITATION = value;
+    const elicitInput = jest.fn<Server["elicitInput"]>();
+    const server = fakeServer({
+      getClientCapabilities: () => ({ elicitation: {} }),
+      elicitInput,
+    });
+
+    const outcome = await requestDestructiveConfirmation(server, action);
+
+    expect(outcome).toBe("confirmed");
+    expect(elicitInput).not.toHaveBeenCalled();
+  });
+
+  it("does not bypass confirmation for other SKIP_ELICITATION values", async () => {
+    process.env.SKIP_ELICITATION = "yes";
+    const elicitInput = jest.fn<Server["elicitInput"]>();
+    const server = fakeServer({
+      getClientCapabilities: () => ({}),
+      elicitInput,
+    });
+
+    expect(await requestDestructiveConfirmation(server, action)).toBe("unsupported");
+  });
+
   it("returns 'unsupported' when the client doesn't declare the elicitation capability", async () => {
     const elicitInput = jest.fn<Server["elicitInput"]>();
     const server = fakeServer({

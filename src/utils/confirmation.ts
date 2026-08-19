@@ -4,14 +4,13 @@
  * prompts the *human user* directly — independent of whatever the calling
  * model already believes counts as "the user approved this."
  *
- * Not every client declares the `elicitation` capability at initialize time,
- * and a live request can fail even when it's declared (bad client, timeout,
- * etc.). Either way this function alone can't get a confirmed answer — see
- * index.ts, which treats that as "unsupported" and falls back to the
- * `userHasProvidedConfirmation: true` parameter gate (blocking the call
- * outright, via `getConfirmationRequiredGuidance` in guidance.ts, until the
- * calling agent has gotten the user's explicit go-ahead itself and retries
- * with that flag set).
+ * There is no per-call fallback path: if the connected client doesn't
+ * declare the `elicitation` capability, or the elicitation request itself
+ * fails, the action is simply not performed — see
+ * `getConfirmationUnavailableGuidance` in guidance.ts for what the calling
+ * agent is told in that case. The only bypass is the `SKIP_ELICITATION`
+ * environment variable, set by whoever deploys/configures this server —
+ * never something the calling agent can set itself.
  *
  * Covers every action in this server that can't be walked back through the
  * Rundeck API: deleting a job/resource/ACL policy, overwriting an ACL
@@ -38,7 +37,7 @@ export interface DestructiveAction {
 /**
  * Asks the connected client to prompt the human to confirm `action`.
  * Returns:
- * - "confirmed": the human explicitly accepted.
+ * - "confirmed": the human explicitly accepted (or `SKIP_ELICITATION` is set — see below).
  * - "declined": the human explicitly declined or cancelled the prompt.
  * - "unsupported": the client didn't declare the `elicitation` capability
  *   (or the request otherwise failed, including timing out) — no prompt
@@ -48,6 +47,13 @@ export async function requestDestructiveConfirmation(
   server: Server,
   action: DestructiveAction
 ): Promise<ConfirmationOutcome> {
+  if (process.env.SKIP_ELICITATION === "1" || process.env.SKIP_ELICITATION === "true") {
+    logger.warn(
+      `SKIP_ELICITATION is set — bypassing live confirmation for "${action.phrase}" without asking the user.`
+    );
+    return "confirmed";
+  }
+
   if (!server.getClientCapabilities()?.elicitation) {
     return "unsupported";
   }
