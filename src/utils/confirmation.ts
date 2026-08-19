@@ -48,19 +48,18 @@ export async function requestDestructiveConfirmation(
 
   try {
     const question = `${action.phrase.charAt(0).toUpperCase()}${action.phrase.slice(1)}? ${action.consequence}`;
+    // Deliberately no form fields (empty `properties`): a single boolean field here was found,
+    // via live testing, to be unreliable across at least one real client — its elicitation
+    // response came back as `action: "accept"` (the human's actual "yes") but with
+    // `content: { confirmAction: false }`, i.e. the schema's declared `default: false` verbatim,
+    // not what the human picked. Rather than depend on any client correctly threading a form
+    // field's value back through, the protocol-level `action` (accept/decline/cancel) alone is
+    // the confirmation signal — that's what "accept" already means.
     const result = await server.elicitInput({
       message: question,
       requestedSchema: {
         type: "object",
-        properties: {
-          confirmAction: {
-            type: "boolean",
-            title: "Yes, proceed",
-            description: `Confirms: ${action.phrase}.`,
-            default: false,
-          },
-        },
-        required: ["confirmAction"],
+        properties: {},
       },
     });
 
@@ -69,17 +68,7 @@ export async function requestDestructiveConfirmation(
         `content=${JSON.stringify(result.content)}`
     );
 
-    // `action === "accept"` means the human affirmatively answered the prompt — that's the
-    // primary signal. Some clients don't echo the requestedSchema's field back in `content`
-    // at all on accept (they treat a single-boolean form as a plain yes/no rather than
-    // populating structured content), so requiring `content.confirmAction === true` in
-    // addition to "accept" silently treated real approvals as declines. Only an *explicit*
-    // `confirmAction: false` in the content (a client that does populate the form, with the
-    // human unchecking it) should override an "accept" back to declined.
-    if (result.action === "accept" && result.content?.confirmAction !== false) {
-      return "confirmed";
-    }
-    return "declined";
+    return result.action === "accept" ? "confirmed" : "declined";
   } catch (error) {
     logger.warn(
       `Elicitation request failed, falling back to the confirm parameter: ` +

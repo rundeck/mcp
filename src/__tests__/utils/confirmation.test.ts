@@ -28,10 +28,9 @@ describe("requestDestructiveConfirmation", () => {
     expect(elicitInput).not.toHaveBeenCalled();
   });
 
-  it("returns 'confirmed' when the human accepts and sets confirmAction to true", async () => {
+  it("returns 'confirmed' when the human accepts", async () => {
     const elicitInput = jest.fn<Server["elicitInput"]>().mockResolvedValue({
       action: "accept",
-      content: { confirmAction: true },
     });
     const server = fakeServer({
       getClientCapabilities: () => ({ elicitation: {} }),
@@ -52,7 +51,6 @@ describe("requestDestructiveConfirmation", () => {
   it("capitalizes the first letter of the phrase in the elicitation question", async () => {
     const elicitInput = jest.fn<Server["elicitInput"]>().mockResolvedValue({
       action: "accept",
-      content: { confirmAction: true },
     });
     const server = fakeServer({
       getClientCapabilities: () => ({ elicitation: {} }),
@@ -68,36 +66,11 @@ describe("requestDestructiveConfirmation", () => {
     );
   });
 
-  it("returns 'confirmed' when the human accepts but the client doesn't echo confirmAction back in content", async () => {
-    // Some clients treat a single-boolean elicitation form as a plain yes/no prompt and
-    // respond with `{ action: "accept" }` without populating `content` to match the
-    // requestedSchema at all. Requiring `content.confirmAction === true` in addition to
-    // "accept" would silently treat this real approval as a decline.
-    const elicitInput = jest.fn<Server["elicitInput"]>().mockResolvedValue({
-      action: "accept",
-    });
-    const server = fakeServer({
-      getClientCapabilities: () => ({ elicitation: {} }),
-      elicitInput,
-    });
-
-    expect(await requestDestructiveConfirmation(server, action)).toBe("confirmed");
-  });
-
-  it("returns 'confirmed' when the human accepts with an empty content object", async () => {
-    const elicitInput = jest.fn<Server["elicitInput"]>().mockResolvedValue({
-      action: "accept",
-      content: {},
-    });
-    const server = fakeServer({
-      getClientCapabilities: () => ({ elicitation: {} }),
-      elicitInput,
-    });
-
-    expect(await requestDestructiveConfirmation(server, action)).toBe("confirmed");
-  });
-
-  it("returns 'declined' when the human accepts but leaves confirmAction false", async () => {
+  it("returns 'confirmed' on accept even if content carries a stale/mismatched value", async () => {
+    // Observed live: a client returned action: "accept" (the human's real "yes") with
+    // content: { confirmAction: false } — the requestedSchema's declared default, not what
+    // the human picked. The decision must not depend on `content` at all; `action` alone
+    // is the signal, and the schema now declares no fields for exactly this reason.
     const elicitInput = jest.fn<Server["elicitInput"]>().mockResolvedValue({
       action: "accept",
       content: { confirmAction: false },
@@ -107,7 +80,7 @@ describe("requestDestructiveConfirmation", () => {
       elicitInput,
     });
 
-    expect(await requestDestructiveConfirmation(server, action)).toBe("declined");
+    expect(await requestDestructiveConfirmation(server, action)).toBe("confirmed");
   });
 
   it("returns 'declined' when the human declines or cancels the prompt", async () => {
