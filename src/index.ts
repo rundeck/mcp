@@ -1,20 +1,8 @@
 #!/usr/bin/env node
 
-/**
- * Rundeck Documentation MCP Server
- * stdio entry point — used by Claude Desktop and stdio-based clients.
- */
-
-import { Server } from "@modelcontextprotocol/sdk/server/index.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import {
-  CallToolRequestSchema,
-  ListResourcesRequestSchema,
-  ListToolsRequestSchema,
-  ReadResourceRequestSchema,
-  ListPromptsRequestSchema,
-  GetPromptRequestSchema,
-} from "@modelcontextprotocol/sdk/types.js";
+import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { Server } from "@modelcontextprotocol/server";
+import type { CallToolResult, GetPromptResult } from "@modelcontextprotocol/server";
 import { handleResource, listResources } from "./resources/index.js";
 import {
   rundeckApiCall,
@@ -55,7 +43,6 @@ import {
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
 import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
 import {
   getJobCreationGuidance,
   getJobValidationGuidance,
@@ -77,7 +64,7 @@ export { REGISTERED_TOOL_NAMES };
 // Convert Zod schemas to JSON Schema (lazy conversion to avoid memory issues)
 function convertSchema(schema: any): any {
   try {
-    return zodToJsonSchema(schema);
+    return z.toJSONSchema(schema, { io: "input" });
   } catch (error) {
     logger.error("Error converting schema", error);
     return { type: "object", properties: {} };
@@ -96,7 +83,7 @@ function needsGuidance(params: unknown, requiredFields: string[]): boolean {
   return requiredFields.some((field) => missingRequiredScalar(args[field]));
 }
 
-function returnGuidance(guidanceContent: string) {
+function returnGuidance(guidanceContent: string): CallToolResult {
   return { content: [{ type: "text", text: guidanceContent }] };
 }
 
@@ -110,7 +97,7 @@ const server = new Server(
 
 // ── Resources ──────────────────────────────────────────────────────────────
 
-server.setRequestHandler(ListResourcesRequestSchema, async (request) => {
+server.setRequestHandler('resources/list', async (request) => {
   logger.logRequest("resources/list", request.params);
   const resources = listResources();
   const result = {
@@ -125,7 +112,7 @@ server.setRequestHandler(ListResourcesRequestSchema, async (request) => {
   return result;
 });
 
-server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+server.setRequestHandler('resources/read', async (request) => {
   const uri = request.params.uri;
   logger.logRequest("resources/read", request.params);
   logger.logResourceAccess(uri);
@@ -139,7 +126,7 @@ server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
 
 // ── Tools ──────────────────────────────────────────────────────────────────
 
-server.setRequestHandler(ListToolsRequestSchema, async (request) => {
+server.setRequestHandler('tools/list', async (request) => {
   logger.logRequest("tools/list", request.params);
   const toolDefinitions: Record<string, { description: string; inputSchema: any }> = {
     api_call: {
@@ -255,7 +242,7 @@ ${ASK_USER_LINE}`,
   return result;
 });
 
-server.setRequestHandler(CallToolRequestSchema, async (request) => {
+server.setRequestHandler('tools/call', async (request): Promise<CallToolResult> => {
   const { name, arguments: args } = request.params;
   logger.logRequest("tools/call", request.params);
   logger.logToolCall(name, args);
@@ -453,7 +440,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // ── Prompts ────────────────────────────────────────────────────────────────
 
-server.setRequestHandler(ListPromptsRequestSchema, async (request) => {
+server.setRequestHandler('prompts/list', async (request) => {
   logger.logRequest("prompts/list", request.params);
   const promptList = prompts.map((prompt) => ({
     name: prompt.name,
@@ -470,56 +457,48 @@ server.setRequestHandler(ListPromptsRequestSchema, async (request) => {
   return result;
 });
 
-server.setRequestHandler(GetPromptRequestSchema, async (request) => {
+server.setRequestHandler('prompts/get', async (request): Promise<GetPromptResult> => {
   const { name, arguments: args } = request.params;
   logger.logRequest("prompts/get", request.params);
 
-  try {
-    const prompt = getPrompt(name);
-    if (!prompt) {
-      const availablePrompts = prompts.map((p) => p.name).join(", ");
-      const errorMessage = `Prompt "${name}" not found. Available prompts: ${availablePrompts}`;
-      logger.warn(errorMessage);
-      return { content: [{ type: "text", text: errorMessage }], isError: true };
-    }
-
-    if (prompt.argumentSchema && args) {
-      try {
-        prompt.argumentSchema.parse(args);
-      } catch (validationError) {
-        if (validationError instanceof z.ZodError) {
-          const errorMessages = validationError.errors
-            .map((err) => `${err.path.join(".")}: ${err.message}`)
-            .join("; ");
-          const errorMessage = `Invalid arguments for prompt "${name}": ${errorMessages}`;
-          logger.warn(errorMessage);
-          return { content: [{ type: "text", text: errorMessage }], isError: true };
-        }
-      }
-    }
-
-    if (prompt.arguments) {
-      const missingRequired = prompt.arguments
-        .filter((arg) => arg.required && (!args || !(arg.name in args)))
-        .map((arg) => arg.name);
-      if (missingRequired.length > 0) {
-        const errorMessage = `Missing required arguments for prompt "${name}": ${missingRequired.join(", ")}`;
-        logger.warn(errorMessage);
-        return { content: [{ type: "text", text: errorMessage }], isError: true };
-      }
-    }
-
-    const content = prompt.getContent(args || {});
-    logger.logResponse("prompts/get", { name, hasContent: !!content });
-    return { messages: [{ role: "user", content: { type: "text", text: content } }] };
-  } catch (error) {
-    const errorMessage = error instanceof Error ? error.message : String(error);
-    logger.error(`Error getting prompt "${name}":`, errorMessage);
-    return {
-      content: [{ type: "text", text: `Error retrieving prompt "${name}": ${errorMessage}` }],
-      isError: true,
-    };
+  const prompt = getPrompt(name);
+  if (!prompt) {
+    const availablePrompts = prompts.map((p) => p.name).join(", ");
+    const errorMessage = `Prompt "${name}" not found. Available prompts: ${availablePrompts}`;
+    logger.warn(errorMessage);
+    throw new Error(errorMessage);
   }
+
+  if (prompt.argumentSchema && args) {
+    try {
+      prompt.argumentSchema.parse(args);
+    } catch (validationError) {
+      if (validationError instanceof z.ZodError) {
+        const errorMessages = validationError.issues
+          .map((err) => `${err.path.join(".")}: ${err.message}`)
+          .join("; ");
+        const errorMessage = `Invalid arguments for prompt "${name}": ${errorMessages}`;
+        logger.warn(errorMessage);
+        throw new Error(errorMessage);
+      }
+      throw validationError;
+    }
+  }
+
+  if (prompt.arguments) {
+    const missingRequired = prompt.arguments
+      .filter((arg) => arg.required && (!args || !(arg.name in args)))
+      .map((arg) => arg.name);
+    if (missingRequired.length > 0) {
+      const errorMessage = `Missing required arguments for prompt "${name}": ${missingRequired.join(", ")}`;
+      logger.warn(errorMessage);
+      throw new Error(errorMessage);
+    }
+  }
+
+  const content = prompt.getContent(args || {});
+  logger.logResponse("prompts/get", { name, hasContent: !!content });
+  return { messages: [{ role: "user", content: { type: "text", text: content } }] };
 });
 
 // ── Error handler ──────────────────────────────────────────────────────────

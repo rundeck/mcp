@@ -10,9 +10,8 @@
  * an actual client would, to verify that `rundeck_connect` is listed only
  * when RUNDECK_INSTANCES is configured.
  */
-
-import { Client } from "@modelcontextprotocol/sdk/client/index.js";
-import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { StdioClientTransport } from "@modelcontextprotocol/client/stdio";
+import { Client } from "@modelcontextprotocol/client";
 import path from "node:path";
 import fs from "node:fs";
 import { fileURLToPath } from "node:url";

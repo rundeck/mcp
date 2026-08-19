@@ -775,7 +775,7 @@ export const workflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() => z.object
   plugin: z
     .object({
       type: z.string(),
-      configuration: z.record(z.unknown()).optional(),
+      configuration: z.record(z.string(), z.unknown()).optional(),
     })
     .optional(),
   nodeStep: z.boolean().optional(),
