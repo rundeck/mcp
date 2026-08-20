@@ -18,7 +18,7 @@
  * immediately revokes the old ones).
  */
 
-import type { Server } from "@modelcontextprotocol/sdk/server/index.js";
+import type { Server } from "@modelcontextprotocol/server";
 import { logger } from "./logger.js";
 
 export type ConfirmationOutcome = "confirmed" | "declined" | "unsupported";

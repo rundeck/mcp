@@ -505,7 +505,7 @@ export const rundeckManageResourceSourceSchema = z
         "installed, and 'describe_provider_config' to see the exact config keys each expects, instead of guessing."
       ),
     config: z
-      .record(z.string())
+      .record(z.string(), z.string())
       .optional()
       .describe(
         "Provider-specific configuration for 'add_source', written as `resources.source.{index}.config.{key}` " +

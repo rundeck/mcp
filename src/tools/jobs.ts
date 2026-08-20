@@ -694,7 +694,7 @@ const notificationPluginSchema = z.object({
   type: z.string().describe(
     "Notification plugin type. Example: 'PagerDutyEventNotification'."
   ),
-  configuration: z.record(z.unknown()).optional(),
+  configuration: z.record(z.string(), z.unknown()).optional(),
 });
 
 const notificationHookSchema = z.object({
@@ -775,7 +775,7 @@ export const workflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() => z.object
   plugin: z
     .object({
       type: z.string(),
-      configuration: z.record(z.unknown()).optional(),
+      configuration: z.record(z.string(), z.unknown()).optional(),
     })
     .optional(),
   nodeStep: z.boolean().optional(),
@@ -791,7 +791,7 @@ export const workflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() => z.object
     plugin: z
       .object({
         type: z.string(),
-        configuration: z.record(z.unknown()).optional(),
+        configuration: z.record(z.string(), z.unknown()).optional(),
       })
       .optional(),
     nodeStep: z.boolean().optional(),
@@ -813,7 +813,7 @@ export const workflowStepSchema: z.ZodType<WorkflowStep> = z.lazy(() => z.object
         "Log filter plugin type. Common built-ins: 'key-value-data' (parses 'key=value' lines), " +
         "'key-value-data-multilines' (same, with a delimited-lines mode), 'json-mapper' (parses JSON output into data)."
       ),
-      config: z.record(z.unknown())
+      config: z.record(z.string(), z.unknown())
         .optional()
         .describe(
           "Filter-specific config. For 'key-value-data': { regex, name?, logData?, matchSubstrings?, allowMultipleMatches? }. " +
