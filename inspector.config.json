@@ -1,0 +1,9 @@
+{
+  "mcpServers": {
+    "rundeck-mcp": {
+      "command": "node",
+      "args": ["dist/index.js"],
+      "protocolEra": "modern"
+    }
+  }
+}
