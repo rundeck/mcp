@@ -7,6 +7,10 @@ import { configManager } from "../config.js";
 import { listApiEndpoints } from "../resources/api.js";
 import { loadOpenApiDocument, validateOpenApiRequest } from "../utils/openapi-validate.js";
 
+// Replaced with the release tag's version by the CI pipeline's tagged builds (see
+// .circleci/config.yml's "build" job); stays "SNAPSHOT" on branch/PR builds.
+export const USER_AGENT = "rundeck-mcp/SNAPSHOT";
+
 /**
  * Node's `fetch` (undici) collapses every network-level failure into a generic
  * `TypeError: fetch failed`, with the actual reason nested one level down in
@@ -123,6 +127,7 @@ export async function rundeckApiCall(params: {
     "X-Rundeck-Auth-Token": config.apiToken,
     "Accept": "application/json",
     "Content-Type": params.content_type || "application/json",
+    "User-Agent": USER_AGENT,
   };
 
   const options: RequestInit = {
