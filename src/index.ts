@@ -1,8 +1,13 @@
 #!/usr/bin/env node
 
-import { StdioServerTransport } from "@modelcontextprotocol/server/stdio";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
 import { Server } from "@modelcontextprotocol/server";
-import type { CallToolResult, GetPromptResult } from "@modelcontextprotocol/server";
+import type {
+  CallToolResult,
+  GetPromptResult,
+  ServerContext,
+  InputRequiredResult,
+} from "@modelcontextprotocol/server";
 import { handleResource, listResources } from "./resources/index.js";
 import {
   rundeckApiCall,
@@ -133,7 +138,24 @@ configManager.initialize();
 
 const server = new Server(
   { name: "rundeck-docs", version: "1.0.0" },
-  { capabilities: { resources: {}, tools: {}, prompts: {} } }
+  {
+    capabilities: { resources: {}, tools: {}, prompts: {} },
+    // 2026-07-28's CacheableResult requires ttlMs/cacheScope on these
+    // results; the SDK fills the conservative defaults (ttlMs: 0,
+    // cacheScope: 'private') automatically when absent, so this is a
+    // performance tuning, not a compliance requirement. Nothing served
+    // here is sensitive or per-caller (docs/tool/prompt registrations are
+    // fixed for this process's lifetime), so 'public' is safe; TTLs are
+    // short enough that a `rundeck_connect` switch or docs update is
+    // reflected promptly.
+    cacheHints: {
+      "tools/list": { ttlMs: 5 * 60 * 1000, cacheScope: "public" },
+      "prompts/list": { ttlMs: 10 * 60 * 1000, cacheScope: "public" },
+      "resources/list": { ttlMs: 10 * 60 * 1000, cacheScope: "public" },
+      "resources/read": { ttlMs: 10 * 60 * 1000, cacheScope: "public" },
+      "resources/templates/list": { ttlMs: 10 * 60 * 1000, cacheScope: "public" },
+    },
+  }
 );
 
 // ── Resources ──────────────────────────────────────────────────────────────
@@ -150,6 +172,17 @@ server.setRequestHandler('resources/list', async (request) => {
     })),
   };
   logger.logResponse("resources/list", result);
+  return result;
+});
+
+// This server has no resource templates — only concrete `rundeck://...`
+// resources. Answering with an empty list (rather than leaving the method
+// unregistered) avoids a spurious "Method not found" for any client that
+// probes it as part of standard capability discovery (e.g. MCP Inspector).
+server.setRequestHandler('resources/templates/list', async (request) => {
+  logger.logRequest("resources/templates/list", request.params);
+  const result = { resourceTemplates: [] };
+  logger.logResponse("resources/templates/list", result);
   return result;
 });
 
@@ -283,7 +316,7 @@ ${ASK_USER_LINE}`,
   return result;
 });
 
-server.setRequestHandler('tools/call', async (request): Promise<CallToolResult> => {
+server.setRequestHandler('tools/call', async (request, ctx: ServerContext): Promise<CallToolResult | InputRequiredResult> => {
   const { name, arguments: args } = request.params;
   logger.logRequest("tools/call", request.params);
   logger.logToolCall(name, args);
@@ -314,12 +347,16 @@ server.setRequestHandler('tools/call', async (request): Promise<CallToolResult> 
           };
         }
         if (apiDestructiveAction) {
-          const outcome = await requestDestructiveConfirmation(server, apiDestructiveAction);
-          if (outcome === "declined") {
+          const confirmation = await requestDestructiveConfirmation(server, ctx, apiDestructiveAction);
+          if (confirmation.kind === "input_required") {
+            logger.info("api_call destructive action awaiting elicitation answer (MRTR)");
+            return confirmation.result;
+          }
+          if (confirmation.outcome === "declined") {
             logger.info("api_call destructive action declined via elicitation");
             return returnGuidance(getConfirmationDeclinedGuidance("api_call", apiDestructiveAction));
           }
-          if (outcome === "unsupported") {
+          if (confirmation.outcome === "unsupported") {
             logger.info("api_call destructive action blocked - elicitation unavailable");
             return returnGuidance(getConfirmationUnavailableGuidance("api_call", apiDestructiveAction));
           }
@@ -396,12 +433,16 @@ server.setRequestHandler('tools/call', async (request): Promise<CallToolResult> 
                     "Rundeck has no way to revert to the previous version afterward — the old " +
                     "policy content will be gone.",
                 };
-          const outcome = await requestDestructiveConfirmation(server, aclDestructiveAction);
-          if (outcome === "declined") {
+          const confirmation = await requestDestructiveConfirmation(server, ctx, aclDestructiveAction);
+          if (confirmation.kind === "input_required") {
+            logger.info(`acl_manage ${aclParams.action} awaiting elicitation answer (MRTR)`);
+            return confirmation.result;
+          }
+          if (confirmation.outcome === "declined") {
             logger.info(`acl_manage ${aclParams.action} declined via elicitation`);
             return returnGuidance(getConfirmationDeclinedGuidance("acl_manage", aclDestructiveAction));
           }
-          if (outcome === "unsupported") {
+          if (confirmation.outcome === "unsupported") {
             logger.info(`acl_manage ${aclParams.action} blocked - elicitation unavailable`);
             return returnGuidance(getConfirmationUnavailableGuidance("acl_manage", aclDestructiveAction));
           }
@@ -548,14 +589,27 @@ server.onerror = (error) => {
   logger.error("MCP server error", error);
 };
 
+let stdioHandle: { close(): Promise<void> } | undefined;
+
 process.on("SIGINT", async () => {
-  await server.close();
+  await stdioHandle?.close();
   process.exit(0);
 });
 
 async function main() {
-  const transport = new StdioServerTransport();
-  await server.connect(transport);
+  // serveStdio() (rather than a hand-wired `new StdioServerTransport()` +
+  // `server.connect(...)`) owns the era decision for the connection: the
+  // opening exchange selects 2025-era or 2026-07-28, one instance from the
+  // factory is pinned for the connection's lifetime, and both eras are
+  // served from the same handler registrations above via the SDK's legacy
+  // shim — no handler-logic changes needed for that part. `onerror` here
+  // catches out-of-band errors during the opening/era-classification
+  // exchange itself (e.g. a malformed 2026-07-28 envelope claim), which
+  // happen before any Server instance is pinned and so never reach
+  // `server.onerror` above.
+  stdioHandle = serveStdio(() => server, {
+    onerror: (error) => logger.error("MCP stdio opening error", error),
+  });
   logger.info("Rundeck Documentation MCP server running on stdio");
 }
 

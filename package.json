@@ -29,7 +29,7 @@
     "test": "env -u RUNDECK_URL -u RUNDECK_TOKEN -u RUNDECK_INSTANCES -u RUNDECK_API_VERSION NODE_OPTIONS=--experimental-vm-modules jest",
     "test:watch": "env -u RUNDECK_URL -u RUNDECK_TOKEN -u RUNDECK_INSTANCES -u RUNDECK_API_VERSION NODE_OPTIONS=--experimental-vm-modules jest --watch",
     "validate": "npm run build && npm test && node dist/__tests__/run-all-validations.js",
-    "inspect": "npm run build && mcp-inspector node dist/index.js"
+    "inspect": "npm run build && mcp-inspector --config ./inspector.config.json --server rundeck-mcp"
   },
   "keywords": [
     "mcp",
@@ -49,7 +49,8 @@
     "hono": "4.12.34",
     "fast-uri": "4.1.2",
     "ip-address": "10.3.1",
-    "@hono/node-server": "^2.0.5"
+    "@hono/node-server": "^2.0.5",
+    "rolldown": "1.2.4"
   },
   "devDependencies": {
     "@modelcontextprotocol/inspector": "^2.3.0",
