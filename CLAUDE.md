@@ -56,7 +56,9 @@ This is a **Model Context Protocol (MCP) server** that exposes Rundeck documenta
 
 ### Entry point
 
-`src/index.ts` is the sole entry point, communicating via stdio. It creates the MCP `Server` and registers handlers for all six MCP request types (`ListResources`, `ReadResource`, `ListTools`, `CallTool`, `ListPrompts`, `GetPrompt`) directly. All tool dispatch lives in the `CallToolRequestSchema` handler's `switch` statement.
+`src/index.ts` is the sole entry point, communicating via stdio through `serveStdio()`, which serves both the 2025-era MCP protocol and the 2026-07-28 revision from the same handler registrations (the SDK's legacy shim handles era-specific wire details transparently). It creates the MCP `Server` and registers handlers for `ListResources`, `ReadResource`, `ListResourceTemplates` (always answers with an empty list — this server has no resource templates), `ListTools`, `CallTool`, `ListPrompts`, and `GetPrompt` directly. All tool dispatch lives in the `CallToolRequestSchema` handler's `switch` statement.
+
+Destructive tool calls (`api_call` DELETE/credential-regen, `acl_manage` delete/update) are gated by `requestDestructiveConfirmation` (`src/utils/confirmation.ts`), written once for both protocol eras via the Multi Round-Trip Requests (`inputRequired()`) pattern — on a 2025-era connection the SDK's built-in legacy shim fulfills it via a real `elicitation/create` request; there is no direct `server.elicitInput` call anywhere in this codebase.
 
 **Guidance mode**: Tools called without their required parameters return markdown help text instead of executing. The `needsGuidance()` helper checks for missing required fields; `returnGuidanceMarkdown()` wraps the text in an MCP content response. Guidance content lives in `src/utils/guidance.ts`.
 
