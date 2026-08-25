@@ -7,7 +7,7 @@ version: 2.1
 # exchanges for a publish token at request time. This requires a one-time,
 # out-of-band setup on npmjs.com — Package Settings -> Trusted Publisher ->
 # CircleCI, pointing at this org/project/workflow — and npm CLI >= 11.15.0,
-# which is why every job pins cimg/node:24.18 (bundles npm 11.16.0) via
+# which is why every job pins cimg/node:24.19 (bundles npm 11.16.0) via
 # .nvmrc/this file rather than relying on whatever npm an older Node bundles.
 #
 # DOCKERHUB_USERNAME/DOCKERHUB_TOKEN and CLOUDSMITH_NPM_TOKEN are NOT project
@@ -20,7 +20,7 @@ version: 2.1
 #     docker-build also forwards $CLOUDSMITH_NPM_TOKEN into the image build
 #     via `docker buildx build --secret`. test and npm-publish don't run
 #     `npm ci` themselves — they reuse build's node_modules/dist via
-#     workspace attach (all three jobs now share the same cimg/node:24.18
+#     workspace attach (all three jobs now share the same cimg/node:24.19
 #     image, so the artifacts are ABI-compatible) — so neither needs this
 #     context.
 #   - "Dockerhub": docker-build, docker-release (docker login).
@@ -50,14 +50,14 @@ commands:
 
 jobs:
   # Stage 1: compile TypeScript — fast fail before spending time on test/docker/npm
-  # Persists node_modules + dist so test and npm-publish (same cimg/node:24.18
+  # Persists node_modules + dist so test and npm-publish (same cimg/node:24.19
   # image) can reuse them instead of re-installing/re-building from scratch.
   # Also persists docs/ — npm ci's postinstall (scripts/download-docs.mjs)
   # downloads the Rundeck docs there, and integration tests that exercise
   # resources/docs_search need them on disk to find anything.
   build:
     docker:
-      - image: cimg/node:24.18
+      - image: cimg/node:24.19
     steps:
       - checkout
       - check_cloudsmith_secret
@@ -101,7 +101,7 @@ jobs:
   # installed deps and downloaded docs).
   test:
     docker:
-      - image: cimg/node:24.18
+      - image: cimg/node:24.19
     steps:
       - checkout
       - attach_workspace:
@@ -226,13 +226,13 @@ jobs:
   # PR builds, since a real `npm publish` requires a version bump and would
   # just fail otherwise.
   #
-  # Reuses node_modules + dist from the build job (same cimg/node:24.18) via
+  # Reuses node_modules + dist from the build job (same cimg/node:24.19) via
   # workspace attach instead of re-running `npm ci`/`npm run build`; tests
   # were already verified by the test job, which this workflow requires
   # before npm-publish runs — so we don't re-run `npm test` either.
   npm-publish:
     docker:
-      - image: cimg/node:24.18
+      - image: cimg/node:24.19
     steps:
       - checkout
       - attach_workspace:
