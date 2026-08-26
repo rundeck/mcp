@@ -1,9 +1,8 @@
 name: Create Release
 
 # Creates the GitHub Release for a version tag. Runs independently of the
-# CircleCI build/publish pipeline (.circleci/config.yml) — same pattern as
-# rundeck/rundeck's .github/workflows/release.yml — triggered directly by
-# the tag push rather than gated on npm/docker publish succeeding.
+# CircleCI build/publish pipeline (.circleci/config.yml) — triggered directly
+# by the tag push rather than gated on npm/docker publish succeeding.
 on:
   push:
     tags:
