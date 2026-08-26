@@ -1,0 +1,28 @@
+name: Create Release
+
+# Creates the GitHub Release for a version tag. Runs independently of the
+# CircleCI build/publish pipeline (.circleci/config.yml) — triggered directly
+# by the tag push rather than gated on npm/docker publish succeeding.
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v7
+
+      - name: Create GitHub release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "${GITHUB_REF_NAME}" \
+            --generate-notes
