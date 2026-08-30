@@ -57,7 +57,7 @@ jobs:
   # resources/docs_search need them on disk to find anything.
   build:
     docker:
-      - image: cimg/node:24.19
+      - image: cimg/node:24.20
     steps:
       - checkout
       - check_cloudsmith_secret
@@ -101,7 +101,7 @@ jobs:
   # installed deps and downloaded docs).
   test:
     docker:
-      - image: cimg/node:24.19
+      - image: cimg/node:24.20
     steps:
       - checkout
       - attach_workspace:
@@ -232,7 +232,7 @@ jobs:
   # before npm-publish runs — so we don't re-run `npm test` either.
   npm-publish:
     docker:
-      - image: cimg/node:24.19
+      - image: cimg/node:24.20
     steps:
       - checkout
       - attach_workspace:
