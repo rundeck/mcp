@@ -41,7 +41,7 @@
   "dependencies": {
     "marked": "18.0.10",
     "yaml": "2.9.0",
-    "zod": "4.4.3",
+    "zod": "4.5.0",
     "@modelcontextprotocol/server": "2.0.0",
     "@modelcontextprotocol/client": "2.0.0"
   },
