@@ -318,6 +318,8 @@ The server is configured via environment variables:
 - `SKIP_RUNDECK_DOCS_DOWNLOAD`: Set to `1` to skip the npm-install-time docs download (no effect on Docker)
 - `MCP_DEBUG`: Enable verbose logging ("1" or "true")
 
+Values may come from `-e` flags, `docker run --env-file`, or the client's `env` block — the server only sees `process.env`. It trims whitespace/CR, strips one pair of surrounding quotes, treats empty values as unset, and drops trailing slashes from instance URLs. See [SETUP.md](./SETUP.md#passing-configuration-to-the-docker-image).
+
 ### Security
 
 - **Token Storage**: API tokens stored in memory only (not persisted to disk)

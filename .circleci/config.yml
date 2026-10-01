@@ -74,6 +74,12 @@ jobs:
           # contain shell metacharacters like $() or backticks, and CIRCLE_TAG is
           # interpolated into a shell command below, so an unvalidated tag would be
           # a command-injection vector.
+          #
+          # This only reaches the npm package (npm-publish reuses this job's
+          # dist/ via workspace attach). The docker-build job does its own
+          # fresh checkout and compiles src/ itself, so it bakes the same
+          # version independently via the Dockerfile's RUNDECK_MCP_VERSION
+          # build-arg — see that job's "Compute release version" step.
           name: Bake release version into User-Agent and server.json
           command: |
             if [ -n "${CIRCLE_TAG:-}" ]; then
@@ -123,6 +129,24 @@ jobs:
           name: Docker login
           command: echo "$DOCKERHUB_TOKEN" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
       - run:
+          # Same version this repo's User-Agent header gets baked with (see
+          # the Dockerfile's RUNDECK_MCP_VERSION build-arg) — this job does a
+          # fresh checkout and builds the image straight from source, so it
+          # can't rely on the "build" job's in-container sed of
+          # src/tools/api.ts (that patch never leaves that job's workspace).
+          # Persisted via BASH_ENV so later steps in this job see it.
+          name: Compute release version for User-Agent bake
+          command: |
+            if [ -n "${CIRCLE_TAG:-}" ]; then
+              if ! echo "${CIRCLE_TAG}" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+                echo "CIRCLE_TAG '${CIRCLE_TAG}' does not match expected vX.Y.Z pattern — failing." >&2
+                exit 1
+              fi
+              echo "export RUNDECK_MCP_VERSION=${CIRCLE_TAG#v}" >> "$BASH_ENV"
+            else
+              echo "export RUNDECK_MCP_VERSION=SNAPSHOT" >> "$BASH_ENV"
+            fi
+      - run:
           name: Set up QEMU + Buildx
           command: |
             docker run --privileged --rm tonistiigi/binfmt --install all
@@ -139,6 +163,7 @@ jobs:
           name: Build local image for smoke test (with Cloudsmith)
           command: |
             docker build --no-cache --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
+              --build-arg RUNDECK_MCP_VERSION="${RUNDECK_MCP_VERSION}" \
               -t rundeck-mcp:smoke-test .
       - run:
           name: Run Docker smoke tests (with Cloudsmith)
@@ -147,7 +172,9 @@ jobs:
           # Validates the Dockerfile's OSS/external-contributor fallback path
           # (no CLOUDSMITH_NPM_TOKEN) actually works, not just that it exists.
           name: Build local image for smoke test (OSS fallback, no Cloudsmith)
-          command: docker build --no-cache -t rundeck-mcp:smoke-test-oss .
+          command: |
+            docker build --no-cache --build-arg RUNDECK_MCP_VERSION="${RUNDECK_MCP_VERSION}" \
+              -t rundeck-mcp:smoke-test-oss .
       - run:
           name: Run Docker smoke tests (OSS fallback)
           command: sh ci/docker-smoke-test.sh rundeck-mcp:smoke-test-oss
@@ -160,6 +187,7 @@ jobs:
           command: |
             docker buildx build --no-cache --platform linux/arm64 --load \
               --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
+              --build-arg RUNDECK_MCP_VERSION="${RUNDECK_MCP_VERSION}" \
               -t rundeck-mcp:smoke-test-arm64 .
       - run:
           name: Run Docker smoke tests (arm64)
@@ -193,6 +221,7 @@ jobs:
             # actually gets pushed) could silently reuse that wrong layer.
             docker buildx build --no-cache --platform linux/amd64,linux/arm64 --push \
               --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
+              --build-arg RUNDECK_MCP_VERSION="${RUNDECK_MCP_VERSION}" \
               "${TAG_ARGS[@]}" .
 
   # Stage 3b: promote the CI image built above to the public release image.

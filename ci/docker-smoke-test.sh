@@ -1,8 +1,8 @@
 #!/bin/sh
 # Smoke-tests a built rundeck-mcp Docker image: verifies the entrypoint's docs
 # fetch (sparse git clone), the resulting /app/docs layout, the
-# RUNDECK_DOCS_PATH bypass, the restart/skip-fetch path, and that the server
-# actually answers an MCP `initialize` request over stdio.
+# RUNDECK_DOCS_PATH bypass, `--env-file` handling, the restart/skip-fetch path,
+# and that the server actually answers an MCP `initialize` request over stdio.
 #
 # Usage: ci/docker-smoke-test.sh [image]   (default: rundeck/mcp-ci:latest)
 # Deliberately no `set -e` — failing assertions must be recorded via fail()
@@ -106,6 +106,26 @@ case "$RESPONSE" in
   *'"result"'*'"rundeck-docs"'*) pass "initialize returned a valid result" ;;
   *) fail "initialize did not return expected result: $RESPONSE" ;;
 esac
+
+echo "== 6. --env-file reaches the container exactly like -e =="
+ENV_FILE="$(mktemp)"
+# Quoted URL + CRLF on purpose: `docker run --env-file` keeps both verbatim,
+# and the server is expected to cope (src/config.ts's cleanEnvValue).
+printf 'RUNDECK_URL="https://rundeck.example.com/"\r\nRUNDECK_TOKEN=smoke-token\r\nRUNDECK_DOCS_PATH=/tmp/external-docs\r\n' > "$ENV_FILE"
+docker rm -f smoke-run >/dev/null 2>&1
+docker run --name smoke-run --env-file "$ENV_FILE" "$IMAGE" >/tmp/smoke-envfile.log 2>&1 || true
+if grep -q "skipping docs fetch" /tmp/smoke-envfile.log && ! grep -q "fetching docs" /tmp/smoke-envfile.log; then
+  pass "variable supplied via --env-file was seen by the entrypoint"
+else
+  fail "--env-file variable was not seen by the entrypoint"
+fi
+RESPONSE="$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"0.0.1"}}}' \
+  | docker run -i --rm --env-file "$ENV_FILE" "$IMAGE" 2>/dev/null | head -1)"
+case "$RESPONSE" in
+  *'"result"'*'"rundeck-docs"'*) pass "initialize returned a valid result with --env-file" ;;
+  *) fail "initialize with --env-file did not return expected result: $RESPONSE" ;;
+esac
+rm -f "$ENV_FILE"
 
 echo
 if [ "$FAILED" -eq 0 ]; then

@@ -180,6 +180,8 @@ test -f .mcp.json && echo "found: $(pwd)/.mcp.json" || (test -f ~/.mcp.json && e
 
 Replace `<RUNDECK_URL>` and `<RUNDECK_TOKEN>` with the values from Step 4.
 
+Alternative: if the user prefers an env file over inline credentials, write `RUNDECK_URL`/`RUNDECK_TOKEN` to `~/.rundeck-mcp/.env` (`mkdir -p ~/.rundeck-mcp`; outside any project so the agent and git never see it; see `.env.example` for the format — unquoted `KEY=VALUE`, one per line, `chmod 600`) and replace the two `-e` pairs with `"--env-file", "<HOME>/.rundeck-mcp/.env"` (expanded absolute path — no `~` in JSON args) (same change in the `claude mcp add` command in Step 6). Never use a bind mount.
+
 ```
 TaskUpdate taskId=<mcp_json_id> status="completed"
 ```

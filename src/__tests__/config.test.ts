@@ -98,6 +98,60 @@ describe("Config Manager", () => {
     });
   });
 
+  describe("env value normalization (docker --env-file quirks)", () => {
+    afterEach(() => {
+      delete process.env.RUNDECK_INSTANCES;
+    });
+
+    it("strips surrounding quotes, whitespace, CR, and trailing slashes", () => {
+      process.env.RUNDECK_URL = '"https://test.rundeck.com/"\r';
+      process.env.RUNDECK_TOKEN = "'test-token'";
+      process.env.RUNDECK_API_VERSION = " 45 ";
+
+      configManager.initialize();
+
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBe("https://test.rundeck.com");
+      expect(config.apiToken).toBe("test-token");
+      expect(config.apiVersion).toBe("45");
+      expect(configManager.getApiBaseUrl()).toBe("https://test.rundeck.com/api/45");
+    });
+
+    it("treats empty or blank values as unset", () => {
+      process.env.RUNDECK_URL = "";
+      process.env.RUNDECK_TOKEN = '""';
+      process.env.RUNDECK_API_VERSION = "";
+
+      configManager.initialize();
+
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBeUndefined();
+      expect(config.apiToken).toBeUndefined();
+      expect(config.apiVersion).toBe("59");
+    });
+
+    it("leaves interior quotes alone", () => {
+      process.env.RUNDECK_TOKEN = 'ab"cd';
+      configManager.initialize();
+      expect(configManager.getConfig().apiToken).toBe('ab"cd');
+    });
+
+    it("accepts a RUNDECK_INSTANCES registry wrapped in quotes and normalizes instance urls", () => {
+      process.env.RUNDECK_INSTANCES =
+        `'${JSON.stringify({
+          default: "prod",
+          instances: { prod: { url: "https://prod.example.com/", token: " prod-token " } },
+        })}'\r`;
+
+      configManager.initialize();
+
+      expect(configManager.hasInstanceRegistry()).toBe(true);
+      const config = configManager.getConfig();
+      expect(config.rundeckUrl).toBe("https://prod.example.com");
+      expect(config.apiToken).toBe("prod-token");
+    });
+  });
+
   describe("RUNDECK_INSTANCES registry", () => {
     afterEach(() => {
       delete process.env.RUNDECK_INSTANCES;

@@ -16,6 +16,41 @@ export interface RundeckConfig {
 
 const DEFAULT_API_TIMEOUT_MS = 30_000;
 
+/**
+ * Cleans up a raw env var value. `docker run --env-file` (unlike dotenv) keeps
+ * surrounding quotes and any CR from CRLF line endings verbatim, so a `.env`
+ * written with dotenv habits would otherwise reach us as `"https://x"`.
+ * Trims whitespace, strips one pair of matching surrounding quotes, and maps
+ * an empty result to undefined.
+ */
+function cleanEnvValue(raw: string | undefined): string | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  let value = raw.trim();
+  if (value.length >= 2) {
+    const first = value[0];
+    if ((first === '"' || first === "'") && value[value.length - 1] === first) {
+      value = value.slice(1, -1).trim();
+    }
+  }
+  return value === "" ? undefined : value;
+}
+
+/** Drops trailing slashes so `${url}/api/...` never ends up with `//`. */
+function normalizeUrl(url: string): string {
+  return url.replace(/\/+$/, "");
+}
+
+function readEnv(name: string): string | undefined {
+  return cleanEnvValue(process.env[name]);
+}
+
+function readUrlEnv(name: string): string | undefined {
+  const value = readEnv(name);
+  return value === undefined ? undefined : normalizeUrl(value);
+}
+
 interface RundeckInstanceEntry {
   url: string;
   token: string;
@@ -37,7 +72,7 @@ class ConfigManager {
 
   /** Parses RUNDECK_API_TIMEOUT_MS, falling back to the default on anything non-positive or non-numeric. */
   private parseApiTimeoutMs(): number {
-    const raw = process.env.RUNDECK_API_TIMEOUT_MS;
+    const raw = readEnv("RUNDECK_API_TIMEOUT_MS");
     if (!raw) {
       return DEFAULT_API_TIMEOUT_MS;
     }
@@ -83,14 +118,15 @@ class ConfigManager {
    * Initialize configuration from environment variables
    */
   initialize(): void {
-    this.config.rundeckUrl = process.env.RUNDECK_URL;
-    this.config.apiToken = process.env.RUNDECK_TOKEN;
-    this.config.apiVersion = process.env.RUNDECK_API_VERSION || "59";
+    this.config.rundeckUrl = readUrlEnv("RUNDECK_URL");
+    this.config.apiToken = readEnv("RUNDECK_TOKEN");
+    this.config.apiVersion = readEnv("RUNDECK_API_VERSION") || "59";
     this.config.apiTimeoutMs = this.parseApiTimeoutMs();
 
     // Only override docs path if explicitly set
-    if (process.env.RUNDECK_DOCS_PATH) {
-      this.config.docsPath = resolve(process.env.RUNDECK_DOCS_PATH);
+    const docsPathEnv = readEnv("RUNDECK_DOCS_PATH");
+    if (docsPathEnv) {
+      this.config.docsPath = resolve(docsPathEnv);
     } else {
       // Re-find docs path on initialization
       this.config.docsPath = this.findDocsPath();
@@ -111,7 +147,7 @@ class ConfigManager {
   private loadInstanceRegistry(): void {
     this.instanceRegistry = null;
 
-    const raw = process.env.RUNDECK_INSTANCES;
+    const raw = readEnv("RUNDECK_INSTANCES");
     if (!raw) {
       return;
     }
@@ -172,8 +208,8 @@ class ConfigManager {
         return;
       }
       validated[name] = {
-        url: (entry as RundeckInstanceEntry).url,
-        token: (entry as RundeckInstanceEntry).token,
+        url: normalizeUrl((entry as RundeckInstanceEntry).url.trim()),
+        token: (entry as RundeckInstanceEntry).token.trim(),
       };
     }
 
@@ -256,9 +292,9 @@ class ConfigManager {
     const hadUrl = !!this.config.rundeckUrl;
     const hadToken = !!this.config.apiToken;
     
-    this.config.rundeckUrl = process.env.RUNDECK_URL || this.config.rundeckUrl;
-    this.config.apiToken = process.env.RUNDECK_TOKEN || this.config.apiToken;
-    this.config.apiVersion = process.env.RUNDECK_API_VERSION || this.config.apiVersion;
+    this.config.rundeckUrl = readUrlEnv("RUNDECK_URL") || this.config.rundeckUrl;
+    this.config.apiToken = readEnv("RUNDECK_TOKEN") || this.config.apiToken;
+    this.config.apiVersion = readEnv("RUNDECK_API_VERSION") || this.config.apiVersion;
     this.config.apiTimeoutMs = this.parseApiTimeoutMs();
 
     if (!hadToken && this.config.apiToken) {
@@ -277,7 +313,7 @@ class ConfigManager {
     token: string,
     apiVersion?: string
   ): void {
-    this.config.rundeckUrl = url;
+    this.config.rundeckUrl = normalizeUrl(url);
     this.config.apiToken = token;
     if (apiVersion) {
       this.config.apiVersion = apiVersion;
