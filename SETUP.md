@@ -133,19 +133,27 @@ In an `mcpServers` block: `"args": ["run", "-i", "--rm", "--env-file", "/Users/y
 
 ### Runlayer (PagerDuty internal)
 
-Runlayer runs the CI-built `rundeck/mcp-ci:latest` image (see [Building the Internal Docker Image](#building-the-internal-docker-image-rundeckmcp-ci)) with the server's environment variables supplied by its connector configuration, the equivalent of `--env-file` above. The variables are the ones documented in the [Rundeck MCP configuration docs](https://docs.rundeck.com/docs/mcp/configuration.html).
+This section is for PagerDuty people using or developing the server through Runlayer. Runlayer runs the CI-built `rundeck/mcp-ci:latest` image (see [Building the Internal Docker Image](#building-the-internal-docker-image-rundeckmcp-ci)) and only supports `--env-file` for configuration, not individual environment variables. Everyone else can use either `-e` variables or `--env-file` as described above.
 
-You must provide one of:
+The Runlayer connector is configured to read the env file from the standard location, `~/.rundeck-mcp/.env`, so you never pass `--env-file` yourself. You only create the file there:
 
-- `RUNDECK_URL` **and** `RUNDECK_TOKEN` (a single instance), or
-- `RUNDECK_INSTANCES` (several instances; see [Multiple Rundeck Instances](#multiple-rundeck-instances-optional)).
+1. Create it from the template:
 
-Everything else (`RUNDECK_API_VERSION`, `RUNDECK_DOCS_BRANCH`, …) is optional.
+   ```bash
+   mkdir -p ~/.rundeck-mcp
+   cp .env.example ~/.rundeck-mcp/.env
+   chmod 600 ~/.rundeck-mcp/.env
+   ```
 
-1. Copy [`.env.example`](./.env.example) to `~/.rundeck-mcp/.env` and keep only the variables you need: `RUNDECK_URL` + `RUNDECK_TOKEN`, or a single-line `RUNDECK_INSTANCES` (remove `RUNDECK_URL`/`RUNDECK_TOKEN` in that case).
-2. Enter those `KEY=VALUE` pairs, unquoted and one per variable, in the Rundeck server's environment settings in Runlayer.
-3. Add the Rundeck server to your client from Runlayer.
-4. To check the wiring before involving Runlayer, run the same file locally against the same image: `docker run -i --rm --env-file ~/.rundeck-mcp/.env rundeck/mcp-ci:latest`.
+2. Edit it, keeping only the variables you need. You must provide one of:
+   - `RUNDECK_URL` **and** `RUNDECK_TOKEN` (a single instance), or
+   - `RUNDECK_INSTANCES` (several instances, as single-line JSON; see [Multiple Rundeck Instances](#multiple-rundeck-instances-optional)). Remove `RUNDECK_URL` and `RUNDECK_TOKEN` in that case.
+
+   Everything else (`RUNDECK_API_VERSION`, `RUNDECK_DOCS_BRANCH`, …) is optional. The variables are the ones documented in the [Rundeck MCP configuration docs](https://docs.rundeck.com/docs/mcp/configuration.html), and the format rules in [`.env.example`](./.env.example) apply (unquoted `KEY=VALUE`, one per line).
+
+3. Add the Rundeck server to your client from Runlayer. Changes to the file take effect the next time the server starts, so restart the connector after editing it.
+
+To check the file before involving Runlayer, run the same image against it directly: `docker run -i --rm --env-file ~/.rundeck-mcp/.env rundeck/mcp-ci:latest`.
 
 ## Multiple Rundeck Instances (optional)
 
