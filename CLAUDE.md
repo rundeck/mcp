@@ -97,7 +97,7 @@ Resources that read from the filesystem use `configManager.getConfig().docsPath`
 
 Each tool exports its handler function and a Zod schema. Schemas are converted to JSON Schema via `zod-to-json-schema` in `index.ts` when responding to `ListTools`.
 
-`api_call` reads `RUNDECK_URL` and `RUNDECK_TOKEN` from `configManager` (which lazily refreshes from environment). The base URL is constructed as `{RUNDECK_URL}/api/{RUNDECK_API_VERSION}`.
+`api_call` reads `RUNDECK_URL` and `RUNDECK_TOKEN` from `configManager` (which lazily refreshes from environment). The base URL is constructed as `{RUNDECK_URL}/api/{RUNDECK_API_VERSION}`. Env values are cleaned by `cleanEnvValue()`/`normalizeUrl()` in `src/config.ts` (trim, strip one surrounding quote pair, empty → unset, trailing `/` dropped from URLs) because `docker run --env-file` passes quotes and CRLF through verbatim; the Docker image works identically with `-e` or `--env-file` (see `.env.example`, SETUP.md, and smoke-test section 6 in `ci/docker-smoke-test.sh`).
 
 ### Configuration (`src/config.ts`)
 

@@ -1,8 +1,8 @@
 #!/bin/sh
 # Smoke-tests a built rundeck-mcp Docker image: verifies the entrypoint's docs
 # fetch (sparse git clone), the resulting /app/docs layout, the
-# RUNDECK_DOCS_PATH bypass, the restart/skip-fetch path, and that the server
-# actually answers an MCP `initialize` request over stdio.
+# RUNDECK_DOCS_PATH bypass, `--env-file` handling, the restart/skip-fetch path,
+# and that the server actually answers an MCP `initialize` request over stdio.
 #
 # Usage: ci/docker-smoke-test.sh [image]   (default: rundeck/mcp-ci:latest)
 # Deliberately no `set -e` — failing assertions must be recorded via fail()
@@ -106,6 +106,57 @@ case "$RESPONSE" in
   *'"result"'*'"rundeck-docs"'*) pass "initialize returned a valid result" ;;
   *) fail "initialize did not return expected result: $RESPONSE" ;;
 esac
+
+echo "== 6. --env-file reaches the container exactly like -e =="
+ENV_FILE="$(mktemp)"
+# Quoted URL + CRLF on purpose: `docker run --env-file` keeps both verbatim,
+# and the server is expected to cope (src/config.ts's cleanEnvValue).
+printf 'RUNDECK_URL="https://rundeck.example.com/"\r\nRUNDECK_TOKEN=smoke-token\r\nRUNDECK_DOCS_PATH=/tmp/external-docs\r\n' > "$ENV_FILE"
+docker rm -f smoke-run >/dev/null 2>&1
+docker run --name smoke-run --env-file "$ENV_FILE" "$IMAGE" >/tmp/smoke-envfile.log 2>&1 || true
+if grep -q "skipping docs fetch" /tmp/smoke-envfile.log && ! grep -q "fetching docs" /tmp/smoke-envfile.log; then
+  pass "variable supplied via --env-file was seen by the entrypoint"
+else
+  fail "--env-file variable was not seen by the entrypoint"
+fi
+RESPONSE="$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"0.0.1"}}}' \
+  | docker run -i --rm --env-file "$ENV_FILE" "$IMAGE" 2>/dev/null | head -1)"
+case "$RESPONSE" in
+  *'"result"'*'"rundeck-docs"'*) pass "initialize returned a valid result with --env-file" ;;
+  *) fail "initialize with --env-file did not return expected result: $RESPONSE" ;;
+esac
+
+# RUNDECK_DOCS_BRANCH is read by the entrypoint, not by cleanEnvValue: a CR from
+# a CRLF env file must not reach `git clone --branch`.
+printf 'RUNDECK_DOCS_BRANCH=4.0.x\r\n' > "$ENV_FILE"
+docker rm -f smoke-run >/dev/null 2>&1
+docker run --name smoke-run -i --env-file "$ENV_FILE" -e RUNDECK_DOCS_PATH= "$IMAGE" </dev/null >/tmp/smoke-envfile-branch.log 2>&1 || true
+if grep -q "fetching docs (branch 4.0.x)" /tmp/smoke-envfile-branch.log; then
+  pass "CRLF in RUNDECK_DOCS_BRANCH is stripped by the entrypoint"
+else
+  fail "CRLF in RUNDECK_DOCS_BRANCH reached the entrypoint's git clone: $(cat /tmp/smoke-envfile-branch.log)"
+fi
+# Quoted values: the entrypoint must apply the same quote-stripping/empty-is-unset
+# semantics as cleanEnvValue(), so a quoted branch is usable and a quoted-empty
+# RUNDECK_DOCS_PATH does not skip the fetch.
+printf 'RUNDECK_DOCS_BRANCH="4.0.x"\r\nRUNDECK_DOCS_PATH=""\r\n' > "$ENV_FILE"
+docker rm -f smoke-run >/dev/null 2>&1
+docker run --name smoke-run -i --env-file "$ENV_FILE" "$IMAGE" </dev/null >/tmp/smoke-envfile-quoted.log 2>&1 || true
+if grep -q "fetching docs (branch 4.0.x)" /tmp/smoke-envfile-quoted.log; then
+  pass "quoted RUNDECK_DOCS_BRANCH and quoted-empty RUNDECK_DOCS_PATH are normalized by the entrypoint"
+else
+  fail "entrypoint did not normalize quoted env-file values: $(cat /tmp/smoke-envfile-quoted.log)"
+fi
+# A quoted, non-empty RUNDECK_DOCS_PATH must still count as set and bypass the fetch.
+printf 'RUNDECK_DOCS_PATH="/tmp/external-docs"\r\n' > "$ENV_FILE"
+docker rm -f smoke-run >/dev/null 2>&1
+docker run --name smoke-run -i --env-file "$ENV_FILE" "$IMAGE" </dev/null >/tmp/smoke-envfile-quoted-path.log 2>&1 || true
+if grep -q "RUNDECK_DOCS_PATH set" /tmp/smoke-envfile-quoted-path.log && ! grep -q "fetching docs" /tmp/smoke-envfile-quoted-path.log; then
+  pass "quoted RUNDECK_DOCS_PATH bypasses the fetch"
+else
+  fail "quoted RUNDECK_DOCS_PATH did not bypass the fetch: $(cat /tmp/smoke-envfile-quoted-path.log)"
+fi
+rm -f "$ENV_FILE"
 
 echo
 if [ "$FAILED" -eq 0 ]; then

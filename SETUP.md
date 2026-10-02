@@ -107,6 +107,54 @@ export RUNDECK_API_VERSION=59
 
 Note: When running via MCP client, shell environment variables may not be available. Use MCP settings instead.
 
+#### Option 3: Env file (Docker)
+
+For the Docker image, `docker run --env-file ~/.rundeck-mcp/.env` is equivalent to `-e` flags — see [Passing Configuration to the Docker Image](#passing-configuration-to-the-docker-image) and [`.env.example`](./.env.example).
+
+### Passing Configuration to the Docker Image
+
+The image reads everything from its process environment, so these are interchangeable:
+
+```bash
+# individual variables
+docker run -i --rm -e RUNDECK_URL=https://your-rundeck.example.com -e RUNDECK_TOKEN=your-token rundeck/mcp:latest
+
+# an env file (mkdir -p ~/.rundeck-mcp && cp .env.example ~/.rundeck-mcp/.env && chmod 600 ~/.rundeck-mcp/.env, then fill it in)
+docker run -i --rm --env-file ~/.rundeck-mcp/.env rundeck/mcp:latest
+```
+
+In an `mcpServers` block: `"args": ["run", "-i", "--rm", "--env-file", "/Users/you/.rundeck-mcp/.env", "rundeck/mcp:latest"]`. Use an absolute path with no `~` (JSON args aren't shell-expanded, and a relative path resolves against the MCP client's working directory, not your project). The Docker CLI reads the file on the host, so this is not a bind mount.
+
+- If the same key is set by both, `-e` wins over `--env-file`.
+- `-e RUNDECK_TOKEN` with no value forwards your shell's current value.
+- `--env-file` is stricter than dotenv: no `export` prefix, no trailing `# comments` on a value line, one line per variable (so `RUNDECK_INSTANCES` must be single-line JSON). Docker keeps quotes and CRLF `\r` verbatim; the server strips one surrounding pair of quotes, whitespace, and a trailing `/` on URLs, but don't rely on that — see [`.env.example`](./.env.example) for a known-good file.
+- **Where to keep it:** `~/.rundeck-mcp/.env`, next to the multi-instance `instances.json` below. Not in a project directory: it holds a live token, can be committed by accident, and anything in the directory where you run `claude` is readable by the agent.
+- `chmod 600` the file.
+
+### Runlayer (PagerDuty internal)
+
+This section is for PagerDuty people using or developing the server through Runlayer. Runlayer runs the CI-built `rundeck/mcp-ci:latest` image (see [Building the Internal Docker Image](#building-the-internal-docker-image-rundeckmcp-ci)) and only supports `--env-file` for configuration, not individual environment variables. Everyone else can use either `-e` variables or `--env-file` as described above.
+
+The Runlayer connector is configured to read the env file from the standard location, `~/.rundeck-mcp/.env`, so you never pass `--env-file` yourself. You only create the file there:
+
+1. Create it from the template:
+
+   ```bash
+   mkdir -p ~/.rundeck-mcp
+   cp .env.example ~/.rundeck-mcp/.env
+   chmod 600 ~/.rundeck-mcp/.env
+   ```
+
+2. Edit it, keeping only the variables you need. You must provide one of:
+   - `RUNDECK_URL` **and** `RUNDECK_TOKEN` (a single instance), or
+   - `RUNDECK_INSTANCES` (several instances, as single-line JSON; see [Multiple Rundeck Instances](#multiple-rundeck-instances-optional)). Remove `RUNDECK_URL` and `RUNDECK_TOKEN` in that case.
+
+   Everything else (`RUNDECK_API_VERSION`, `RUNDECK_DOCS_BRANCH`, …) is optional. The variables are the ones documented in the [Rundeck MCP configuration docs](https://docs.rundeck.com/docs/mcp/configuration.html), and the format rules in [`.env.example`](./.env.example) apply (unquoted `KEY=VALUE`, one per line).
+
+3. Add the Rundeck server to your client from Runlayer. Changes to the file take effect the next time the server starts, so restart the connector after editing it.
+
+To check the file before involving Runlayer, run the same image against it directly: `docker run -i --rm --env-file ~/.rundeck-mcp/.env rundeck/mcp-ci:latest`.
+
 ## Multiple Rundeck Instances (optional)
 
 Everything above assumes the common case: one Rundeck instance, configured via `RUNDECK_URL`/`RUNDECK_TOKEN`. If that's you, there's nothing else to do.

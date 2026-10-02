@@ -143,4 +143,8 @@ Add to .mcp.json (stdio transport — docs downloaded on first start):
       "-e", "RUNDECK_TOKEN=your-token",
       "rundeck/mcp-ci:latest"]
   }
+
+Or keep credentials in an env file (see .env.example) and use
+  "--env-file", "/Users/<you>/.rundeck-mcp/.env"
+in place of the two "-e" pairs.
 ```
