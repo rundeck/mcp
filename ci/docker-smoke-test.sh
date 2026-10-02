@@ -136,6 +136,26 @@ if grep -q "fetching docs (branch 4.0.x)" /tmp/smoke-envfile-branch.log; then
 else
   fail "CRLF in RUNDECK_DOCS_BRANCH reached the entrypoint's git clone: $(cat /tmp/smoke-envfile-branch.log)"
 fi
+# Quoted values: the entrypoint must apply the same quote-stripping/empty-is-unset
+# semantics as cleanEnvValue(), so a quoted branch is usable and a quoted-empty
+# RUNDECK_DOCS_PATH does not skip the fetch.
+printf 'RUNDECK_DOCS_BRANCH="4.0.x"\r\nRUNDECK_DOCS_PATH=""\r\n' > "$ENV_FILE"
+docker rm -f smoke-run >/dev/null 2>&1
+docker run --name smoke-run -i --env-file "$ENV_FILE" "$IMAGE" </dev/null >/tmp/smoke-envfile-quoted.log 2>&1 || true
+if grep -q "fetching docs (branch 4.0.x)" /tmp/smoke-envfile-quoted.log; then
+  pass "quoted RUNDECK_DOCS_BRANCH and quoted-empty RUNDECK_DOCS_PATH are normalized by the entrypoint"
+else
+  fail "entrypoint did not normalize quoted env-file values: $(cat /tmp/smoke-envfile-quoted.log)"
+fi
+# A quoted, non-empty RUNDECK_DOCS_PATH must still count as set and bypass the fetch.
+printf 'RUNDECK_DOCS_PATH="/tmp/external-docs"\r\n' > "$ENV_FILE"
+docker rm -f smoke-run >/dev/null 2>&1
+docker run --name smoke-run -i --env-file "$ENV_FILE" "$IMAGE" </dev/null >/tmp/smoke-envfile-quoted-path.log 2>&1 || true
+if grep -q "RUNDECK_DOCS_PATH set" /tmp/smoke-envfile-quoted-path.log && ! grep -q "fetching docs" /tmp/smoke-envfile-quoted-path.log; then
+  pass "quoted RUNDECK_DOCS_PATH bypasses the fetch"
+else
+  fail "quoted RUNDECK_DOCS_PATH did not bypass the fetch: $(cat /tmp/smoke-envfile-quoted-path.log)"
+fi
 rm -f "$ENV_FILE"
 
 echo
