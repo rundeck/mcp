@@ -125,6 +125,17 @@ case "$RESPONSE" in
   *'"result"'*'"rundeck-docs"'*) pass "initialize returned a valid result with --env-file" ;;
   *) fail "initialize with --env-file did not return expected result: $RESPONSE" ;;
 esac
+
+# RUNDECK_DOCS_BRANCH is read by the entrypoint, not by cleanEnvValue: a CR from
+# a CRLF env file must not reach `git clone --branch`.
+printf 'RUNDECK_DOCS_BRANCH=4.0.x\r\n' > "$ENV_FILE"
+docker rm -f smoke-run >/dev/null 2>&1
+docker run --name smoke-run -i --env-file "$ENV_FILE" -e RUNDECK_DOCS_PATH= "$IMAGE" </dev/null >/tmp/smoke-envfile-branch.log 2>&1 || true
+if grep -q "fetching docs (branch 4.0.x)" /tmp/smoke-envfile-branch.log; then
+  pass "CRLF in RUNDECK_DOCS_BRANCH is stripped by the entrypoint"
+else
+  fail "CRLF in RUNDECK_DOCS_BRANCH reached the entrypoint's git clone: $(cat /tmp/smoke-envfile-branch.log)"
+fi
 rm -f "$ENV_FILE"
 
 echo

@@ -2,7 +2,9 @@
 set -e
 
 DOCS_DIR="/app/docs"
-DOCS_BRANCH="${RUNDECK_DOCS_BRANCH:-4.0.x}"
+# `tr -d '\r\n '`: `docker run --env-file` keeps CR from CRLF files verbatim, which would break `git clone --branch`.
+DOCS_BRANCH="$(printf '%s' "${RUNDECK_DOCS_BRANCH:-}" | tr -d '\r\n ')"
+DOCS_BRANCH="${DOCS_BRANCH:-4.0.x}"
 DOCS_REPO="https://github.com/rundeck/docs.git"
 
 log() {

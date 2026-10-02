@@ -207,10 +207,15 @@ class ConfigManager {
         );
         return;
       }
-      validated[name] = {
-        url: normalizeUrl((entry as RundeckInstanceEntry).url.trim()),
-        token: (entry as RundeckInstanceEntry).token.trim(),
-      };
+      const url = normalizeUrl((entry as RundeckInstanceEntry).url.trim());
+      const token = (entry as RundeckInstanceEntry).token.trim();
+      if (!url || !token) {
+        logger.error(
+          `RUNDECK_INSTANCES entry "${name}" is missing "url"/"token" — ignoring RUNDECK_INSTANCES`
+        );
+        return;
+      }
+      validated[name] = { url, token };
     }
 
     if (Object.keys(validated).length === 0) {

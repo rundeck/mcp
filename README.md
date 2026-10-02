@@ -77,7 +77,7 @@ For Claude Code, add via the CLI:
 claude mcp add rundeck-mcp -- docker run -i --rm -e RUNDECK_URL=https://your-rundeck-instance.example.com -e RUNDECK_TOKEN=your-rundeck-api-token-here rundeck/mcp:latest
 ```
 
-Prefer keeping credentials out of your client config? Put them in an env file (start from [`.env.example`](./.env.example)) and save it as `~/.rundeck-mcp/.env` (`chmod 600`) and swap the two `-e` pairs for `"--env-file", "/Users/you/.rundeck-mcp/.env"` (absolute path — JSON args aren't shell-expanded, so no `~`). Details, format rules, and the Runlayer setup are in [SETUP.md](./SETUP.md#passing-configuration-to-the-docker-image).
+Prefer keeping credentials out of your client config? Put them in an env file (start from [`.env.example`](./.env.example)) and save it as `~/.rundeck-mcp/.env` (`chmod 600`) and swap the two `-e` pairs for `--env-file /Users/you/.rundeck-mcp/.env` in the command above (or `"--env-file", "/Users/you/.rundeck-mcp/.env"` in a JSON `args` array). Use an absolute path: JSON args aren't shell-expanded, so no `~`. Details, format rules, and the Runlayer setup are in [SETUP.md](./SETUP.md#passing-configuration-to-the-docker-image).
 
 ### Using npx Instead (No Docker)
 
