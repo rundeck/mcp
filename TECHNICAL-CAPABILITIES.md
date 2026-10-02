@@ -318,7 +318,7 @@ The server is configured via environment variables:
 - `SKIP_RUNDECK_DOCS_DOWNLOAD`: Set to `1` to skip the npm-install-time docs download (no effect on Docker)
 - `MCP_DEBUG`: Enable verbose logging ("1" or "true")
 
-Values read through the config layer (`RUNDECK_URL`, `RUNDECK_TOKEN`, `RUNDECK_API_VERSION`, `RUNDECK_INSTANCES`, etc.) may come from `-e` flags, `docker run --env-file`, or the client's `env` block — the server only sees `process.env`. It trims whitespace/CR, strips one pair of surrounding quotes, treats empty values as unset, and drops trailing slashes from instance URLs. Flags read directly (`MCP_DEBUG`, `SKIP_ELICITATION`, `RUNDECK_SKIP_OPENAPI_VALIDATE`) are not normalized, so write them unquoted and with LF line endings; `RUNDECK_DOCS_BRANCH` is cleaned by the Docker entrypoint. See [SETUP.md](./SETUP.md#passing-configuration-to-the-docker-image).
+Values read through the config layer (`RUNDECK_URL`, `RUNDECK_TOKEN`, `RUNDECK_API_VERSION`, `RUNDECK_INSTANCES`, etc.) may come from `-e` flags, `docker run --env-file`, or the client's `env` block — the server only sees `process.env`. It trims whitespace/CR, strips one pair of surrounding quotes, treats empty values as unset, and drops trailing slashes from instance URLs. Flags read directly (`MCP_DEBUG`, `SKIP_ELICITATION`, `RUNDECK_SKIP_OPENAPI_VALIDATE`) are not normalized, so write them unquoted and with LF line endings; `RUNDECK_DOCS_BRANCH` and `RUNDECK_DOCS_PATH` are cleaned the same way by the Docker entrypoint. See [SETUP.md](./SETUP.md#passing-configuration-to-the-docker-image).
 
 ### Security
 
