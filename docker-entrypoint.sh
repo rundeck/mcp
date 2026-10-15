@@ -2,19 +2,7 @@
 set -e
 
 DOCS_DIR="/app/docs"
-# Mirrors cleanEnvValue() in src/config.ts for the values this script reads itself:
-# `docker run --env-file` passes quotes and CR (from CRLF files) through verbatim.
-# Trims whitespace, strips one surrounding quote pair, trims again; empty → unset.
-clean_env() {
-  printf '%s' "$1" | tr -d '\n' \
-    | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' \
-          -e "s/^\"\(.*\)\"\$/\1/" -e "s/^'\(.*\)'\$/\1/" \
-          -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//'
-}
-
-DOCS_BRANCH="$(clean_env "${RUNDECK_DOCS_BRANCH:-}")"
-DOCS_BRANCH="${DOCS_BRANCH:-4.0.x}"
-DOCS_PATH_OVERRIDE="$(clean_env "${RUNDECK_DOCS_PATH:-}")"
+DOCS_BRANCH="${RUNDECK_DOCS_BRANCH:-4.0.x}"
 DOCS_REPO="https://github.com/rundeck/docs.git"
 
 log() {
@@ -76,7 +64,7 @@ fetch_docs() {
   rm -rf "$tmp_dir" || true
 }
 
-if [ -n "$DOCS_PATH_OVERRIDE" ]; then
+if [ -n "$RUNDECK_DOCS_PATH" ]; then
   log "RUNDECK_DOCS_PATH set — skipping docs fetch"
 elif [ -d "$DOCS_DIR" ] && [ "$(ls -A "$DOCS_DIR" 2>/dev/null)" ]; then
   log "docs already present at $DOCS_DIR — skipping fetch"
