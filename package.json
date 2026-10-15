@@ -57,7 +57,7 @@
     "@modelcontextprotocol/inspector": "2.3.0",
     "@types/jest": "30.0.0",
     "@types/node": "24.13.3",
-    "concurrently": "10.0.5",
+    "concurrently": "10.0.6",
     "jest": "30.4.2",
     "jest-util": "30.4.1",
     "nodemon": "3.1.14",
