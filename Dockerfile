@@ -29,6 +29,11 @@ RUN --mount=type=secret,id=cloudsmith_token sh -c '\
 # Compile TypeScript
 COPY tsconfig.json ./
 COPY src/ ./src/
+# Bakes the release version into the User-Agent header (src/tools/api.ts's
+# USER_AGENT constant). Passed as --build-arg by CI on tagged builds; stays
+# "SNAPSHOT" otherwise (default below, and on any build that doesn't pass it).
+ARG RUNDECK_MCP_VERSION=SNAPSHOT
+RUN sed -i "s/rundeck-mcp\/SNAPSHOT/rundeck-mcp\/${RUNDECK_MCP_VERSION}/" src/tools/api.ts
 RUN npm run build
 
 # Prune to production deps only
