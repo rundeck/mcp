@@ -47,6 +47,7 @@ import {
 } from "./tools/tool-descriptions.js";
 import { configManager } from "./config.js";
 import { logger } from "./utils/logger.js";
+import { initTelemetry, recordToolCall, shutdownTelemetry } from "./telemetry.js";
 import { z } from "zod";
 import {
   getJobCreationGuidance,
@@ -321,6 +322,7 @@ server.setRequestHandler('tools/call', async (request, ctx: ServerContext): Prom
   logger.logRequest("tools/call", request.params);
   logger.logToolCall(name, args);
 
+  return recordToolCall(name, async () => {
   try {
     switch (name) {
       case "api_call": {
@@ -518,6 +520,7 @@ server.setRequestHandler('tools/call', async (request, ctx: ServerContext): Prom
       isError: true,
     };
   }
+  });
 });
 
 // ── Prompts ────────────────────────────────────────────────────────────────
@@ -593,10 +596,12 @@ let stdioHandle: { close(): Promise<void> } | undefined;
 
 process.on("SIGINT", async () => {
   await stdioHandle?.close();
+  await shutdownTelemetry();
   process.exit(0);
 });
 
 async function main() {
+  initTelemetry();
   // serveStdio() (rather than a hand-wired `new StdioServerTransport()` +
   // `server.connect(...)`) owns the era decision for the connection: the
   // opening exchange selects 2025-era or 2026-07-28, one instance from the
