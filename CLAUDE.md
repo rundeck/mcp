@@ -122,6 +122,14 @@ Prompts are static objects with `name`, `description`, `arguments`, optional `ar
 | `RUNDECK_SKIP_OPENAPI_VALIDATE` | — | Set to `1` to skip validating `api_call` params against the shipped OpenAPI spec |
 | `SKIP_ELICITATION` | — | Set to `1` or `true` to bypass the human confirmation gate on destructive `api_call`/`acl_manage` calls (see `src/utils/confirmation.ts`) entirely — no prompt, no block, the action just proceeds. This is a server-operator escape hatch only: it's read from the process environment, so the calling agent has no way to set it via tool parameters. It's the only bypass; there is no per-call parameter. |
 | `MCP_DEBUG` | — | Set to `1` or `true` for verbose logging |
+| `OTEL_SDK_DISABLED` | — | Set to `true` or `1` to disable OpenTelemetry metrics export |
+| `OTEL_METRICS_EXPORTER` | — | Set to `otlp` to export metrics (with an OTLP endpoint below). Set to `none` to disable |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | — | OTLP collector URL (gRPC), e.g. `http://localhost:4317`. Metrics export is **opt-in**: off unless this or `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` is set |
+| `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` | — | Metrics-only OTLP endpoint; overrides the generic endpoint for metrics |
+| `OTEL_SERVICE_NAME` | `rundeck-mcp` | `service.name` resource attribute on exported metrics |
+| `OTEL_METRIC_EXPORT_INTERVAL` | `60000` | Milliseconds between OTLP metric exports |
+
+OpenTelemetry metrics use **OTLP push only** (no HTTP `/metrics` listener on the MCP process). Counters: `rundeck_mcp_tool_calls` and histogram `rundeck_mcp_tool_duration_ms`, labeled by `tool`, `outcome` (`success`, `error`, `guidance`, `input_required`), and `rundeck_api` (boolean).
 
 ## Project conventions
 
