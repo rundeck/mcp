@@ -116,6 +116,43 @@ describe("API Tools", () => {
       ).rejects.toThrow("Rundeck not configured");
     });
 
+    it("should send Authorization Bearer when a per-request token is bound (pat mode env)", async () => {
+      const prevMode = process.env.RUNDECK_AUTH_MODE;
+      delete process.env.RUNDECK_AUTH_MODE;
+      configManager.setRundeckConnection("https://test.rundeck.com", "");
+
+      const mockResponse = {
+        status: 200,
+        headers: {
+          get: (name: string) => (name === "content-type" ? "application/json" : null),
+          forEach: () => {},
+        } as unknown as Headers,
+        json: async () => ({ projects: [] }),
+      } as Response;
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const server = new Server({ name: "t", version: "1" }, { capabilities: {} });
+      bindRequestAuthToServer(server, "jwt.from.http");
+
+      const { rundeckApiCall } = await import("../../tools/api.js");
+
+      await withActiveServerAuth(server, () =>
+        rundeckApiCall({
+          endpoint: "projects",
+          method: "GET",
+        })
+      );
+
+      const headers = (mockFetch.mock.calls[0][1] as RequestInit).headers as Record<
+        string,
+        string
+      >;
+      expect(headers.Authorization).toBe("Bearer jwt.from.http");
+      expect(headers["X-Rundeck-Auth-Token"]).toBeUndefined();
+
+      process.env.RUNDECK_AUTH_MODE = prevMode;
+    });
+
     it("should send Authorization Bearer when RUNDECK_AUTH_MODE=jwt_bearer", async () => {
       const prevMode = process.env.RUNDECK_AUTH_MODE;
       process.env.RUNDECK_AUTH_MODE = "jwt_bearer";

@@ -66,9 +66,10 @@ export async function rundeckApiCall(params: {
 }> {
   // Refresh config from environment if needed (getConfig() does this automatically)
   const config = configManager.getConfig();
-  const authMode = getRundeckAuthMode();
   const requestAuth = getRequestAuthForActiveCall();
   const bearerToken = requestAuth?.bearerToken;
+  // HTTP per-request Bearer wins over env PAT mode (Inspector/Cursor may omit RUNDECK_AUTH_MODE).
+  const useJwtBearer = getRundeckAuthMode() === "jwt_bearer" || !!bearerToken;
 
   if (!config.rundeckUrl) {
     throw new Error(
@@ -76,7 +77,7 @@ export async function rundeckApiCall(params: {
     );
   }
 
-  if (authMode === "jwt_bearer") {
+  if (useJwtBearer) {
     if (!bearerToken) {
       throw new Error(
         "Rundeck JWT auth requires Authorization: Bearer <access_token> on the MCP HTTP request. " +
@@ -140,7 +141,7 @@ export async function rundeckApiCall(params: {
     "User-Agent": USER_AGENT,
   };
 
-  if (authMode === "jwt_bearer" && bearerToken) {
+  if (bearerToken) {
     headers.Authorization = `Bearer ${bearerToken}`;
   } else if (config.apiToken) {
     headers["X-Rundeck-Auth-Token"] = config.apiToken;

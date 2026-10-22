@@ -1,5 +1,5 @@
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { createMcpHandler, type McpHandlerRequestOptions } from "@modelcontextprotocol/server";
+import { createMcpHandler, type AuthInfo } from "@modelcontextprotocol/server";
 import {
   localhostHostValidation,
   localhostOriginValidation,
@@ -36,18 +36,32 @@ function parseHost(): string {
   return process.env.MCP_HTTP_HOST?.trim() || "127.0.0.1";
 }
 
-function authOptionsFromRequest(req: IncomingMessage): McpHandlerRequestOptions | undefined {
+function clientIdFromBearerToken(token: string): string {
+  const payload = decodeJwtPayload(token);
+  if (typeof payload?.sub === "string" && payload.sub.length > 0) {
+    return payload.sub;
+  }
+  const azp = payload?.azp;
+  if (typeof azp === "string" && azp.length > 0) {
+    return azp;
+  }
+  return "bearer";
+}
+
+function authInfoFromRequest(req: IncomingMessage): AuthInfo | undefined {
   const token = bearerTokenFromAuthorizationHeader(req.headers.authorization);
   if (!token) {
     return undefined;
   }
   return {
-    authInfo: {
-      token,
-      scopes: [],
-    },
+    token,
+    clientId: clientIdFromBearerToken(token),
+    scopes: [],
   };
 }
+
+/** Node adapter reads validated auth from `req.auth`, not the handler's third argument. */
+type NodeIncomingWithAuth = IncomingMessage & { auth?: AuthInfo };
 
 function requireBearerForJwtMode(req: IncomingMessage, res: ServerResponse): boolean {
   if (getRundeckAuthMode() !== "jwt_bearer") {
@@ -118,7 +132,11 @@ export async function startHttpServer(): Promise<HttpServerHandle> {
     if (!requireBearerForJwtMode(req, res)) {
       return;
     }
-    void nodeHandler(req, res, authOptionsFromRequest(req));
+    const authInfo = authInfoFromRequest(req);
+    if (authInfo) {
+      (req as NodeIncomingWithAuth).auth = authInfo;
+    }
+    void nodeHandler(req, res);
   });
 
   await new Promise<void>((resolve, reject) => {
