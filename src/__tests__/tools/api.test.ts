@@ -10,6 +10,11 @@ import {
   USER_AGENT,
 } from "../../tools/api.js";
 import { configManager } from "../../config.js";
+import { Server } from "@modelcontextprotocol/server";
+import {
+  bindRequestAuthToServer,
+  withActiveServerAuth,
+} from "../../auth/request-auth.js";
 
 // Mock fetch for API calls
 const mockFetch = jest.fn<typeof fetch>();
@@ -109,6 +114,43 @@ describe("API Tools", () => {
           method: "GET",
         })
       ).rejects.toThrow("Rundeck not configured");
+    });
+
+    it("should send Authorization Bearer when RUNDECK_AUTH_MODE=jwt_bearer", async () => {
+      const prevMode = process.env.RUNDECK_AUTH_MODE;
+      process.env.RUNDECK_AUTH_MODE = "jwt_bearer";
+      configManager.setRundeckConnection("https://test.rundeck.com", "");
+
+      const mockResponse = {
+        status: 200,
+        headers: {
+          get: (name: string) => (name === "content-type" ? "application/json" : null),
+          forEach: () => {},
+        } as unknown as Headers,
+        json: async () => ({ projects: [] }),
+      } as Response;
+      mockFetch.mockResolvedValueOnce(mockResponse);
+
+      const server = new Server({ name: "t", version: "1" }, { capabilities: {} });
+      bindRequestAuthToServer(server, "jwt.access.token");
+
+      const { rundeckApiCall } = await import("../../tools/api.js");
+
+      await withActiveServerAuth(server, () =>
+        rundeckApiCall({
+          endpoint: "projects",
+          method: "GET",
+        })
+      );
+
+      const headers = (mockFetch.mock.calls[0][1] as RequestInit).headers as Record<
+        string,
+        string
+      >;
+      expect(headers.Authorization).toBe("Bearer jwt.access.token");
+      expect(headers["X-Rundeck-Auth-Token"]).toBeUndefined();
+
+      process.env.RUNDECK_AUTH_MODE = prevMode;
     });
 
     it("should make API call when configured", async () => {

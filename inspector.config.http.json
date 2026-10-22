@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "rundeck-mcp-http": {
+      "type": "streamable-http",
+      "url": "http://127.0.0.1:3000/mcp",
+      "headers": {
+        "Authorization": "Bearer REPLACE_WITH_ACCESS_TOKEN"
+      },
+      "protocolEra": "modern"
+    }
+  }
+}

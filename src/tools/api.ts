@@ -4,6 +4,8 @@
 
 import { z } from "zod";
 import { configManager } from "../config.js";
+import { getRundeckAuthMode } from "../auth/rundeck-auth-mode.js";
+import { getRequestAuthForActiveCall } from "../auth/request-auth.js";
 import { listApiEndpoints } from "../resources/api.js";
 import { loadOpenApiDocument, validateOpenApiRequest } from "../utils/openapi-validate.js";
 
@@ -64,30 +66,39 @@ export async function rundeckApiCall(params: {
 }> {
   // Refresh config from environment if needed (getConfig() does this automatically)
   const config = configManager.getConfig();
+  const authMode = getRundeckAuthMode();
+  const requestAuth = getRequestAuthForActiveCall();
+  const bearerToken = requestAuth?.bearerToken;
 
-  if (!config.rundeckUrl || !config.apiToken) {
-    const missing = [];
-    if (!config.rundeckUrl) missing.push("RUNDECK_URL");
-    if (!config.apiToken) missing.push("RUNDECK_TOKEN");
-    
-    // Check if environment variables exist but weren't loaded
-    const envCheck = [];
-    if (process.env.RUNDECK_URL && !config.rundeckUrl) {
-      envCheck.push("RUNDECK_URL exists in environment but wasn't loaded");
+  if (!config.rundeckUrl) {
+    throw new Error(
+      "Rundeck not configured. Set RUNDECK_URL to your Rundeck instance base URL."
+    );
+  }
+
+  if (authMode === "jwt_bearer") {
+    if (!bearerToken) {
+      throw new Error(
+        "Rundeck JWT auth requires Authorization: Bearer <access_token> on the MCP HTTP request. " +
+          "The token is forwarded to the Rundeck API; Rundeck enforces ACLs for that user."
+      );
     }
+  } else if (!config.apiToken) {
+    const missing = ["RUNDECK_TOKEN"];
+    const envCheck = [];
     if (process.env.RUNDECK_TOKEN && !config.apiToken) {
       envCheck.push("RUNDECK_TOKEN exists in environment but wasn't loaded");
     }
-    
+
     let errorMsg = `Rundeck not configured. Missing environment variables: ${missing.join(", ")}.\n\n`;
     errorMsg += "Set the required environment variables:\n";
     errorMsg += "  export RUNDECK_URL=https://rundeck.example.com\n";
     errorMsg += "  export RUNDECK_TOKEN=your-api-token\n\n";
-    
+
     if (envCheck.length > 0) {
       errorMsg += `Note: ${envCheck.join("; ")}. The server may need to be restarted.\n\n`;
     }
-    
+
     errorMsg +=
       "For a guided checklist, open the MCP prompt `setup-authentication` (or configure RUNDECK_URL and RUNDECK_TOKEN and retry).\n";
 
@@ -124,11 +135,16 @@ export async function rundeckApiCall(params: {
   }
 
   const headers: Record<string, string> = {
-    "X-Rundeck-Auth-Token": config.apiToken,
-    "Accept": "application/json",
+    Accept: "application/json",
     "Content-Type": params.content_type || "application/json",
     "User-Agent": USER_AGENT,
   };
+
+  if (authMode === "jwt_bearer" && bearerToken) {
+    headers.Authorization = `Bearer ${bearerToken}`;
+  } else if (config.apiToken) {
+    headers["X-Rundeck-Auth-Token"] = config.apiToken;
+  }
 
   const options: RequestInit = {
     method: params.method || "GET",

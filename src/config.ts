@@ -304,7 +304,14 @@ class ConfigManager {
    * Check if Rundeck is configured
    */
   isRundeckConfigured(): boolean {
-    return !!(this.config.rundeckUrl && this.config.apiToken);
+    if (!this.config.rundeckUrl) {
+      return false;
+    }
+    const mode = process.env.RUNDECK_AUTH_MODE?.trim().toLowerCase();
+    if (mode === "jwt_bearer" || mode === "jwt") {
+      return true;
+    }
+    return !!this.config.apiToken;
   }
 
   /**
