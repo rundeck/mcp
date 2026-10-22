@@ -54,7 +54,7 @@
     "es-toolkit": "1.52.0"
   },
   "devDependencies": {
-    "@modelcontextprotocol/inspector": "2.10.1",
+    "@modelcontextprotocol/inspector": "2.11.0",
     "@types/jest": "30.0.0",
     "@types/node": "24.13.3",
     "concurrently": "10.0.6",
