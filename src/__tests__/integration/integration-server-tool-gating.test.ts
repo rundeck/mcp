@@ -101,28 +101,38 @@ describe("Integration: index.ts tools/list registry gating", () => {
       stderr: "pipe",
     });
     const stderrChunks: string[] = [];
-    transport.stderr?.on("data", (chunk: Buffer | string) => {
-      stderrChunks.push(chunk.toString());
+    const stderrClosed = new Promise<void>((resolve) => {
+      if (!transport.stderr) {
+        resolve();
+        return;
+      }
+      transport.stderr.on("data", (chunk: Buffer | string) => {
+        stderrChunks.push(chunk.toString());
+      });
+      transport.stderr.once("close", () => resolve());
+      transport.stderr.once("end", () => resolve());
     });
     const client = new Client({ name: "test-client", version: "0.0.0" });
     await client.connect(transport);
+    let response;
     try {
-      const response = await client.callTool({
+      response = await client.callTool({
         name: "rundeck_connect",
         arguments: { instance: "unknown-instance" },
       });
-
-      expect(response.isError).toBe(true);
-      const stderr = stderrChunks.join("");
-      expect(stderr).toContain(
-        "Session identity updated: rundeck-mcp (dist/index.js) [test-client/0.0.0 @ https://prod.example.com]"
-      );
-      expect(stderr).toContain(
-        "Session identity updated: rundeck-mcp (dist/index.js) [test-client/0.0.0 @ no-url]"
-      );
     } finally {
       await client.close();
     }
+    await stderrClosed;
+
+    expect(response.isError).toBe(true);
+    const stderr = stderrChunks.join("");
+    expect(stderr).toContain(
+      "Session identity updated: rundeck-mcp (dist/index.js) [test-client/0.0.0 @ https://prod.example.com]"
+    );
+    expect(stderr).toContain(
+      "Session identity updated: rundeck-mcp (dist/index.js) [test-client/0.0.0 @ no-url]"
+    );
   }, 15000);
 });
 
