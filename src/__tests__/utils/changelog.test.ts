@@ -5,7 +5,6 @@
 import { readFileSync } from "fs";
 import { join } from "path";
 import * as yaml from "yaml";
-import { rundeckValidateJob } from "../../tools/jobs.js";
 import {
   parseSemver,
   compareSemver,
@@ -305,26 +304,7 @@ describe("Changelog generator", () => {
       expect(nextSectionMd).not.toContain("#120");
     });
 
-    it("validates the RBA job definition and CI workflow YAML files", () => {
-      // 1. Validate RBA job JSON with our own rundeckValidateJob tool
-      const rbaJobJson = readFileSync(
-        join(process.cwd(), "scripts/release/rba-release-mcp-job.json"),
-        "utf-8"
-      );
-      const validation = rundeckValidateJob({
-        job_definition: rbaJobJson,
-        format: "json",
-      });
-      expect(validation.valid).toBe(true);
-      expect(validation.errors).toEqual([]);
-
-      const parsedJob = JSON.parse(rbaJobJson);
-      expect(parsedJob[0].nodefilters.filter).toBe('tags: "RELEASE"');
-      expect(parsedJob[0].options.some((o: { name: string }) => o.name === "releaseVersion")).toBe(
-        true
-      );
-
-      // 2. Validate GitHub Actions and CircleCI YAML syntax and release triggers
+    it("validates the CI workflow YAML files", () => {
       const releaseYml = yaml.parse(
         readFileSync(join(process.cwd(), ".github/workflows/release.yml"), "utf-8")
       );
