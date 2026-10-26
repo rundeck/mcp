@@ -46,6 +46,15 @@ NODE_OPTIONS=--experimental-vm-modules npx jest src/__tests__/tools/api.test.ts
 # Full validation (build + test + integration validations)
 npm run validate
 
+# Regenerate CHANGELOG.md from git history (v1.0.0+, deduplicating Renovate updates)
+npm run changelog
+
+# Validate changelog generation without writing files
+npm run changelog:check
+
+# Prepare a release PR (release/vX.Y.Z -> main) with updated CHANGELOG.md (also called by RBA release job)
+./scripts/release/prepare-release.sh <X.Y.Z> --push
+
 # Launch MCP Inspector for protocol testing
 npm run inspect
 ```

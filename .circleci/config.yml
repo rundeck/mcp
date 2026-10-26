@@ -90,6 +90,7 @@ jobs:
               VERSION="${CIRCLE_TAG#v}"
               sed -i "s/rundeck-mcp\/SNAPSHOT/rundeck-mcp\/${VERSION}/" src/tools/api.ts
               sed -i "s/\"SNAPSHOT\"/\"${VERSION}\"/" server.json
+              node scripts/generate-changelog.mjs --verify-tag "${VERSION}"
             fi
       - run:
           name: Build
@@ -100,6 +101,7 @@ jobs:
             - node_modules
             - dist
             - docs
+            - CHANGELOG.md
 
   # Stage 2: unit tests — reuses build's node_modules + docs via workspace
   # attach instead of running its own npm ci (ts-jest runs against src/
