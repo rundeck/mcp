@@ -372,7 +372,10 @@ export function formatReleaseSection({
   const hasCategories = Array.from(categories.values()).some((list) => list.length > 0);
   const hasDependencies = dependencies.length > 0;
 
-  if (!hasCategories && !hasDependencies && !releaseSummary) {
+  // An explicitly requested numbered release must remain visible even when
+  // there are no recognizable commits (for example, a version-only rebuild).
+  // Unreleased is omitted when empty to avoid a permanently blank section.
+  if (version === "Unreleased" && !hasCategories && !hasDependencies && !releaseSummary) {
     return "";
   }
 
@@ -459,9 +462,30 @@ export function extractSectionFromChangelog(markdown, versionStr) {
 }
 
 /**
+ * Prefer already-committed historical release sections over generated ones.
+ * Release PR reviewers can curate those sections; a later release must never
+ * rewrite that reviewed history simply because it regenerates the document.
+ */
+function getRenderedSection(section, repoUrl, existingChangelog, releaseVersion) {
+  if (
+    existingChangelog &&
+    section.version !== "Unreleased" &&
+    section.version !== releaseVersion
+  ) {
+    const existing = extractSectionFromChangelog(existingChangelog, section.version);
+    if (existing) return existing;
+  }
+
+  return formatReleaseSection({ ...section, repoUrl });
+}
+
+/**
  * Assemble the complete CHANGELOG.md document from a list of release definitions.
  */
-export function renderFullChangelog(sections, { repoUrl = DEFAULT_REPO_URL } = {}) {
+export function renderFullChangelog(
+  sections,
+  { repoUrl = DEFAULT_REPO_URL, existingChangelog = "", releaseVersion = null } = {}
+) {
   const lines = [
     "# Changelog",
     "",
@@ -473,7 +497,7 @@ export function renderFullChangelog(sections, { repoUrl = DEFAULT_REPO_URL } = {
   ];
 
   const renderedSections = sections
-    .map((sec) => formatReleaseSection({ ...sec, repoUrl }))
+    .map((sec) => getRenderedSection(sec, repoUrl, existingChangelog, releaseVersion))
     .filter(Boolean);
 
   for (const block of renderedSections) {
@@ -694,9 +718,10 @@ function main(argv = process.argv.slice(2)) {
     }
   }
 
-  // --verify-tag <X.Y.Z>: verify that the committed CHANGELOG.md already has a
-  // `## [X.Y.Z]` section (from the Release PR). If missing, stamp it in-place
-  // with a warning so the build artifact still has the versioned changelog.
+  // --verify-tag <X.Y.Z>: release publication is allowed only when the
+  // versioned section was committed in the reviewed Release PR. This command
+  // deliberately never mutates CHANGELOG.md: generating notes after merge
+  // would bypass that review gate.
   if (verifyTagVersion) {
     if (existsSync(outputPath)) {
       const existing = readFileSync(outputPath, "utf-8");
@@ -708,12 +733,10 @@ function main(argv = process.argv.slice(2)) {
         return;
       }
     }
-    console.warn(
-      `[changelog] WARNING: CHANGELOG.md did not contain ## [${verifyTagVersion}] (was the release PR skipped?). Generating section for [${verifyTagVersion}] now.`
+    console.error(
+      `[changelog] CHANGELOG.md must contain a committed ## [${verifyTagVersion}] section before publishing this tag.`
     );
-    const sections = collectRepoSections({ releaseVersion: verifyTagVersion });
-    writeFileSync(outputPath, renderFullChangelog(sections), "utf-8");
-    return;
+    process.exit(1);
   }
 
   // --notes <X.Y.Z>: prefer extracting the section from the committed CHANGELOG.md
@@ -741,7 +764,12 @@ function main(argv = process.argv.slice(2)) {
   }
 
   const sections = collectRepoSections({ releaseVersion });
-  const fullMarkdown = renderFullChangelog(sections);
+  const existingChangelog =
+    releaseVersion && existsSync(outputPath) ? readFileSync(outputPath, "utf-8") : "";
+  const fullMarkdown = renderFullChangelog(sections, {
+    existingChangelog,
+    releaseVersion,
+  });
 
   if (checkOnly) {
     if (!fullMarkdown.includes("## [1.0.0]")) {

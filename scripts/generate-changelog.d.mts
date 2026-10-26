@@ -75,7 +75,11 @@ export function extractSectionFromChangelog(
 ): string | null;
 export function renderFullChangelog(
   sections: ReleaseSectionInput[],
-  options?: { repoUrl?: string }
+  options?: {
+    repoUrl?: string;
+    existingChangelog?: string;
+    releaseVersion?: string | null;
+  }
 ): string;
 export function collectRepoSections(options?: {
   cwd?: string;

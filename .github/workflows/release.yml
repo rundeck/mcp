@@ -60,13 +60,18 @@ jobs:
           echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
-          # Verify CHANGELOG.md on the release commit contains ## [X.Y.Z]
+          # A release may only use notes committed and reviewed in the Release PR.
           node scripts/generate-changelog.mjs --verify-tag "${VERSION}"
 
           # If triggered by merging the Release PR, create and push the vX.Y.Z tag on the merge commit
           if [ "${EVENT_NAME}" = "pull_request" ]; then
-            if git ls-remote --tags origin "refs/tags/${TAG}" | grep -q "${TAG}"; then
-              echo "Tag ${TAG} already exists on origin."
+            EXISTING_TAG_SHA="$(git ls-remote --tags origin "refs/tags/${TAG}" | awk '{print $1}')"
+            if [ -n "${EXISTING_TAG_SHA}" ]; then
+              if [ "${EXISTING_TAG_SHA}" != "${MERGE_SHA}" ]; then
+                echo "::error::Tag ${TAG} already points to ${EXISTING_TAG_SHA}, not Release PR merge commit ${MERGE_SHA}."
+                exit 1
+              fi
+              echo "Tag ${TAG} already points to Release PR merge commit ${MERGE_SHA}."
             else
               git config user.name "github-actions[bot]"
               git config user.email "41898282+github-actions[bot]@users.noreply.github.com"

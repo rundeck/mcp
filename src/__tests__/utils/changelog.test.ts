@@ -238,6 +238,64 @@ describe("Changelog generator", () => {
       expect(extractSectionFromChangelog(full, "9.9.9")).toBeNull();
     });
 
+    it("keeps an explicitly requested numbered release heading when it has no recognized entries", () => {
+      expect(
+        formatReleaseSection({
+          version: "1.0.2",
+          date: "2026-11-01",
+          commits: [],
+        })
+      ).toBe("## [1.0.2] - 2026-11-01");
+      expect(
+        formatReleaseSection({
+          version: "Unreleased",
+          date: "2026-11-01",
+          commits: [],
+        })
+      ).toBe("");
+    });
+
+    it("preserves curated historical release notes while preparing a later release", () => {
+      const curatedHistory = `# Changelog
+
+## [1.0.1] - 2026-10-26
+
+Human-reviewed release highlight.`;
+
+      const regenerated = renderFullChangelog(
+        [
+          {
+            version: "1.0.2",
+            date: "2026-11-01",
+            fromTag: "v1.0.1",
+            toTag: "v1.0.2",
+            commits: [],
+          },
+          {
+            version: "1.0.1",
+            date: "2026-10-26",
+            fromTag: "v1.0.0",
+            toTag: "v1.0.1",
+            commits: [
+              {
+                hash: "aaa",
+                shortHash: "aaa",
+                date: "2026-10-26",
+                prNumber: 101,
+                branch: "rundeck/feature/example",
+                title: "Add generated entry that must not replace curated notes",
+              },
+            ],
+          },
+        ],
+        { existingChangelog: curatedHistory, releaseVersion: "1.0.2" }
+      );
+
+      expect(regenerated).toContain("## [1.0.2] - 2026-11-01");
+      expect(regenerated).toContain("Human-reviewed release highlight.");
+      expect(regenerated).not.toContain("generated entry that must not replace curated notes");
+    });
+
     it("simulates the full PR-first release lifecycle (Release PR -> Merge -> Tag -> Future Release)", () => {
       let currentTags = "v0.0.5|2026-08-20\nv1.0.0|2026-08-26\n";
       const logByRange: Record<string, string> = {
