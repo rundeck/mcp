@@ -764,8 +764,10 @@ function main(argv = process.argv.slice(2)) {
   }
 
   const sections = collectRepoSections({ releaseVersion });
-  const existingChangelog =
-    releaseVersion && existsSync(outputPath) ? readFileSync(outputPath, "utf-8") : "";
+  // Both release preparation and the normal `npm run changelog` maintenance
+  // command preserve reviewed historical release sections. Regeneration only
+  // refreshes Unreleased (and the explicitly requested release section).
+  const existingChangelog = existsSync(outputPath) ? readFileSync(outputPath, "utf-8") : "";
   const fullMarkdown = renderFullChangelog(sections, {
     existingChangelog,
     releaseVersion,

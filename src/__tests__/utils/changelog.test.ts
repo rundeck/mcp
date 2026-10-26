@@ -255,45 +255,60 @@ describe("Changelog generator", () => {
       ).toBe("");
     });
 
-    it("preserves curated historical release notes while preparing a later release", () => {
+    it("preserves curated historical release notes during both normal and release regeneration", () => {
       const curatedHistory = `# Changelog
 
 ## [1.0.1] - 2026-10-26
 
 Human-reviewed release highlight.`;
 
-      const regenerated = renderFullChangelog(
-        [
-          {
-            version: "1.0.2",
-            date: "2026-11-01",
-            fromTag: "v1.0.1",
-            toTag: "v1.0.2",
-            commits: [],
-          },
-          {
-            version: "1.0.1",
-            date: "2026-10-26",
-            fromTag: "v1.0.0",
-            toTag: "v1.0.1",
-            commits: [
-              {
-                hash: "aaa",
-                shortHash: "aaa",
-                date: "2026-10-26",
-                prNumber: 101,
-                branch: "rundeck/feature/example",
-                title: "Add generated entry that must not replace curated notes",
-              },
-            ],
-          },
-        ],
+      const sections = [
+        {
+          version: "1.0.2",
+          date: "2026-11-01",
+          fromTag: "v1.0.1",
+          toTag: "v1.0.2",
+          commits: [],
+        },
+        {
+          version: "1.0.1",
+          date: "2026-10-26",
+          fromTag: "v1.0.0",
+          toTag: "v1.0.1",
+          commits: [
+            {
+              hash: "aaa",
+              shortHash: "aaa",
+              date: "2026-10-26",
+              prNumber: 101,
+              branch: "rundeck/feature/example",
+              title: "Add generated entry that must not replace curated notes",
+            },
+          ],
+        },
+      ];
+
+      // `npm run changelog`: releaseVersion is null, so historical notes must
+      // still be retained rather than regenerated from git.
+      const normalRegeneration = renderFullChangelog(sections, {
+        existingChangelog: curatedHistory,
+      });
+      expect(normalRegeneration).toContain("Human-reviewed release highlight.");
+      expect(normalRegeneration).not.toContain(
+        "generated entry that must not replace curated notes"
+      );
+
+      // `--release 1.0.2`: preserve earlier notes while producing 1.0.2.
+      const releaseRegeneration = renderFullChangelog(
+        sections,
         { existingChangelog: curatedHistory, releaseVersion: "1.0.2" }
       );
 
-      expect(regenerated).toContain("## [1.0.2] - 2026-11-01");
-      expect(regenerated).toContain("Human-reviewed release highlight.");
-      expect(regenerated).not.toContain("generated entry that must not replace curated notes");
+      expect(releaseRegeneration).toContain("## [1.0.2] - 2026-11-01");
+      expect(releaseRegeneration).toContain("Human-reviewed release highlight.");
+      expect(releaseRegeneration).not.toContain(
+        "generated entry that must not replace curated notes"
+      );
     });
 
     it("simulates the full PR-first release lifecycle (Release PR -> Merge -> Tag -> Future Release)", () => {
