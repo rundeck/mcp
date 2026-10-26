@@ -93,6 +93,13 @@ if git rev-parse -q --verify "refs/tags/${TAG}" >/dev/null 2>&1; then
   exit 1
 fi
 
+if git ls-remote --exit-code --heads origin "$BRANCH" >/dev/null 2>&1; then
+  echo "Error: Release branch ${BRANCH} already exists on origin." >&2
+  echo "Refusing to reset or force-push it because it may contain reviewer edits." >&2
+  echo "Update the existing Release PR manually, or delete the branch only after closing the PR." >&2
+  exit 1
+fi
+
 echo "[release] Creating branch ${BRANCH} from origin/main..."
 git checkout -B "$BRANCH" origin/main
 
@@ -111,21 +118,13 @@ fi
 
 git commit -m "[RUN-0000] Release ${TAG}"
 echo "[release] Pushing ${BRANCH} to origin..."
-git push --force -u origin "$BRANCH"
+git push -u origin "$BRANCH"
 
-EXISTING_PR="$(gh pr list --head "$BRANCH" --base main --json number --jq '.[0].number // empty')"
-if [ -n "$EXISTING_PR" ]; then
-  echo "[release] Updating existing Release PR #${EXISTING_PR} for ${TAG}..."
-  gh pr edit "$EXISTING_PR" \
-    --title "[RUN-0000] Release ${TAG}" \
-    --body-file "$NOTES_TMP"
-else
-  echo "[release] Opening Pull Request for ${TAG}..."
-  gh pr create \
-    --base main \
-    --head "$BRANCH" \
-    --title "[RUN-0000] Release ${TAG}" \
-    --body-file "$NOTES_TMP"
-fi
+echo "[release] Opening Pull Request for ${TAG}..."
+gh pr create \
+  --base main \
+  --head "$BRANCH" \
+  --title "[RUN-0000] Release ${TAG}" \
+  --body-file "$NOTES_TMP"
 
 echo "[release] Release PR for ${TAG} is ready. Merging that PR into main will automatically tag ${TAG} and trigger the release."

@@ -88,6 +88,18 @@ describe("Changelog generator", () => {
       });
     });
 
+    it("detects Docker tag updates so Renovate deduplicates image versions", () => {
+      expect(
+        parseDependencyUpdate({
+          branch: "rundeck/renovate/node-24.x",
+          title: "Update node Docker tag to v24.19.0",
+        })
+      ).toEqual({
+        packageName: "node",
+        version: "v24.19.0",
+      });
+    });
+
     it("returns null for normal feature/fix PRs", () => {
       expect(
         parseDependencyUpdate({
@@ -236,6 +248,31 @@ describe("Changelog generator", () => {
         "## [1.0.0] - 2026-08-26\n\nInitial 1.0 release."
       );
       expect(extractSectionFromChangelog(full, "9.9.9")).toBeNull();
+    });
+
+    it("preserves custom reference definitions in regenerated changelogs and extracted notes", () => {
+      const existingChangelog = `# Changelog
+
+## [1.0.1] - 2026-10-26
+
+See the [upgrade guide][upgrade].
+
+[upgrade]: https://example.com/upgrade`;
+      const sections = [
+        {
+          version: "1.0.1",
+          date: "2026-10-26",
+          fromTag: "v1.0.0",
+          toTag: "v1.0.1",
+          commits: [],
+        },
+      ];
+      const rendered = renderFullChangelog(sections, { existingChangelog });
+
+      expect(rendered).toContain("[upgrade]: https://example.com/upgrade");
+      expect(extractSectionFromChangelog(rendered, "1.0.1")).toContain(
+        "[upgrade]: https://example.com/upgrade"
+      );
     });
 
     it("keeps an explicitly requested numbered release heading when it has no recognized entries", () => {

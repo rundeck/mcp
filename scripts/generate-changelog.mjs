@@ -94,7 +94,16 @@ export function parseDependencyUpdate({ branch = "", title = "" }) {
     };
   }
 
-  // Pattern 3: "Update <action> action to <version>"
+  // Pattern 3: "Update <image> Docker tag to <version>"
+  const dockerTagMatch = /^Update\s+(.+?)\s+Docker tag\s+to\s+(\S+)/i.exec(cleanTitle);
+  if (dockerTagMatch) {
+    return {
+      packageName: dockerTagMatch[1].trim(),
+      version: dockerTagMatch[2],
+    };
+  }
+
+  // Pattern 4: "Update <action> action to <version>"
   const actionMatch = /^Update\s+(\S+)\s+action\s+to\s+(\S+)/i.exec(cleanTitle);
   if (actionMatch) {
     return {
@@ -103,7 +112,7 @@ export function parseDependencyUpdate({ branch = "", title = "" }) {
     };
   }
 
-  // Pattern 4: Any other PR from a renovate/* branch
+  // Pattern 5: Any other PR from a renovate/* branch
   if (isRenovateBranch) {
     return {
       packageName: cleanTitle,
@@ -458,7 +467,33 @@ export function extractSectionFromChangelog(markdown, versionStr) {
   }
 
   if (startIdx === -1) return null;
-  return lines.slice(startIdx, endIdx).join("\n").trim();
+  const section = lines.slice(startIdx, endIdx).join("\n").trim();
+  const references = getCustomReferenceDefinitions(markdown)
+    .filter(({ label }) => isReferenceUsed(section, label))
+    .map(({ raw }) => raw);
+
+  return references.length > 0 ? `${section}\n\n${references.join("\n")}` : section;
+}
+
+function isVersionReference(label) {
+  return label === "Unreleased" || parseSemver(label) !== null;
+}
+
+function getCustomReferenceDefinitions(markdown) {
+  if (!markdown) return [];
+
+  return markdown
+    .split(/\r?\n/)
+    .map((raw) => {
+      const match = /^\[([^\]]+)\]:\s+.+$/.exec(raw);
+      return match && !isVersionReference(match[1]) ? { label: match[1], raw } : null;
+    })
+    .filter(Boolean);
+}
+
+function isReferenceUsed(markdown, label) {
+  const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return new RegExp(`\\[[^\\]]+\\]\\[${escaped}\\]|\\[${escaped}\\](?![(:])`, "i").test(markdown);
 }
 
 /**
@@ -528,6 +563,18 @@ export function renderFullChangelog(
 
   if (linkLines.length > 0) {
     lines.push(...linkLines);
+  }
+
+  // Changelog sections are allowed to use additional reference-style links.
+  // Preserve these definitions whenever the generated document is refreshed.
+  const customReferenceLines = getCustomReferenceDefinitions(existingChangelog).map(
+    ({ raw }) => raw
+  );
+  if (customReferenceLines.length > 0) {
+    lines.push(...customReferenceLines);
+  }
+
+  if (linkLines.length > 0 || customReferenceLines.length > 0) {
     lines.push("");
   }
 
