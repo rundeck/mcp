@@ -93,6 +93,7 @@ describe("Integration: index.ts tools/list registry gating", () => {
         },
       }),
     } as Record<string, string>;
+    delete env.MCP_SESSION_NAME;
     const transport = new StdioClientTransport({
       command: process.execPath,
       args: [serverEntry],
