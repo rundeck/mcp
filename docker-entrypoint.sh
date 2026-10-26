@@ -33,12 +33,18 @@ fetch_docs() {
   # same && chain (the if's condition) deliberately — only the condition of
   # an if is exempt from set -e's abort-on-failure, so a failing command
   # inside the `then` body would NOT be exempt.
+  # Docs are public. Clear credentials inherited from a CI checkout: after
+  # the GitHub App migration, an App token scoped to rundeck/mcp can reject
+  # this otherwise-anonymous clone and sparse-checkout blob fetch of rundeck/docs.
   (
     if GIT_TERMINAL_PROMPT=0 git \
         -c credential.helper= \
         -c http.https://github.com/.extraheader= \
         clone --quiet --depth 1 --filter=blob:none --sparse --branch "$DOCS_BRANCH" "$DOCS_REPO" "$tmp_dir" \
-        && (cd "$tmp_dir" && git sparse-checkout set --no-cone '/docs/**' '!/docs/.vuepress/public/**' '/docs/.vuepress/public/files/rundeck-api.yml') \
+        && (cd "$tmp_dir" && GIT_TERMINAL_PROMPT=0 git \
+          -c credential.helper= \
+          -c http.https://github.com/.extraheader= \
+          sparse-checkout set --no-cone '/docs/**' '!/docs/.vuepress/public/**' '/docs/.vuepress/public/files/rundeck-api.yml') \
         && mkdir -p "$DOCS_DIR" \
         && find "$DOCS_DIR" -mindepth 1 -maxdepth 1 -exec rm -rf {} + \
         && cp -r "$tmp_dir/docs/." "$DOCS_DIR/"; then

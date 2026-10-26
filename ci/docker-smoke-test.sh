@@ -107,12 +107,12 @@ cat > /tmp/smoke-git-shim/git <<'EOF'
 #!/bin/sh
 
 case " $* " in
-  *" clone "*)
+  *" clone "*|*" sparse-checkout "*)
     case " $* " in
       *" -c credential.helper= "*)
         ;;
       *)
-        echo "docs clone did not clear credential.helper" >&2
+        echo "docs fetch did not clear credential.helper" >&2
         exit 91
         ;;
     esac
@@ -120,7 +120,7 @@ case " $* " in
       *" -c http.https://github.com/.extraheader= "*)
         ;;
       *)
-        echo "docs clone did not clear GitHub extra headers" >&2
+        echo "docs fetch did not clear GitHub extra headers" >&2
         exit 92
         ;;
     esac

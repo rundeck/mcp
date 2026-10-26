@@ -159,6 +159,7 @@ function syncSessionIdentity(serverInstance: Server): string {
   if (title !== currentProcessTitle) {
     process.title = title;
     currentProcessTitle = title;
+    logger.info(`Session identity updated: ${title}`);
   }
   return title;
 }
@@ -189,8 +190,7 @@ const server = new Server(
 );
 
 server.oninitialized = () => {
-  const title = syncSessionIdentity(server);
-  logger.info(`Session initialized: ${title}`);
+  syncSessionIdentity(server);
 };
 
 // ── Resources ──────────────────────────────────────────────────────────────
@@ -522,9 +522,12 @@ server.setRequestHandler('tools/call', async (request, ctx: ServerContext): Prom
           return returnGuidance(getRundeckConnectGuidance(configManager.listInstanceNames()));
         }
         const parsed = rundeckConnectSchema.parse(args ?? {});
-        const connectResult = await rundeckConnect(parsed);
-        syncSessionIdentity(server);
-        return { content: [{ type: "text", text: JSON.stringify(connectResult, null, 2) }] };
+        try {
+          const connectResult = await rundeckConnect(parsed);
+          return { content: [{ type: "text", text: JSON.stringify(connectResult, null, 2) }] };
+        } finally {
+          syncSessionIdentity(server);
+        }
       }
 
       default: {
