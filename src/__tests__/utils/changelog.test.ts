@@ -273,6 +273,15 @@ See the [upgrade guide][upgrade].
       expect(extractSectionFromChangelog(rendered, "1.0.1")).toContain(
         "[upgrade]: https://example.com/upgrade"
       );
+
+      // A subsequent `npm run changelog` must retain exactly one shared footer
+      // definition rather than appending another copy to the preserved section.
+      const regenerated = renderFullChangelog(sections, {
+        existingChangelog: rendered,
+      });
+      expect(
+        regenerated.match(/\[upgrade\]: https:\/\/example\.com\/upgrade/g)
+      ).toHaveLength(1);
     });
 
     it("keeps an explicitly requested numbered release heading when it has no recognized entries", () => {

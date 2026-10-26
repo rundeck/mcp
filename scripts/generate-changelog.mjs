@@ -441,7 +441,7 @@ export function formatReleaseSection({
  * string, preserving any manual edits made during a Release PR review.
  * Returns null if the section does not exist in the markdown.
  */
-export function extractSectionFromChangelog(markdown, versionStr) {
+export function extractSectionFromChangelog(markdown, versionStr, { includeReferences = true } = {}) {
   if (!markdown || !versionStr) return null;
   const target =
     versionStr === "Unreleased"
@@ -468,6 +468,8 @@ export function extractSectionFromChangelog(markdown, versionStr) {
 
   if (startIdx === -1) return null;
   const section = lines.slice(startIdx, endIdx).join("\n").trim();
+  if (!includeReferences) return section;
+
   const references = getCustomReferenceDefinitions(markdown)
     .filter(({ label }) => isReferenceUsed(section, label))
     .map(({ raw }) => raw);
@@ -507,7 +509,11 @@ function getRenderedSection(section, repoUrl, existingChangelog, releaseVersion)
     section.version !== "Unreleased" &&
     section.version !== releaseVersion
   ) {
-    const existing = extractSectionFromChangelog(existingChangelog, section.version);
+    // Full-document rendering keeps custom reference definitions in one shared
+    // footer. Only standalone `--notes` extraction attaches them to its output.
+    const existing = extractSectionFromChangelog(existingChangelog, section.version, {
+      includeReferences: false,
+    });
     if (existing) return existing;
   }
 

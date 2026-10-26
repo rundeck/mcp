@@ -71,7 +71,8 @@ export function buildReleaseData(commits: ChangelogCommit[]): ReleaseData;
 export function formatReleaseSection(input: ReleaseSectionInput): string;
 export function extractSectionFromChangelog(
   markdown: string,
-  versionStr: string
+  versionStr: string,
+  options?: { includeReferences?: boolean }
 ): string | null;
 export function renderFullChangelog(
   sections: ReleaseSectionInput[],
