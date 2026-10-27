@@ -53,32 +53,30 @@ if git show-ref --verify --quiet "refs/heads/${BRANCH}" ||
 fi
 
 git switch --create "$BRANCH" "$BASE_SHA"
-NOTES_FILE="release-notes/${TAG}.md"
-mkdir -p release-notes
-if [[ -e "$NOTES_FILE" ]]; then
-  echo "Release notes ${NOTES_FILE} already exist; refusing to overwrite them." >&2
+if grep -Fq "<!-- release:${TAG}:start -->" CHANGELOG.md; then
+  echo "${TAG} already exists in CHANGELOG.md; refusing to overwrite it." >&2
   exit 1
 fi
-gh api "${API_ARGS[@]}" --jq .body >"$NOTES_FILE"
-[[ -s "$NOTES_FILE" ]] || {
+
+NOTES_BODY="$(mktemp)"
+CHANGELOG_TMP="$(mktemp)"
+trap 'rm -f "$NOTES_BODY" "$CHANGELOG_TMP"' EXIT
+gh api "${API_ARGS[@]}" --jq .body | sed 's/^## /### /' >"$NOTES_BODY"
+[[ -s "$NOTES_BODY" ]] || {
   echo "GitHub generated empty release notes." >&2
   exit 1
 }
 
-if grep -Fq "(release-notes/${TAG}.md)" CHANGELOG.md; then
-  echo "${TAG} is already listed in CHANGELOG.md." >&2
-  exit 1
-fi
-CHANGELOG_TMP="$(mktemp)"
-trap 'rm -f "$CHANGELOG_TMP"' EXIT
-awk -v entry="- [${TAG}](release-notes/${TAG}.md)" '
-  !inserted && /^- \[v[0-9]/ { print entry; inserted=1 }
-  { print }
-  END { if (!inserted) print entry }
-' CHANGELOG.md >"$CHANGELOG_TMP"
+{
+  printf '# Changelog\n\n'
+  printf '## %s\n\n<!-- release:%s:start -->\n' "$TAG" "$TAG"
+  cat "$NOTES_BODY"
+  printf '<!-- release:%s:end -->\n\n' "$TAG"
+  awk 'NR > 2 { print }' CHANGELOG.md
+} >"$CHANGELOG_TMP"
 mv "$CHANGELOG_TMP" CHANGELOG.md
 
-git add CHANGELOG.md "$NOTES_FILE"
+git add CHANGELOG.md
 git commit -m "Prepare release ${TAG}"
 
 if [[ "$MODE" == "--push" ]]; then

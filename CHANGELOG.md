@@ -1,6 +1,15 @@
 # Changelog
 
-Release notes are generated before release, reviewed in a pull request, and kept
-as immutable files in [`release-notes/`](release-notes/).
+## v1.0.0
 
-- [v1.0.0](release-notes/v1.0.0.md)
+<!-- release:v1.0.0:start -->
+### What's Changed
+* Bump quarantine-pinned deps back to latest by @smartinellibenedetti in https://github.com/rundeck/mcp/pull/90
+* [RUN-0000] Bump all open Renovate-flagged dependencies by @smartinellibenedetti in https://github.com/rundeck/mcp/pull/91
+* [RUN-0000] Update dependency hono to v4.13.3 by @renovate[bot] in https://github.com/rundeck/mcp/pull/75
+* [RUN-0000] Pin all npm dependencies to lockfile-resolved versions by @smartinellibenedetti in https://github.com/rundeck/mcp/pull/93
+* Add GitHub Actions workflow to create GitHub Releases by @ltamaster in https://github.com/rundeck/mcp/pull/92
+* Remove Alpha warning by @smartinellibenedetti in https://github.com/rundeck/mcp/pull/94
+
+**Full Changelog**: https://github.com/rundeck/mcp/compare/v0.0.5...v1.0.0
+<!-- release:v1.0.0:end -->

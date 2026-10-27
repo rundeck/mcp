@@ -51,9 +51,8 @@ jobs:
         env:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
-          notes_file="release-notes/${TAG}.md"
-          test -s "$notes_file"
-          grep -Fq "(${notes_file})" CHANGELOG.md
+          grep -Fqx "<!-- release:${TAG}:start -->" CHANGELOG.md
+          grep -Fqx "<!-- release:${TAG}:end -->" CHANGELOG.md
 
       - name: Tag merged release PR
         if: github.event_name == 'pull_request'
@@ -74,9 +73,15 @@ jobs:
           TAG: ${{ steps.release.outputs.tag }}
         run: |
           if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            notes_file="$(mktemp)"
+            trap 'rm -f "$notes_file"' EXIT
+            sed -n \
+              "/^<!-- release:${TAG}:start -->$/,/^<!-- release:${TAG}:end -->$/p" \
+              CHANGELOG.md | sed '1d;$d' >"$notes_file"
+            test -s "$notes_file"
             gh release create "$TAG" \
               --repo "$GITHUB_REPOSITORY" \
               --title "$TAG" \
-              --notes-file "release-notes/${TAG}.md" \
+              --notes-file "$notes_file" \
               --verify-tag
           fi
