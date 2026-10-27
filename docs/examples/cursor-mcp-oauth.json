@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "rundeck": {
+      "url": "http://127.0.0.1:3000/mcp",
+      "auth": {
+        "CLIENT_ID": "${env:RUNDECK_MCP_OAUTH_CLIENT_ID}",
+        "CLIENT_SECRET": "${env:RUNDECK_MCP_OAUTH_CLIENT_SECRET}",
+        "scopes": ["openid", "profile", "email"]
+      }
+    }
+  }
+}

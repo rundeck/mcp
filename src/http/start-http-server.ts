@@ -4,6 +4,7 @@ import {
   localhostHostValidation,
   localhostOriginValidation,
   toNodeHandler,
+  toWebRequest,
 } from "@modelcontextprotocol/node";
 import { createMcpServer } from "../create-server.js";
 import { bindRequestAuthToServer } from "../auth/request-auth.js";
@@ -14,6 +15,15 @@ import {
 import { getRundeckAuthMode } from "../auth/rundeck-auth-mode.js";
 import { logger } from "../utils/logger.js";
 import { isOidcDiscoveryEnabled, serveOidcDiscovery } from "./oidc-discovery-proxy.js";
+import {
+  isMcpClientOAuthEnabled,
+  loadMcpOAuthRuntime,
+  missingBearerChallenge,
+  serveMcpOAuthMetadata,
+  verifyMcpRequestBearer,
+  writeWebResponse,
+  type McpOAuthRuntime,
+} from "./mcp-oauth.js";
 
 export interface HttpServerHandle {
   url: string;
@@ -63,27 +73,13 @@ function authInfoFromRequest(req: IncomingMessage): AuthInfo | undefined {
 /** Node adapter reads validated auth from `req.auth`, not the handler's third argument. */
 type NodeIncomingWithAuth = IncomingMessage & { auth?: AuthInfo };
 
-function requireBearerForJwtMode(req: IncomingMessage, res: ServerResponse): boolean {
-  if (getRundeckAuthMode() !== "jwt_bearer") {
-    return true;
+function publicResourceUrl(host: string, port: number, mcpPath: string): URL {
+  const override = process.env.MCP_PUBLIC_URL?.trim();
+  if (override) {
+    return new URL(override);
   }
-  if (process.env.MCP_REQUIRE_BEARER === "0" || process.env.MCP_REQUIRE_BEARER === "false") {
-    return true;
-  }
-  const token = bearerTokenFromAuthorizationHeader(req.headers.authorization);
-  if (token) {
-    return true;
-  }
-  res.writeHead(401, { "content-type": "application/json" });
-  res.end(
-    JSON.stringify({
-      error: "missing_bearer",
-      message:
-        "Authorization: Bearer <jwt> is required when RUNDECK_AUTH_MODE=jwt_bearer. " +
-        "Obtain a Rundeck/OIDC access token and send it on every MCP HTTP request.",
-    })
-  );
-  return false;
+  const displayHost = host.includes(":") ? `[${host}]` : host;
+  return new URL(`http://${displayHost}:${port}${mcpPath}`);
 }
 
 export async function startHttpServer(): Promise<HttpServerHandle> {
@@ -113,30 +109,89 @@ export async function startHttpServer(): Promise<HttpServerHandle> {
 
   const nodeHandler = toNodeHandler(mcpHandler);
   const path = process.env.MCP_HTTP_PATH?.trim() || "/mcp";
+  const resourceServerUrl = publicResourceUrl(host, port, path);
+
+  let mcpOAuth: McpOAuthRuntime | undefined;
+  if (isMcpClientOAuthEnabled()) {
+    mcpOAuth = await loadMcpOAuthRuntime(resourceServerUrl);
+  }
+
+  const jwtBearerMode = getRundeckAuthMode() === "jwt_bearer";
+  const requireBearer =
+    (jwtBearerMode || mcpOAuth !== undefined) &&
+    process.env.MCP_REQUIRE_BEARER !== "0" &&
+    process.env.MCP_REQUIRE_BEARER !== "false";
 
   const httpServer = createServer((req, res) => {
-    if (loopback && (!validateHost(req, res) || !validateOrigin(req, res))) {
-      return;
-    }
-    const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+    void (async () => {
+      if (loopback && (!validateHost(req, res) || !validateOrigin(req, res))) {
+        return;
+      }
+      const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
-    if (url.pathname !== path) {
-      void serveOidcDiscovery(url.pathname, res).then((handled) => {
+      if (url.pathname !== path) {
+        if (mcpOAuth && req.method?.toUpperCase() !== "POST") {
+          const webRequest = await toWebRequest(req);
+          const metaResponse = await serveMcpOAuthMetadata(webRequest, mcpOAuth);
+          if (metaResponse) {
+            await writeWebResponse(res, metaResponse);
+            return;
+          }
+        }
+        const handled = await serveOidcDiscovery(url.pathname, res);
         if (!handled) {
           res.writeHead(404, { "content-type": "text/plain" });
           res.end("Not found");
         }
-      });
-      return;
-    }
-    if (!requireBearerForJwtMode(req, res)) {
-      return;
-    }
-    const authInfo = authInfoFromRequest(req);
-    if (authInfo) {
-      (req as NodeIncomingWithAuth).auth = authInfo;
-    }
-    void nodeHandler(req, res);
+        return;
+      }
+
+      if (requireBearer) {
+        const header = req.headers.authorization;
+        const hasToken = !!bearerTokenFromAuthorizationHeader(header);
+        if (mcpOAuth) {
+          if (!hasToken) {
+            await writeWebResponse(res, missingBearerChallenge(mcpOAuth));
+            return;
+          }
+          const verified = await verifyMcpRequestBearer(header, mcpOAuth);
+          if (verified instanceof Response) {
+            await writeWebResponse(res, verified);
+            return;
+          }
+          (req as NodeIncomingWithAuth).auth = verified;
+        } else if (!hasToken) {
+          res.writeHead(401, { "content-type": "application/json" });
+          res.end(
+            JSON.stringify({
+              error: "missing_bearer",
+              message:
+                "Authorization: Bearer <jwt> is required when RUNDECK_AUTH_MODE=jwt_bearer. " +
+                "Set OIDC_ISSUER to enable MCP client OAuth (Authenticate in Cursor).",
+            })
+          );
+          return;
+        } else {
+          const authInfo = authInfoFromRequest(req);
+          if (authInfo) {
+            (req as NodeIncomingWithAuth).auth = authInfo;
+          }
+        }
+      } else {
+        const authInfo = authInfoFromRequest(req);
+        if (authInfo) {
+          (req as NodeIncomingWithAuth).auth = authInfo;
+        }
+      }
+
+      await nodeHandler(req, res);
+    })().catch((error) => {
+      logger.error("HTTP request handler error", error);
+      if (!res.headersSent) {
+        res.writeHead(500, { "content-type": "text/plain" });
+        res.end("Internal Server Error");
+      }
+    });
   });
 
   await new Promise<void>((resolve, reject) => {
@@ -146,9 +201,13 @@ export async function startHttpServer(): Promise<HttpServerHandle> {
 
   const displayHost = host.includes(":") ? `[${host}]` : host;
   const url = `http://${displayHost}:${port}${path}`;
-  if (isOidcDiscoveryEnabled()) {
+  if (mcpOAuth) {
     logger.info(
-      `OIDC discovery proxy enabled (OIDC_ISSUER) — MCP clients can OAuth via /.well-known/openid-configuration`
+      "MCP client OAuth: unauthenticated POST /mcp returns 401 + WWW-Authenticate; use Authenticate in Cursor/Inspector"
+    );
+  } else if (isOidcDiscoveryEnabled()) {
+    logger.info(
+      `OIDC discovery proxy enabled (OIDC_ISSUER) — legacy proxy at /.well-known/openid-configuration`
     );
   }
   logger.info(`Rundeck MCP HTTP listening at ${url} (Streamable HTTP; Bearer JWT → Rundeck API)`);

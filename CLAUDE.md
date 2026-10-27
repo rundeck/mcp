@@ -116,7 +116,9 @@ Prompts are static objects with `name`, `description`, `arguments`, optional `ar
 | `RUNDECK_AUTH_MODE` | `pat` | `pat` (stdio/env token) or `jwt_bearer` (HTTP: forward `Authorization: Bearer` to Rundeck) |
 | `MCP_TRANSPORT` | `stdio` | `stdio`, `http`, or `both` — see [docs/LOCAL-HTTP-JWT.md](./docs/LOCAL-HTTP-JWT.md) |
 | `MCP_HTTP_HOST` / `MCP_HTTP_PORT` | `127.0.0.1` / `3000` | HTTP listener when `MCP_TRANSPORT` includes `http` |
-| `OIDC_ISSUER` | — | IdP issuer URL; proxies `/.well-known/openid-configuration` for Cursor OAuth discovery — see [docs/MCP-CLIENT-OAUTH.md](./docs/MCP-CLIENT-OAUTH.md) |
+| `OIDC_ISSUER` | — | IdP issuer URL; enables RFC 9728 MCP OAuth metadata and 401 challenges — see [docs/MCP-CLIENT-OAUTH.md](./docs/MCP-CLIENT-OAUTH.md) |
+| `MCP_PUBLIC_URL` | derived from host/port/path | Public MCP URL clients use (must match client config, including `/mcp`) |
+| `MCP_OAUTH` | on when `OIDC_ISSUER` set | Set `0` to disable RFC 9728 metadata / 401 challenges (manual Bearer only) |
 | `RUNDECK_API_VERSION` | `59` | API version appended to base URL |
 | `RUNDECK_API_TIMEOUT_MS` | `30000` | Timeout for `api_call`'s underlying `fetch` (also bounds `runner_create` and `acl_manage`, which call through it). Aborts and throws a distinct timeout error past this limit. Invalid/non-positive values fall back to the default with a logged warning. |
 | `RUNDECK_INSTANCES` | — | JSON registry of multiple named instances; when set, enables the `rundeck_connect` tool for mid-session switching (see `src/config.ts`'s `loadInstanceRegistry()`) |

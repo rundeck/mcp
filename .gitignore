@@ -2,7 +2,12 @@ node_modules/
 dist/
 .env
 .mcp.json
-docs/
+# Downloaded Rundeck docs (postinstall / Docker); allow hand-written guides under docs/
+docs/**
+!docs/MCP-CLIENT-OAUTH.md
+!docs/LOCAL-HTTP-JWT.md
+!docs/examples/
+!docs/examples/**
 .idea/
 instances.json
 .rundeck-mcp/
