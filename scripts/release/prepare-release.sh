@@ -53,7 +53,7 @@ if git show-ref --verify --quiet "refs/heads/${BRANCH}" ||
 fi
 
 git switch --create "$BRANCH" "$BASE_SHA"
-if grep -Fq "<!-- release:${TAG}:start -->" CHANGELOG.md; then
+if grep -Fqx "## ${TAG}" CHANGELOG.md; then
   echo "${TAG} already exists in CHANGELOG.md; refusing to overwrite it." >&2
   exit 1
 fi
@@ -69,9 +69,9 @@ gh api "${API_ARGS[@]}" --jq .body | sed 's/^## /### /' >"$NOTES_BODY"
 
 {
   printf '# Changelog\n\n'
-  printf '## %s\n\n<!-- release:%s:start -->\n' "$TAG" "$TAG"
+  printf '## %s\n\n' "$TAG"
   cat "$NOTES_BODY"
-  printf '<!-- release:%s:end -->\n\n' "$TAG"
+  printf '\n'
   awk 'NR > 2 { print }' CHANGELOG.md
 } >"$CHANGELOG_TMP"
 mv "$CHANGELOG_TMP" CHANGELOG.md

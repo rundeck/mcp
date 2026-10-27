@@ -2,7 +2,6 @@
 
 ## v1.0.0
 
-<!-- release:v1.0.0:start -->
 ### What's Changed
 * Bump quarantine-pinned deps back to latest by @smartinellibenedetti in https://github.com/rundeck/mcp/pull/90
 * [RUN-0000] Bump all open Renovate-flagged dependencies by @smartinellibenedetti in https://github.com/rundeck/mcp/pull/91
@@ -12,4 +11,3 @@
 * Remove Alpha warning by @smartinellibenedetti in https://github.com/rundeck/mcp/pull/94
 
 **Full Changelog**: https://github.com/rundeck/mcp/compare/v0.0.5...v1.0.0
-<!-- release:v1.0.0:end -->
