@@ -55,6 +55,10 @@ fi
 git switch --create "$BRANCH" "$BASE_SHA"
 NOTES_FILE="release-notes/${TAG}.md"
 mkdir -p release-notes
+if [[ -e "$NOTES_FILE" ]]; then
+  echo "Release notes ${NOTES_FILE} already exist; refusing to overwrite them." >&2
+  exit 1
+fi
 gh api "${API_ARGS[@]}" --jq .body >"$NOTES_FILE"
 [[ -s "$NOTES_FILE" ]] || {
   echo "GitHub generated empty release notes." >&2
