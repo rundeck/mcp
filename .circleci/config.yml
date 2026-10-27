@@ -87,6 +87,9 @@ jobs:
                 echo "CIRCLE_TAG '${CIRCLE_TAG}' does not match expected vX.Y.Z pattern — failing." >&2
                 exit 1
               fi
+              NOTES_FILE="release-notes/${CIRCLE_TAG}.md"
+              test -s "${NOTES_FILE}"
+              grep -Fq "(${NOTES_FILE})" CHANGELOG.md
               VERSION="${CIRCLE_TAG#v}"
               sed -i "s/rundeck-mcp\/SNAPSHOT/rundeck-mcp\/${VERSION}/" src/tools/api.ts
               sed -i "s/\"SNAPSHOT\"/\"${VERSION}\"/" server.json

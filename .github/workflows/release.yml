@@ -1,28 +1,82 @@
-name: Create Release
+name: Release
 
-# Creates the GitHub Release for a version tag. Runs independently of the
-# CircleCI build/publish pipeline (.circleci/config.yml) — triggered directly
-# by the tag push rather than gated on npm/docker publish succeeding.
 on:
+  pull_request:
+    types: [closed]
+    branches: [main]
   push:
     tags:
-      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - "v*.*.*"
 
 permissions:
   contents: write
 
 jobs:
   release:
-    name: Create Release
+    if: >-
+      github.event_name == 'push' ||
+      (github.event.pull_request.merged == true &&
+       startsWith(github.event.pull_request.head.ref, 'release/v'))
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout code
+      - name: Determine release
+        id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          PUSH_TAG: ${{ github.ref_name }}
+        run: |
+          if [[ "$EVENT_NAME" == "pull_request" ]]; then
+            tag="${PR_BRANCH#release/}"
+            sha="$MERGE_SHA"
+          else
+            tag="$PUSH_TAG"
+            sha="$GITHUB_SHA"
+          fi
+          [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+            echo "Invalid release tag: $tag" >&2
+            exit 1
+          }
+          echo "tag=$tag" >>"$GITHUB_OUTPUT"
+          echo "sha=$sha" >>"$GITHUB_OUTPUT"
+
+      - name: Check out release commit
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ steps.release.outputs.sha }}
+          fetch-depth: 0
+
+      - name: Verify reviewed release notes
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+        run: |
+          notes_file="release-notes/${TAG}.md"
+          test -s "$notes_file"
+          grep -Fq "(${notes_file})" CHANGELOG.md
+
+      - name: Tag merged release PR
+        if: github.event_name == 'pull_request'
+        env:
+          TAG: ${{ steps.release.outputs.tag }}
+          SHA: ${{ steps.release.outputs.sha }}
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/${TAG}" >/dev/null; then
+            test "$(git rev-list -n 1 "$TAG")" = "$SHA"
+          else
+            git tag "$TAG" "$SHA"
+            git push origin "$TAG"
+          fi
 
       - name: Create GitHub release
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ steps.release.outputs.tag }}
         run: |
-          gh release create "${GITHUB_REF_NAME}" \
-            --title "${GITHUB_REF_NAME}" \
-            --generate-notes
+          if ! gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release create "$TAG" \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "$TAG" \
+              --notes-file "release-notes/${TAG}.md" \
+              --verify-tag
+          fi
