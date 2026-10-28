@@ -19,7 +19,7 @@
 * [RUN-0000] Update dependency ip-address to v10.7.3 by @renovate[bot] in https://github.com/rundeck/mcp/pull/104
 * [RUN-0000] Update dependency ts-jest to v29.4.15 by @renovate[bot] in https://github.com/rundeck/mcp/pull/110
 * [RUN-0000] Update dependency yaml to v2.9.1 by @renovate[bot] in https://github.com/rundeck/mcp/pull/111
-* [RUN-5043] Pin container images and GitHub Actions by digest by @luismalamoc in https://github.com/rundeck/mcp/pull/113
+* [RUN-5043] Pin GitHub Actions to commit SHAs by @luismalamoc in https://github.com/rundeck/mcp/pull/113
 * [RUN-0000] Update dependency @modelcontextprotocol/client to v2.2.0 by @renovate[bot] in https://github.com/rundeck/mcp/pull/112
 * [RUN-0000] Update dependency rolldown to v1.2.13 by @renovate[bot] in https://github.com/rundeck/mcp/pull/109
 * [RUN-0000] Update dependency @modelcontextprotocol/inspector to v2.10.1 by @renovate[bot] in https://github.com/rundeck/mcp/pull/98
