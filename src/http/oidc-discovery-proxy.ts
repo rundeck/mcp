@@ -52,10 +52,16 @@ export function isWellKnownDiscoveryPath(pathname: string): boolean {
   return WELL_KNOWN_PATHS.has(pathname);
 }
 
+export interface OidcDiscoveryServeOptions {
+  /** When set, replaces IdP token_endpoint (MCP `/oauth/token` proxy for Google opaque tokens). */
+  proxiedTokenEndpoint?: string;
+}
+
 /** Serve cached OIDC metadata JSON for Cursor / MCP client OAuth discovery. */
 export async function serveOidcDiscovery(
   pathname: string,
-  res: import("node:http").ServerResponse
+  res: import("node:http").ServerResponse,
+  options?: OidcDiscoveryServeOptions
 ): Promise<boolean> {
   if (!WELL_KNOWN_PATHS.has(pathname)) {
     return false;
@@ -66,7 +72,10 @@ export async function serveOidcDiscovery(
     return true;
   }
   try {
-    const doc = await fetchDiscoveryDocument();
+    const doc = { ...(await fetchDiscoveryDocument()) };
+    if (options?.proxiedTokenEndpoint) {
+      doc.token_endpoint = options.proxiedTokenEndpoint;
+    }
     res.writeHead(200, {
       "content-type": "application/json",
       "cache-control": "public, max-age=300",

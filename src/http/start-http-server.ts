@@ -18,6 +18,7 @@ import { isOidcDiscoveryEnabled, serveOidcDiscovery } from "./oidc-discovery-pro
 import {
   isMcpClientOAuthEnabled,
   loadMcpOAuthRuntime,
+  mcpOAuthTokenEndpointUrl,
   missingBearerChallenge,
   proxyOAuthTokenRequest,
   serveMcpOAuthMetadata,
@@ -145,7 +146,15 @@ export async function startHttpServer(): Promise<HttpServerHandle> {
             return;
           }
         }
-        const handled = await serveOidcDiscovery(url.pathname, res);
+        const proxiedToken =
+          mcpOAuth &&
+          process.env.MCP_OAUTH_PROXY_TOKEN !== "0" &&
+          process.env.MCP_OAUTH_PROXY_TOKEN !== "false"
+            ? mcpOAuthTokenEndpointUrl(resourceServerUrl)
+            : undefined;
+        const handled = await serveOidcDiscovery(url.pathname, res, {
+          proxiedTokenEndpoint: proxiedToken,
+        });
         if (!handled) {
           res.writeHead(404, { "content-type": "text/plain" });
           res.end("Not found");
