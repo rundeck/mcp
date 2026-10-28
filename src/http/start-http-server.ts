@@ -16,9 +16,15 @@ import { getRundeckAuthMode } from "../auth/rundeck-auth-mode.js";
 import { logger } from "../utils/logger.js";
 import { isOidcDiscoveryEnabled, serveOidcDiscovery } from "./oidc-discovery-proxy.js";
 import {
+  OAUTH_AUTHORIZE_PATH,
+  OAUTH_CALLBACK_PATH,
+  OAUTH_TOKEN_PATH,
+  handleOAuthAuthorize,
+  handleOAuthCallback,
   isMcpClientOAuthEnabled,
+  isMcpOAuthProxyEnabled,
   loadMcpOAuthRuntime,
-  mcpOAuthTokenEndpointUrl,
+  mcpOAuthProxyMetadataOverrides,
   missingBearerChallenge,
   proxyOAuthTokenRequest,
   serveMcpOAuthMetadata,
@@ -131,8 +137,22 @@ export async function startHttpServer(): Promise<HttpServerHandle> {
       }
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
-      if (mcpOAuth && url.pathname === "/oauth/token") {
-        const tokenResponse = await proxyOAuthTokenRequest(req, mcpOAuth.upstreamTokenEndpoint);
+      if (mcpOAuth && url.pathname === OAUTH_AUTHORIZE_PATH && req.method?.toUpperCase() === "GET") {
+        await writeWebResponse(res, handleOAuthAuthorize(url, mcpOAuth));
+        return;
+      }
+
+      if (mcpOAuth && url.pathname === OAUTH_CALLBACK_PATH && req.method?.toUpperCase() === "GET") {
+        await writeWebResponse(res, handleOAuthCallback(url, mcpOAuth));
+        return;
+      }
+
+      if (mcpOAuth && url.pathname === OAUTH_TOKEN_PATH) {
+        const tokenResponse = await proxyOAuthTokenRequest(
+          req,
+          mcpOAuth.upstreamTokenEndpoint,
+          mcpOAuth.callbackUrl
+        );
         await writeWebResponse(res, tokenResponse);
         return;
       }
@@ -146,14 +166,11 @@ export async function startHttpServer(): Promise<HttpServerHandle> {
             return;
           }
         }
-        const proxiedToken =
-          mcpOAuth &&
-          process.env.MCP_OAUTH_PROXY_TOKEN !== "0" &&
-          process.env.MCP_OAUTH_PROXY_TOKEN !== "false"
-            ? mcpOAuthTokenEndpointUrl(resourceServerUrl)
-            : undefined;
         const handled = await serveOidcDiscovery(url.pathname, res, {
-          proxiedTokenEndpoint: proxiedToken,
+          overrides:
+            mcpOAuth && isMcpOAuthProxyEnabled()
+              ? mcpOAuthProxyMetadataOverrides(resourceServerUrl)
+              : undefined,
         });
         if (!handled) {
           res.writeHead(404, { "content-type": "text/plain" });

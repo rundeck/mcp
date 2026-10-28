@@ -28,6 +28,7 @@ Optional:
 |----------|---------|---------|
 | `MCP_OAUTH` | on when `OIDC_ISSUER` set | Set `0` to disable RFC 9728 metadata / 401 challenges (manual Bearer only) |
 | `MCP_OAUTH_PROXY_TOKEN` | on | Proxies `POST /oauth/token` on the MCP origin (required for Google → JWT Bearer); set `0` to publish the IdP’s real token URL |
+| `MCP_OAUTH_ALLOWED_REDIRECT_URIS` | — | Comma-separated exact client redirect URIs the authorize proxy accepts besides `http://localhost`/`127.0.0.1` loopback (e.g. Cursor's `cursor://…` callback) |
 | `MCP_OAUTH_ACCESS_TOKEN` | `auto` | After code exchange: `auto` (swap opaque → `id_token`), `id_token`, or `upstream` — usually **omit** (defaults are correct) |
 | `MCP_OAUTH_RESOURCE_NAME` | `Rundeck MCP` | Display name in Protected Resource Metadata |
 | `MCP_OAUTH_SCOPES` | — | Comma/space-separated scopes advertised to clients |
@@ -87,12 +88,20 @@ Proxies may attempt OAuth **Dynamic Client Registration** against your IdP. Auth
 
 Google’s token response includes an opaque `access_token` (`ya29…`) and a JWT `id_token`. MCP clients (Claude Code, Cursor) send **`access_token` as Bearer** per OAuth. Rundeck’s OAuth Resource Server expects a **JWT**, so opaque tokens fail with `Malformed token`.
 
-When `OIDC_ISSUER` is set, this server **proxies** token exchange at **`/oauth/token`** on the MCP origin (metadata advertises that URL instead of Google’s). The proxy forwards the request to Google and, by default, returns **`access_token = id_token`** when the upstream access token is not JWT-shaped. Auth0-style JWT access tokens are left unchanged. See the optional variables table above; **you do not need to set `MCP_OAUTH_ACCESS_TOKEN` for Google.**
+When `OIDC_ISSUER` is set, this server acts as the **authorization server clients see** and proxies the whole code flow to the IdP:
+
+| MCP endpoint | What it does |
+|---|---|
+| `GET /oauth/authorize` | Remembers the client's `redirect_uri`/`state`, redirects to the IdP with `redirect_uri=<MCP origin>/oauth/callback` (PKCE and other params pass through) |
+| `GET /oauth/callback` | Sends the IdP's `code` (or `error`) back to the client's `redirect_uri` with its original `state` and `iss=<MCP origin>` |
+| `POST /oauth/token` | Forwards to the IdP (rewriting `redirect_uri` to the callback on `authorization_code`) and, by default, returns **`access_token = id_token`** when the upstream access token is not JWT-shaped |
+
+Metadata (PRM `authorization_servers`, `issuer`, `authorization_endpoint`, `token_endpoint`) all point at the MCP origin. Both halves are needed: if `issuer` stays Google's, clients discover Google directly and skip `/oauth/token`; if only the issuer changes, RFC 9207 clients reject Google's `iss=https://accounts.google.com` on the callback. Auth0-style JWT access tokens are left unchanged. See the optional variables table above; **you do not need to set `MCP_OAUTH_ACCESS_TOKEN` for Google.**
 
 ### Google checklist (Rundeck OAuth RS)
 
 1. **Rundeck** — OAuth Resource Server with `issuer-uri` = `https://accounts.google.com` (or your Google issuer) and `jwt.audiences` = your **Google OAuth client ID** (what Rundeck expects on the `id_token` `aud` claim).
-2. **Google Cloud OAuth client** — Authorized redirect URIs for **Claude Code** loopback (`http://localhost:<port>/callback`, `http://127.0.0.1:<port>/callback`; fix port with `MCP_OAUTH_CALLBACK_PORT` on the client if needed) and/or Cursor/Inspector as applicable.
+2. **Google Cloud OAuth client** — Authorized redirect URIs must include the MCP callback, **`<MCP origin>/oauth/callback`** (e.g. `http://127.0.0.1:3000/oauth/callback`); that is the URI Google redirects to. The client's own loopback callback (e.g. Claude Code's `http://localhost:8765/callback`) is only seen by the MCP, not Google. In Claude Code register with `claude mcp add --transport http --client-id <id> --client-secret --callback-port 8765 …` (Google has no dynamic client registration).
 3. **MCP server** — `OIDC_ISSUER=https://accounts.google.com`, `MCP_PUBLIC_URL` matching the client’s MCP URL, `RUNDECK_AUTH_MODE=jwt_bearer`.
 4. **After changing token proxy behavior** — Re-authenticate in Claude (`/mcp` → Re-authenticate); stored tokens are not upgraded in place.
 
