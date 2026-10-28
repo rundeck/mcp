@@ -1,10 +1,8 @@
 # Local test: MCP HTTP + JWT passthrough to Rundeck
 
-**Preferred:** [MCP client OAuth (Cursor)](./MCP-CLIENT-OAUTH.md) — browser login, no pasted JWT.
+**Preferred:** [MCP client OAuth](./MCP-CLIENT-OAUTH.md) — browser login (Cursor, Claude Code), no pasted JWT. Includes Google IdP token proxy (`/oauth/token`).
 
-This doc is for **manual** debugging (curl / Inspector headers).
-
-Implements [mcp-http-oauth-jwt](../.claude/specs/mcp-http-oauth-jwt.md): **no MCP OAuth server** — the client sends `Authorization: Bearer <jwt>` on each MCP HTTP request; the MCP forwards that token to the Rundeck API.
+This doc is for **manual** debugging (curl / Inspector headers): the client sends `Authorization: Bearer <jwt>` on each MCP HTTP request; the MCP forwards that token to the Rundeck API.
 
 ## Prerequisites
 

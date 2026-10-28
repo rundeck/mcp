@@ -119,6 +119,8 @@ Prompts are static objects with `name`, `description`, `arguments`, optional `ar
 | `OIDC_ISSUER` | — | IdP issuer URL; enables RFC 9728 MCP OAuth metadata and 401 challenges — see [docs/MCP-CLIENT-OAUTH.md](./docs/MCP-CLIENT-OAUTH.md) |
 | `MCP_PUBLIC_URL` | derived from host/port/path | Public MCP URL clients use (must match client config, including `/mcp`) |
 | `MCP_OAUTH` | on when `OIDC_ISSUER` set | Set `0` to disable RFC 9728 metadata / 401 challenges (manual Bearer only) |
+| `MCP_OAUTH_PROXY_TOKEN` | on | Proxies `/oauth/token` so Google IdPs can return JWT `access_token` (see [docs/MCP-CLIENT-OAUTH.md](./docs/MCP-CLIENT-OAUTH.md)) |
+| `MCP_OAUTH_ACCESS_TOKEN` | `auto` | `auto` \| `id_token` \| `upstream` — which token MCP clients receive after OAuth code exchange |
 | `RUNDECK_API_VERSION` | `59` | API version appended to base URL |
 | `RUNDECK_API_TIMEOUT_MS` | `30000` | Timeout for `api_call`'s underlying `fetch` (also bounds `runner_create` and `acl_manage`, which call through it). Aborts and throws a distinct timeout error past this limit. Invalid/non-positive values fall back to the default with a logged warning. |
 | `RUNDECK_INSTANCES` | — | JSON registry of multiple named instances; when set, enables the `rundeck_connect` tool for mid-session switching (see `src/config.ts`'s `loadInstanceRegistry()`) |

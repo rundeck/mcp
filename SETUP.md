@@ -42,6 +42,15 @@ docker build --secret id=cloudsmith_token,env=CLOUDSMITH_NPM_TOKEN \
 
 `CLOUDSMITH_NPM_TOKEN` must be set in your shell — it's forwarded in as a build secret (not a build-arg) so it never lands in the image's layer history.
 
+## HTTP transport and MCP client OAuth (optional)
+
+For **Streamable HTTP** (local or hosted) with **JWT passthrough** to Rundeck and browser login in Cursor or Claude Code, see:
+
+- [docs/LOCAL-HTTP-JWT.md](./docs/LOCAL-HTTP-JWT.md) — start the server, manual Bearer / curl
+- [docs/MCP-CLIENT-OAUTH.md](./docs/MCP-CLIENT-OAUTH.md) — RFC 9728 OAuth, Auth0, **Google** (`id_token` proxy), Claude Code `type: http`
+
+The [CLAUDE.md](./CLAUDE.md) environment table lists `MCP_TRANSPORT`, `OIDC_ISSUER`, `MCP_PUBLIC_URL`, and related variables.
+
 ## Configuration
 
 The server supports the following environment variables:

@@ -17,6 +17,7 @@ import {
 } from "@modelcontextprotocol/server";
 import { decodeJwtPayload } from "../auth/jwt-payload.js";
 import { logger } from "../utils/logger.js";
+import type { IncomingMessage } from "node:http";
 import { writeWebResponse } from "./write-node-response.js";
 
 export { writeWebResponse };
@@ -25,6 +26,57 @@ export interface McpOAuthRuntime {
   authMetadata: AuthMetadataOptions;
   resourceMetadataUrl: string;
   verifier: OAuthTokenVerifier;
+  /** Upstream IdP token URL (Google, Auth0, …) — clients must not call this directly. */
+  upstreamTokenEndpoint: string;
+}
+
+const OAUTH_TOKEN_PATH = "/oauth/token";
+
+export function mcpOAuthTokenEndpointUrl(resourceServerUrl: URL): string {
+  return `${resourceServerUrl.origin}${OAUTH_TOKEN_PATH}`;
+}
+
+/** Three-segment base64url shape; does not verify signature. */
+export function isJwtFormat(token: string): boolean {
+  const parts = token.split(".");
+  return parts.length === 3 && parts.every((p) => p.length > 0);
+}
+
+/**
+ * Google (and some IdPs) return an opaque `access_token` plus a JWT `id_token`.
+ * Rundeck OAuth RS expects a JWT Bearer — swap when upstream access_token is not JWT-shaped.
+ * Override with MCP_OAUTH_ACCESS_TOKEN=id_token|upstream|auto (default auto).
+ */
+export function resolveMcpAccessToken(upstreamBody: Record<string, unknown>): void {
+  const mode = process.env.MCP_OAUTH_ACCESS_TOKEN?.trim().toLowerCase() ?? "auto";
+  const access = asString(upstreamBody.access_token);
+  const idToken = asString(upstreamBody.id_token);
+
+  if (mode === "upstream") {
+    return;
+  }
+  if (mode === "id_token") {
+    if (idToken) {
+      upstreamBody.access_token = idToken;
+    }
+    return;
+  }
+  if (idToken && access && !isJwtFormat(access)) {
+    upstreamBody.access_token = idToken;
+  }
+}
+
+export function applyMcpTokenEndpointProxy(
+  metadata: OAuthMetadata,
+  resourceServerUrl: URL
+): OAuthMetadata {
+  if (process.env.MCP_OAUTH_PROXY_TOKEN === "0" || process.env.MCP_OAUTH_PROXY_TOKEN === "false") {
+    return metadata;
+  }
+  return {
+    ...metadata,
+    token_endpoint: mcpOAuthTokenEndpointUrl(resourceServerUrl),
+  };
 }
 
 function issuerBase(): string | undefined {
@@ -107,6 +159,13 @@ export const rundeckJwtPassthroughVerifier: OAuthTokenVerifier = {
     if (!trimmed) {
       throw new OAuthError(OAuthErrorCode.InvalidToken, "Missing access token");
     }
+    if (process.env.MCP_DEBUG === "1" || process.env.MCP_DEBUG === "true") {
+      const segments = trimmed.split(".").length;
+      const prefix = trimmed.slice(0, Math.min(4, trimmed.length));
+      logger.debug(
+        `MCP Bearer token shape: segments=${segments} prefix=${prefix}… jwt=${isJwtFormat(trimmed)}`
+      );
+    }
     const payload = decodeJwtPayload(trimmed);
     const exp = payload?.exp;
     if (typeof exp === "number" && exp < Date.now() / 1000) {
@@ -137,7 +196,9 @@ export async function loadMcpOAuthRuntime(resourceServerUrl: URL): Promise<McpOA
     throw new Error("OIDC_ISSUER is required for MCP client OAuth");
   }
   const doc = await fetchOidcDiscovery(issuer);
-  const oauthMetadata = oauthMetadataFromDiscovery(issuer, doc);
+  const discovered = oauthMetadataFromDiscovery(issuer, doc);
+  const upstreamTokenEndpoint = discovered.token_endpoint;
+  const oauthMetadata = applyMcpTokenEndpointProxy(discovered, resourceServerUrl);
   const authMetadata: AuthMetadataOptions = {
     oauthMetadata,
     resourceServerUrl,
@@ -147,13 +208,74 @@ export async function loadMcpOAuthRuntime(resourceServerUrl: URL): Promise<McpOA
   };
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resourceServerUrl);
   logger.info(
-    `MCP client OAuth enabled — Protected Resource Metadata at ${resourceMetadataUrl}, AS ${oauthMetadata.issuer}`
+    `MCP client OAuth enabled — Protected Resource Metadata at ${resourceMetadataUrl}, AS ${oauthMetadata.issuer}` +
+      (oauthMetadata.token_endpoint !== upstreamTokenEndpoint
+        ? `, token exchange proxied at ${oauthMetadata.token_endpoint}`
+        : "")
   );
   return {
     authMetadata,
     resourceMetadataUrl,
     verifier: rundeckJwtPassthroughVerifier,
+    upstreamTokenEndpoint,
   };
+}
+
+/** Forward OAuth token requests to the IdP; expose JWT as access_token for MCP/Rundeck clients. */
+export async function proxyOAuthTokenRequest(
+  req: IncomingMessage,
+  upstreamTokenEndpoint: string
+): Promise<Response> {
+  if (req.method?.toUpperCase() !== "POST") {
+    return new Response("Method Not Allowed", { status: 405 });
+  }
+
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  const body = Buffer.concat(chunks);
+
+  const contentType = req.headers["content-type"];
+  const headers: Record<string, string> = {
+    Accept: "application/json",
+    ...(typeof contentType === "string" ? { "Content-Type": contentType } : {}),
+  };
+  const authorization = req.headers.authorization;
+  if (typeof authorization === "string") {
+    headers.Authorization = authorization;
+  }
+
+  const upstream = await fetch(upstreamTokenEndpoint, {
+    method: "POST",
+    headers,
+    body,
+  });
+
+  const responseText = await upstream.text();
+  const responseContentType =
+    upstream.headers.get("content-type") ?? "application/json; charset=utf-8";
+
+  if (!upstream.ok) {
+    return new Response(responseText, {
+      status: upstream.status,
+      headers: { "Content-Type": responseContentType },
+    });
+  }
+
+  try {
+    const json = JSON.parse(responseText) as Record<string, unknown>;
+    resolveMcpAccessToken(json);
+    return new Response(JSON.stringify(json), {
+      status: upstream.status,
+      headers: { "Content-Type": "application/json; charset=utf-8" },
+    });
+  } catch {
+    return new Response(responseText, {
+      status: upstream.status,
+      headers: { "Content-Type": responseContentType },
+    });
+  }
 }
 
 export async function serveMcpOAuthMetadata(

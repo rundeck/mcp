@@ -1,6 +1,6 @@
-# MCP client OAuth (Authenticate in Cursor)
+# MCP client OAuth (Cursor, Claude Code, Inspector)
 
-Streamable HTTP clients (Cursor, MCP Inspector with OAuth) can log in in the browser instead of pasting a Bearer token. This server acts as an **MCP Resource Server** (RFC 9728): it advertises metadata and returns **`401` + `WWW-Authenticate`** when `/mcp` is called without a token. The client runs OAuth 2.1 with PKCE against your IdP, then sends `Authorization: Bearer …` on every MCP request. The same token is forwarded to Rundeck on `api_call`.
+Streamable HTTP clients can log in in the browser instead of pasting a Bearer token. This server acts as an **MCP Resource Server** (RFC 9728): it advertises metadata and returns **`401` + `WWW-Authenticate`** when `/mcp` is called without a token. The client runs OAuth 2.1 with PKCE against your IdP, then sends `Authorization: Bearer …` on every MCP request. The same token is forwarded to Rundeck on `api_call`.
 
 Rundeck remains the **API Resource Server** for job/API access; Auth0 (or your IdP) issues tokens Rundeck accepts.
 
@@ -12,7 +12,8 @@ export RUNDECK_AUTH_MODE=jwt_bearer
 export RUNDECK_URL=http://localhost:4440
 export RUNDECK_API_VERSION=60   # match your Rundeck instance
 
-# IdP used for login (Auth0 tenant, Keycloak, etc.)
+# IdP used for login (Auth0, Google, Keycloak, …)
+# Google example: export OIDC_ISSUER=https://accounts.google.com
 export OIDC_ISSUER=https://YOUR_TENANT.us.auth0.com
 
 # Public URL of the MCP endpoint — must match what the client uses (scheme/host/port/path)
@@ -23,12 +24,14 @@ npm run build && node dist/index.js
 
 Optional:
 
-| Variable | Purpose |
-|----------|---------|
-| `MCP_OAUTH=0` | Disable RFC 9728 metadata / 401 challenges (manual Bearer only) |
-| `MCP_OAUTH_RESOURCE_NAME` | Display name in Protected Resource Metadata |
-| `MCP_OAUTH_SCOPES` | Comma/space-separated scopes advertised to clients |
-| `MCP_REQUIRE_BEARER=0` | Allow unauthenticated MCP connect (tools still need a token for Rundeck) |
+| Variable | Default | Purpose |
+|----------|---------|---------|
+| `MCP_OAUTH` | on when `OIDC_ISSUER` set | Set `0` to disable RFC 9728 metadata / 401 challenges (manual Bearer only) |
+| `MCP_OAUTH_PROXY_TOKEN` | on | Proxies `POST /oauth/token` on the MCP origin (required for Google → JWT Bearer); set `0` to publish the IdP’s real token URL |
+| `MCP_OAUTH_ACCESS_TOKEN` | `auto` | After code exchange: `auto` (swap opaque → `id_token`), `id_token`, or `upstream` — usually **omit** (defaults are correct) |
+| `MCP_OAUTH_RESOURCE_NAME` | `Rundeck MCP` | Display name in Protected Resource Metadata |
+| `MCP_OAUTH_SCOPES` | — | Comma/space-separated scopes advertised to clients |
+| `MCP_REQUIRE_BEARER` | on in JWT/OAuth mode | Set `0` to allow unauthenticated MCP connect (tools still need a token for Rundeck) |
 
 When `OIDC_ISSUER` is set, the server loads `/.well-known/openid-configuration` at startup and serves:
 
@@ -79,6 +82,19 @@ Use the same `OIDC_ISSUER` / `MCP_PUBLIC_URL` on the server process. If a gatewa
 ## Runlayer / gateways
 
 Proxies may attempt OAuth **Dynamic Client Registration** against your IdP. Auth0 often returns **404** on DCR — configure **manual OAuth** (client id/secret) on the gateway and Auth0 callback URLs for the gateway’s OAuth flow. Hosted gateways with `auth_type: oauth` may show an **Authenticate** button; local `runlayer run` proxies often attach tokens inside the CLI instead.
+
+## Google OAuth (opaque access_token)
+
+Google’s token response includes an opaque `access_token` (`ya29…`) and a JWT `id_token`. MCP clients (Claude Code, Cursor) send **`access_token` as Bearer** per OAuth. Rundeck’s OAuth Resource Server expects a **JWT**, so opaque tokens fail with `Malformed token`.
+
+When `OIDC_ISSUER` is set, this server **proxies** token exchange at **`/oauth/token`** on the MCP origin (metadata advertises that URL instead of Google’s). The proxy forwards the request to Google and, by default, returns **`access_token = id_token`** when the upstream access token is not JWT-shaped. Auth0-style JWT access tokens are left unchanged. See the optional variables table above; **you do not need to set `MCP_OAUTH_ACCESS_TOKEN` for Google.**
+
+### Google checklist (Rundeck OAuth RS)
+
+1. **Rundeck** — OAuth Resource Server with `issuer-uri` = `https://accounts.google.com` (or your Google issuer) and `jwt.audiences` = your **Google OAuth client ID** (what Rundeck expects on the `id_token` `aud` claim).
+2. **Google Cloud OAuth client** — Authorized redirect URIs for **Claude Code** loopback (`http://localhost:<port>/callback`, `http://127.0.0.1:<port>/callback`; fix port with `MCP_OAUTH_CALLBACK_PORT` on the client if needed) and/or Cursor/Inspector as applicable.
+3. **MCP server** — `OIDC_ISSUER=https://accounts.google.com`, `MCP_PUBLIC_URL` matching the client’s MCP URL, `RUNDECK_AUTH_MODE=jwt_bearer`.
+4. **After changing token proxy behavior** — Re-authenticate in Claude (`/mcp` → Re-authenticate); stored tokens are not upgraded in place.
 
 ## Auth0 checklist (local Rundeck JWT RS)
 

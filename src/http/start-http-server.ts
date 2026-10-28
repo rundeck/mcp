@@ -19,6 +19,7 @@ import {
   isMcpClientOAuthEnabled,
   loadMcpOAuthRuntime,
   missingBearerChallenge,
+  proxyOAuthTokenRequest,
   serveMcpOAuthMetadata,
   verifyMcpRequestBearer,
   writeWebResponse,
@@ -128,6 +129,12 @@ export async function startHttpServer(): Promise<HttpServerHandle> {
         return;
       }
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
+
+      if (mcpOAuth && url.pathname === "/oauth/token") {
+        const tokenResponse = await proxyOAuthTokenRequest(req, mcpOAuth.upstreamTokenEndpoint);
+        await writeWebResponse(res, tokenResponse);
+        return;
+      }
 
       if (url.pathname !== path) {
         if (mcpOAuth && req.method?.toUpperCase() !== "POST") {

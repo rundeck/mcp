@@ -183,6 +183,16 @@ Add the server via the CLI:
 claude mcp add rundeck-mcp -e RUNDECK_URL=https://your-rundeck-instance.example.com -e RUNDECK_TOKEN=your-rundeck-api-token-here -e RUNDECK_DOCS_PATH=/path/to/rundeck/docs -- npx -y @rundeck/mcp
 ```
 
+### HTTP transport + OAuth (JWT to Rundeck)
+
+For a **local or hosted Streamable HTTP** server (instead of stdio/Docker) with browser login in Cursor or Claude Code and JWT passthrough to Rundeck’s OAuth Resource Server, see [docs/MCP-CLIENT-OAUTH.md](./docs/MCP-CLIENT-OAUTH.md) and [docs/LOCAL-HTTP-JWT.md](./docs/LOCAL-HTTP-JWT.md). Claude Code example:
+
+```bash
+claude mcp add --transport http rundeck-mcp http://127.0.0.1:3000/mcp
+```
+
+Run the server with `MCP_TRANSPORT=http`, `RUNDECK_AUTH_MODE=jwt_bearer`, and `OIDC_ISSUER` set; details are in the docs above and in [CLAUDE.md](./CLAUDE.md).
+
 ### Switching Between Multiple Rundeck Instances
 
 Everything above covers the common case: one Rundeck instance. If you need to switch between more than one (e.g. prod and staging) in the same session without restarting, see [SETUP.md](./SETUP.md#multiple-rundeck-instances-optional).
