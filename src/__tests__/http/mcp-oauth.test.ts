@@ -70,3 +70,15 @@ describe("isJwtFormat", () => {
     expect(isJwtFormat("ya29.foo")).toBe(false);
   });
 });
+
+describe("rundeckJwtPassthroughVerifier", () => {
+  it("rejects opaque bearer when RUNDECK_AUTH_MODE=jwt_bearer", async () => {
+    const prevMode = process.env.RUNDECK_AUTH_MODE;
+    process.env.RUNDECK_AUTH_MODE = "jwt_bearer";
+    const { rundeckJwtPassthroughVerifier } = await import("../../http/mcp-oauth.js");
+    await expect(rundeckJwtPassthroughVerifier.verifyAccessToken("ya29.opaque")).rejects.toThrow(
+      /JWT/
+    );
+    process.env.RUNDECK_AUTH_MODE = prevMode;
+  });
+});

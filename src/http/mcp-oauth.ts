@@ -16,6 +16,7 @@ import {
   type OAuthTokenVerifier,
 } from "@modelcontextprotocol/server";
 import { decodeJwtPayload } from "../auth/jwt-payload.js";
+import { getRundeckAuthMode } from "../auth/rundeck-auth-mode.js";
 import { logger } from "../utils/logger.js";
 import type { IncomingMessage } from "node:http";
 import { writeWebResponse } from "./write-node-response.js";
@@ -159,11 +160,19 @@ export const rundeckJwtPassthroughVerifier: OAuthTokenVerifier = {
     if (!trimmed) {
       throw new OAuthError(OAuthErrorCode.InvalidToken, "Missing access token");
     }
+    const jwtShaped = isJwtFormat(trimmed);
     if (process.env.MCP_DEBUG === "1" || process.env.MCP_DEBUG === "true") {
       const segments = trimmed.split(".").length;
       const prefix = trimmed.slice(0, Math.min(4, trimmed.length));
       logger.debug(
-        `MCP Bearer token shape: segments=${segments} prefix=${prefix}… jwt=${isJwtFormat(trimmed)}`
+        `MCP Bearer token shape: segments=${segments} prefix=${prefix}… jwt=${jwtShaped}`
+      );
+    }
+    if (getRundeckAuthMode() === "jwt_bearer" && !jwtShaped) {
+      throw new OAuthError(
+        OAuthErrorCode.InvalidToken,
+        "Bearer must be a JWT for Rundeck (Google opaque access_token is not valid). " +
+          "In Claude Code: /mcp → Clear authentication → Authenticate (browser login) so token exchange uses this server's /oauth/token proxy."
       );
     }
     const payload = decodeJwtPayload(trimmed);
@@ -221,6 +230,21 @@ export async function loadMcpOAuthRuntime(resourceServerUrl: URL): Promise<McpOA
   };
 }
 
+function oauthGrantTypeFromFormBody(body: Buffer): string | undefined {
+  try {
+    return new URLSearchParams(body.toString("utf8")).get("grant_type") ?? undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function tokenShapeForLog(token: unknown): string {
+  if (typeof token !== "string" || token.length === 0) {
+    return "missing";
+  }
+  return isJwtFormat(token) ? "jwt" : "opaque";
+}
+
 /** Forward OAuth token requests to the IdP; expose JWT as access_token for MCP/Rundeck clients. */
 export async function proxyOAuthTokenRequest(
   req: IncomingMessage,
@@ -235,6 +259,7 @@ export async function proxyOAuthTokenRequest(
     chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
   }
   const body = Buffer.concat(chunks);
+  const grantType = oauthGrantTypeFromFormBody(body);
 
   const contentType = req.headers["content-type"];
   const headers: Record<string, string> = {
@@ -257,6 +282,9 @@ export async function proxyOAuthTokenRequest(
     upstream.headers.get("content-type") ?? "application/json; charset=utf-8";
 
   if (!upstream.ok) {
+    logger.info(
+      `OAuth token proxy: grant_type=${grantType ?? "?"} upstream=${upstream.status} (no swap)`
+    );
     return new Response(responseText, {
       status: upstream.status,
       headers: { "Content-Type": responseContentType },
@@ -265,7 +293,15 @@ export async function proxyOAuthTokenRequest(
 
   try {
     const json = JSON.parse(responseText) as Record<string, unknown>;
+    const upstreamAccessShape = tokenShapeForLog(json.access_token);
+    const hadIdToken = typeof json.id_token === "string" && json.id_token.length > 0;
     resolveMcpAccessToken(json);
+    const clientAccessShape = tokenShapeForLog(json.access_token);
+    logger.info(
+      `OAuth token proxy: grant_type=${grantType ?? "?"} upstream=200 ` +
+        `upstream_access=${upstreamAccessShape} had_id_token=${hadIdToken} ` +
+        `client_access=${clientAccessShape} swapped=${upstreamAccessShape !== clientAccessShape}`
+    );
     return new Response(JSON.stringify(json), {
       status: upstream.status,
       headers: { "Content-Type": "application/json; charset=utf-8" },
