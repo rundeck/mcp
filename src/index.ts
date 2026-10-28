@@ -136,6 +136,37 @@ function returnGuidance(guidanceContent: string): CallToolResult {
 // Initialize configuration
 configManager.initialize();
 
+function formatProcessTitle(clientLabel?: string): string {
+  const client = clientLabel || "connecting";
+  const sessionTag = process.env.MCP_SESSION_NAME ? ` (${process.env.MCP_SESSION_NAME})` : "";
+  const url = configManager.getConfig().rundeckUrl || "no-url";
+  // Keep "dist/index.js" in the title so Dockerfile's HEALTHCHECK
+  // (`pgrep -f "[d]ist/index\\.js"`) continues to match after argv is overwritten.
+  return `rundeck-mcp (dist/index.js) [${client}${sessionTag} @ ${url}]`;
+}
+
+let currentProcessTitle = "";
+
+/**
+ * Updates the process title only when the client identity or active instance changes.
+ */
+function syncSessionIdentity(serverInstance: Server): string {
+  const info = serverInstance.getClientVersion();
+  const clientLabel = info?.name
+    ? `${info.name}${info.version ? `/${info.version}` : ""}`
+    : undefined;
+  const title = formatProcessTitle(clientLabel);
+  if (title !== currentProcessTitle) {
+    process.title = title;
+    currentProcessTitle = title;
+    logger.info(`Session identity updated: ${title}`);
+  }
+  return title;
+}
+
+currentProcessTitle = formatProcessTitle();
+process.title = currentProcessTitle;
+
 const server = new Server(
   { name: "rundeck-docs", version: "1.0.0" },
   {
@@ -157,6 +188,10 @@ const server = new Server(
     },
   }
 );
+
+server.oninitialized = () => {
+  syncSessionIdentity(server);
+};
 
 // ── Resources ──────────────────────────────────────────────────────────────
 
@@ -487,8 +522,12 @@ server.setRequestHandler('tools/call', async (request, ctx: ServerContext): Prom
           return returnGuidance(getRundeckConnectGuidance(configManager.listInstanceNames()));
         }
         const parsed = rundeckConnectSchema.parse(args ?? {});
-        const connectResult = await rundeckConnect(parsed);
-        return { content: [{ type: "text", text: JSON.stringify(connectResult, null, 2) }] };
+        try {
+          const connectResult = await rundeckConnect(parsed);
+          return { content: [{ type: "text", text: JSON.stringify(connectResult, null, 2) }] };
+        } finally {
+          syncSessionIdentity(server);
+        }
       }
 
       default: {

@@ -82,6 +82,58 @@ describe("Integration: index.ts tools/list registry gating", () => {
 
     expect(toolNames).toContain("rundeck_connect");
   }, 15000);
+
+  it("synchronizes the session identity to no-url after a failed rundeck_connect switch", async () => {
+    const env = {
+      ...process.env,
+      RUNDECK_INSTANCES: JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "prod-token" },
+        },
+      }),
+    } as Record<string, string>;
+    delete env.MCP_SESSION_NAME;
+    const transport = new StdioClientTransport({
+      command: process.execPath,
+      args: [serverEntry],
+      env,
+      stderr: "pipe",
+    });
+    const stderrChunks: string[] = [];
+    const stderrClosed = new Promise<void>((resolve) => {
+      if (!transport.stderr) {
+        resolve();
+        return;
+      }
+      transport.stderr.on("data", (chunk: Buffer | string) => {
+        stderrChunks.push(chunk.toString());
+      });
+      transport.stderr.once("close", () => resolve());
+      transport.stderr.once("end", () => resolve());
+    });
+    const client = new Client({ name: "test-client", version: "0.0.0" });
+    await client.connect(transport);
+    let response;
+    try {
+      response = await client.callTool({
+        name: "rundeck_connect",
+        arguments: { instance: "unknown-instance" },
+      });
+    } finally {
+      await client.close();
+    }
+    await stderrClosed;
+
+    expect(response.isError).toBe(true);
+    const stderr = stderrChunks.join("");
+    expect(stderr).toContain(
+      "Session identity updated: rundeck-mcp (dist/index.js) [test-client/0.0.0 @ https://prod.example.com]"
+    );
+    expect(stderr).toContain(
+      "Session identity updated: rundeck-mcp (dist/index.js) [test-client/0.0.0 @ no-url]"
+    );
+  }, 15000);
 });
 
 // Regression coverage for the SDK v1->v2 migration: zod v4's z.toJSONSchema

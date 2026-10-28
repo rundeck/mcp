@@ -17,6 +17,8 @@ fail() { echo "  FAIL: $1"; FAILED=1; }
 cleanup() {
   docker rm -f smoke-run >/dev/null 2>&1 || true
   rm -rf /tmp/smoke-docs
+  rm -rf /tmp/smoke-git-shim
+  rm -f /tmp/smoke-anonymous-clone.log
 }
 trap cleanup EXIT
 
@@ -98,7 +100,47 @@ else
   fail "RUNDECK_DOCS_PATH did not skip the fetch"
 fi
 
-echo "== 5. Server answers a real MCP initialize request =="
+echo "== 5. Docs clone clears inherited GitHub credentials =="
+docker rm -f smoke-run >/dev/null 2>&1 || true
+mkdir -p /tmp/smoke-git-shim
+cat > /tmp/smoke-git-shim/git <<'EOF'
+#!/bin/sh
+
+case " $* " in
+  *" clone "*|*" sparse-checkout "*)
+    case " $* " in
+      *" -c credential.helper= "*)
+        ;;
+      *)
+        echo "docs fetch did not clear credential.helper" >&2
+        exit 91
+        ;;
+    esac
+    case " $* " in
+      *" -c http.https://github.com/.extraheader= "*)
+        ;;
+      *)
+        echo "docs fetch did not clear GitHub extra headers" >&2
+        exit 92
+        ;;
+    esac
+    ;;
+esac
+
+exec /usr/bin/git "$@"
+EOF
+chmod +x /tmp/smoke-git-shim/git
+docker run --name smoke-run \
+  -v /tmp/smoke-git-shim:/mcp-test-bin:ro \
+  -e PATH=/mcp-test-bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
+  "$IMAGE" >/tmp/smoke-anonymous-clone.log 2>&1
+if grep -q "docs fetched" /tmp/smoke-anonymous-clone.log; then
+  pass "docs clone cleared inherited GitHub credentials"
+else
+  fail "docs clone did not clear inherited GitHub credentials"
+fi
+
+echo "== 6. Server answers a real MCP initialize request =="
 docker rm -f smoke-run >/dev/null 2>&1
 RESPONSE="$(echo '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"smoke-test","version":"0.0.1"}}}' \
   | docker run -i --rm "$IMAGE" 2>/dev/null | head -1)"
