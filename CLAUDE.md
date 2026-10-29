@@ -121,6 +121,8 @@ Prompts are static objects with `name`, `description`, `arguments`, optional `ar
 | `MCP_OAUTH` | on when `OIDC_ISSUER` set | Set `0` to disable RFC 9728 metadata / 401 challenges (manual Bearer only) |
 | `MCP_OAUTH_PROXY_TOKEN` | on | MCP acts as the client-facing OAuth AS: proxies `/oauth/authorize`, `/oauth/callback` and `/oauth/token` to the IdP so Google can return a JWT `access_token` (see [docs/MCP-CLIENT-OAUTH.md](./docs/MCP-CLIENT-OAUTH.md)) |
 | `MCP_OAUTH_ALLOWED_REDIRECT_URIS` | — | Extra exact client redirect URIs the authorize proxy accepts besides loopback |
+| `MCP_OAUTH_CLIENT_ID` | — | Pre-registered IdP OAuth client id; enables RFC 7591 DCR at `POST /oauth/register` when the OAuth proxy is on |
+| `MCP_OAUTH_CLIENT_SECRET` | — | Optional IdP client secret injected on token exchange for DCR clients; never exposed to MCP clients |
 | `MCP_OAUTH_ACCESS_TOKEN` | `auto` | `auto` \| `id_token` \| `upstream` — which token MCP clients receive after OAuth code exchange |
 | `RUNDECK_API_VERSION` | `59` | API version appended to base URL |
 | `RUNDECK_API_TIMEOUT_MS` | `30000` | Timeout for `api_call`'s underlying `fetch` (also bounds `runner_create` and `acl_manage`, which call through it). Aborts and throws a distinct timeout error past this limit. Invalid/non-positive values fall back to the default with a logged warning. |

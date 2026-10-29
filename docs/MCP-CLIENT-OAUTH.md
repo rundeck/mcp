@@ -32,6 +32,8 @@ Optional:
 | `MCP_OAUTH_ACCESS_TOKEN` | `auto` | After code exchange: `auto` (swap opaque → `id_token`), `id_token`, or `upstream` — usually **omit** (defaults are correct) |
 | `MCP_OAUTH_RESOURCE_NAME` | `Rundeck MCP` | Display name in Protected Resource Metadata |
 | `MCP_OAUTH_SCOPES` | — | Comma/space-separated scopes advertised to clients |
+| `MCP_OAUTH_CLIENT_ID` | — | Pre-registered IdP OAuth client id; enables **Dynamic Client Registration** at `POST /oauth/register` (RFC 7591) when the OAuth proxy is on |
+| `MCP_OAUTH_CLIENT_SECRET` | — | Optional IdP client secret; injected server-side on token exchange for DCR clients (`token_endpoint_auth_method: none`) — **never** returned to MCP clients |
 | `MCP_REQUIRE_BEARER` | on in JWT/OAuth mode | Set `0` to allow unauthenticated MCP connect (tools still need a token for Rundeck) |
 
 When `OIDC_ISSUER` is set, the server loads `/.well-known/openid-configuration` at startup and serves:
@@ -80,6 +82,35 @@ Enterprise configs often require an explicit transport type:
 
 Use the same `OIDC_ISSUER` / `MCP_PUBLIC_URL` on the server process. If a gateway (e.g. Runlayer) sits in front of this server, set `MCP_PUBLIC_URL` to the URL the **client** uses to reach MCP, not only the upstream `:3000` bind address.
 
+## Registro sin client-id (DCR)
+
+When `MCP_OAUTH_CLIENT_ID` is set (and the OAuth proxy is enabled), the MCP server exposes **`POST /oauth/register`** and advertises `registration_endpoint` in OAuth/OIDC metadata. MCP clients (Claude Code, Cursor) can register dynamically and never receive the IdP **client secret** — it stays on the MCP process only.
+
+**Keycloak (local) example — server:**
+
+```bash
+export MCP_TRANSPORT=http
+export MCP_PUBLIC_URL=http://127.0.0.1:3000/mcp
+export OIDC_ISSUER=http://localhost:8080/realms/rundeck-dev
+export MCP_OAUTH_CLIENT_ID=rundeck
+export MCP_OAUTH_CLIENT_SECRET=rundeck-dev-secret   # optional if the IdP client is public
+export MCP_OAUTH_SCOPES="openid profile email"
+# … RUNDECK_URL, RUNDECK_AUTH_MODE=jwt_bearer, etc.
+npm run build && node dist/index.js
+```
+
+In Keycloak, create (or reuse) a confidential client `rundeck` whose **Valid redirect URI** includes **`http://127.0.0.1:3000/oauth/callback`** (the MCP callback registered with the IdP). End-user browser login still goes through the MCP authorize/callback proxy; the client's loopback redirect (e.g. `http://localhost:8765/callback`) is validated at `/oauth/register` and on `/oauth/authorize`, not in Keycloak.
+
+**Client — no `--client-id` / `--client-secret` / `--callback-port`:**
+
+```bash
+claude mcp add --transport http rundeck-local http://127.0.0.1:3000/mcp
+```
+
+All dynamically registered clients receive the same `client_id` (`MCP_OAUTH_CLIENT_ID`). That is intentional: the IdP always sees the MCP's callback URL and client id; the MCP maps each client's PKCE/state and redirect URI separately during authorize.
+
+**Manual registration (alternative):** still supported for Google and legacy setups — pass explicit client credentials to the MCP client, e.g. `claude mcp add --transport http --client-id … --client-secret --callback-port 8765 …`. The authorize proxy forwards a non-matching `client_id` to the IdP unchanged.
+
 ## Runlayer / gateways
 
 Proxies may attempt OAuth **Dynamic Client Registration** against your IdP. Auth0 often returns **404** on DCR — configure **manual OAuth** (client id/secret) on the gateway and Auth0 callback URLs for the gateway’s OAuth flow. Hosted gateways with `auth_type: oauth` may show an **Authenticate** button; local `runlayer run` proxies often attach tokens inside the CLI instead.
@@ -116,8 +147,14 @@ The access token **`aud`** (and issuer) must satisfy **Rundeck’s** Resource Se
 
 ## Inspector (manual token vs OAuth)
 
-- **OAuth:** omit `headers.Authorization` in `inspector.config.http.json`; the Inspector should follow the same 401 → browser flow when supported.
-- **Manual JWT:** keep `Authorization: Bearer …` for quick tests without OAuth.
+The Inspector’s **Streamable HTTP + OAuth** flow is easy to miss:
+
+1. Prefer **manual connect in the UI** (not only `--config`): transport **Streamable HTTP**, URL `http://127.0.0.1:3000/mcp`, connection type **Direct** (via-proxy mode has historically swallowed `401`s and never opened OAuth — see [inspector#358](https://github.com/modelcontextprotocol/inspector/issues/358)).
+2. Omit `headers.Authorization` in config so the client can react to `WWW-Authenticate`.
+3. If there is still no **Authenticate** / OAuth button, treat Inspector as **Bearer-only** for local JWT tests (`inspector.config.http.json` + token from Keycloak). Use **Cursor** or **Claude Code** for full browser OAuth against this server.
+
+- **OAuth (when the UI supports it):** `inspector.config.http.oauth.json`, no `Authorization` header.
+- **Manual JWT (reliable):** `inspector.config.http.json` with `Authorization: Bearer …` from your IdP token endpoint.
 
 ## Security notes
 

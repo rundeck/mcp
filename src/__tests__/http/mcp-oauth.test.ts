@@ -2,6 +2,8 @@ import {
   applyMcpTokenEndpointProxy,
   handleOAuthAuthorize,
   handleOAuthCallback,
+  handleOAuthRegister,
+  injectClientSecret,
   isAllowedClientRedirectUri,
   isJwtFormat,
   oauthMetadataFromDiscovery,
@@ -81,6 +83,43 @@ describe("applyMcpTokenEndpointProxy", () => {
     expect(applyMcpTokenEndpointProxy(meta, new URL("http://127.0.0.1:3000/mcp"))).toEqual(meta);
     process.env.MCP_OAUTH_PROXY_TOKEN = prev;
   });
+
+  it("includes registration_endpoint when MCP_OAUTH_CLIENT_ID is set", () => {
+    const prevProxy = process.env.MCP_OAUTH_PROXY_TOKEN;
+    const prevClient = process.env.MCP_OAUTH_CLIENT_ID;
+    process.env.MCP_OAUTH_PROXY_TOKEN = "1";
+    process.env.MCP_OAUTH_CLIENT_ID = "rundeck";
+    const meta = oauthMetadataFromDiscovery("https://auth.example.com", {
+      issuer: "https://auth.example.com",
+      authorization_endpoint: "https://auth.example.com/authorize",
+      token_endpoint: "https://auth.example.com/token",
+      registration_endpoint: "https://auth.example.com/register",
+    });
+    const proxied = applyMcpTokenEndpointProxy(meta, new URL("http://127.0.0.1:3000/mcp"));
+    expect(proxied.registration_endpoint).toBe("http://127.0.0.1:3000/oauth/register");
+    expect(proxied.token_endpoint_auth_methods_supported).toContain("none");
+    process.env.MCP_OAUTH_PROXY_TOKEN = prevProxy;
+    process.env.MCP_OAUTH_CLIENT_ID = prevClient;
+  });
+
+  it("strips IdP registration_endpoint when proxy is on but DCR is off", () => {
+    const prevProxy = process.env.MCP_OAUTH_PROXY_TOKEN;
+    const prevClient = process.env.MCP_OAUTH_CLIENT_ID;
+    process.env.MCP_OAUTH_PROXY_TOKEN = "1";
+    delete process.env.MCP_OAUTH_CLIENT_ID;
+    const meta = oauthMetadataFromDiscovery("https://auth.example.com", {
+      issuer: "https://auth.example.com",
+      authorization_endpoint: "https://auth.example.com/authorize",
+      token_endpoint: "https://auth.example.com/token",
+      registration_endpoint: "https://auth.example.com/register",
+    });
+    const proxied = applyMcpTokenEndpointProxy(meta, new URL("http://127.0.0.1:3000/mcp"));
+    expect(proxied.registration_endpoint).toBeUndefined();
+    process.env.MCP_OAUTH_PROXY_TOKEN = prevProxy;
+    if (prevClient !== undefined) {
+      process.env.MCP_OAUTH_CLIENT_ID = prevClient;
+    }
+  });
 });
 
 describe("isJwtFormat", () => {
@@ -102,7 +141,7 @@ describe("rundeckJwtPassthroughVerifier", () => {
   });
 });
 
-function proxyRuntime(): McpOAuthRuntime {
+function proxyRuntime(overrides: Partial<McpOAuthRuntime> = {}): McpOAuthRuntime {
   return {
     authMetadata: {
       oauthMetadata: {
@@ -118,6 +157,8 @@ function proxyRuntime(): McpOAuthRuntime {
     upstreamTokenEndpoint: "https://oauth2.googleapis.com/token",
     upstreamAuthorizationEndpoint: "https://accounts.google.com/o/oauth2/v2/auth",
     callbackUrl: "http://127.0.0.1:3000/oauth/callback",
+    dcrEnabled: false,
+    ...overrides,
   };
 }
 
@@ -210,5 +251,92 @@ describe("OAuth authorize/callback proxy", () => {
     const refresh = Buffer.from("grant_type=refresh_token&refresh_token=r");
     expect(rewriteTokenRequestRedirectUri(refresh, form, cb)).toBe(refresh);
     expect(rewriteTokenRequestRedirectUri(code, form, undefined)).toBe(code);
+  });
+
+  it("rewrites client_id to registered IdP client when DCR client omits or repeats it", () => {
+    const runtime = proxyRuntime({ registeredClientId: "rundeck", dcrEnabled: true });
+    const authorize = handleOAuthAuthorize(
+      new URL(
+        "http://127.0.0.1:3000/oauth/authorize?response_type=code" +
+          "&redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Fcallback&scope=openid"
+      ),
+      runtime
+    );
+    const upstream = new URL(authorize.headers.get("Location")!);
+    expect(upstream.searchParams.get("client_id")).toBe("rundeck");
+
+    const legacy = handleOAuthAuthorize(
+      new URL(
+        "http://127.0.0.1:3000/oauth/authorize?client_id=legacy-manual" +
+          "&redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Fcallback"
+      ),
+      runtime
+    );
+    expect(new URL(legacy.headers.get("Location")!).searchParams.get("client_id")).toBe(
+      "legacy-manual"
+    );
+  });
+});
+
+describe("OAuth dynamic client registration", () => {
+  const dcrRuntime = () =>
+    proxyRuntime({ registeredClientId: "rundeck", dcrEnabled: true });
+
+  it("returns 201 without client_secret for loopback redirect_uris", async () => {
+    const res = handleOAuthRegister(
+      { redirect_uris: ["http://localhost:8765/callback"], client_name: "Claude" },
+      dcrRuntime()
+    );
+    expect(res.status).toBe(201);
+    const body = JSON.parse(await res.text()) as Record<string, unknown>;
+    expect(body.client_id).toBe("rundeck");
+    expect(body.token_endpoint_auth_method).toBe("none");
+    expect(body.client_secret).toBeUndefined();
+    expect(body.redirect_uris).toEqual(["http://localhost:8765/callback"]);
+    expect(body.client_name).toBe("Claude");
+  });
+
+  it("rejects disallowed redirect_uris", async () => {
+    const res = handleOAuthRegister(
+      { redirect_uris: ["https://evil.example.com/cb"] },
+      dcrRuntime()
+    );
+    expect(res.status).toBe(400);
+    expect(JSON.parse(await res.text())).toEqual({ error: "invalid_redirect_uri" });
+  });
+});
+
+describe("injectClientSecret", () => {
+  const form = "application/x-www-form-urlencoded";
+  const id = "rundeck";
+  const secret = "rundeck-dev-secret";
+
+  it("injects secret for authorization_code when client_id matches", () => {
+    const body = Buffer.from(
+      "grant_type=authorization_code&code=c&client_id=rundeck&redirect_uri=x"
+    );
+    const out = new URLSearchParams(injectClientSecret(body, form, id, secret).toString());
+    expect(out.get("client_secret")).toBe(secret);
+  });
+
+  it("injects secret for refresh_token", () => {
+    const body = Buffer.from("grant_type=refresh_token&refresh_token=r&client_id=rundeck");
+    expect(
+      new URLSearchParams(injectClientSecret(body, form, id, secret).toString()).get(
+        "client_secret"
+      )
+    ).toBe(secret);
+  });
+
+  it("does not inject when client_secret is already present", () => {
+    const body = Buffer.from(
+      "grant_type=authorization_code&client_id=rundeck&client_secret=existing"
+    );
+    expect(injectClientSecret(body, form, id, secret)).toBe(body);
+  });
+
+  it("does not inject for a different client_id", () => {
+    const body = Buffer.from("grant_type=authorization_code&client_id=other-client");
+    expect(injectClientSecret(body, form, id, secret)).toBe(body);
   });
 });

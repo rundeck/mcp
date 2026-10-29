@@ -18,15 +18,18 @@ import { isOidcDiscoveryEnabled, serveOidcDiscovery } from "./oidc-discovery-pro
 import {
   OAUTH_AUTHORIZE_PATH,
   OAUTH_CALLBACK_PATH,
+  OAUTH_REGISTER_PATH,
   OAUTH_TOKEN_PATH,
   handleOAuthAuthorize,
   handleOAuthCallback,
+  handleOAuthRegister,
   isMcpClientOAuthEnabled,
   isMcpOAuthProxyEnabled,
   loadMcpOAuthRuntime,
-  mcpOAuthProxyMetadataOverrides,
+  mcpOAuthDiscoveryOverrides,
   missingBearerChallenge,
   proxyOAuthTokenRequest,
+  readOAuthRegisterBody,
   serveMcpOAuthMetadata,
   verifyMcpRequestBearer,
   writeWebResponse,
@@ -151,9 +154,26 @@ export async function startHttpServer(): Promise<HttpServerHandle> {
         const tokenResponse = await proxyOAuthTokenRequest(
           req,
           mcpOAuth.upstreamTokenEndpoint,
-          mcpOAuth.callbackUrl
+          mcpOAuth.callbackUrl,
+          mcpOAuth
         );
         await writeWebResponse(res, tokenResponse);
+        return;
+      }
+
+      if (mcpOAuth && url.pathname === OAUTH_REGISTER_PATH) {
+        if (req.method?.toUpperCase() !== "POST") {
+          res.writeHead(405, { "content-type": "text/plain" });
+          res.end("Method Not Allowed");
+          return;
+        }
+        if (!mcpOAuth.dcrEnabled) {
+          res.writeHead(404, { "content-type": "application/json" });
+          res.end(JSON.stringify({ error: "not_found" }));
+          return;
+        }
+        const registerBody = await readOAuthRegisterBody(req);
+        await writeWebResponse(res, handleOAuthRegister(registerBody, mcpOAuth));
         return;
       }
 
@@ -169,7 +189,7 @@ export async function startHttpServer(): Promise<HttpServerHandle> {
         const handled = await serveOidcDiscovery(url.pathname, res, {
           overrides:
             mcpOAuth && isMcpOAuthProxyEnabled()
-              ? mcpOAuthProxyMetadataOverrides(resourceServerUrl)
+              ? mcpOAuthDiscoveryOverrides(resourceServerUrl)
               : undefined,
         });
         if (!handled) {

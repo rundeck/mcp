@@ -34,11 +34,33 @@ export interface McpOAuthRuntime {
   upstreamAuthorizationEndpoint: string;
   /** MCP `/oauth/callback` URL registered with the IdP; undefined when the proxy is off. */
   callbackUrl?: string;
+  /** Pre-registered IdP client for RFC 7591-style registration at `/oauth/register`. */
+  registeredClientId?: string;
+  /** IdP client secret injected server-side on token exchange (never exposed to MCP clients). */
+  registeredClientSecret?: string;
+  /** True when proxy is on and `MCP_OAUTH_CLIENT_ID` is set. */
+  dcrEnabled: boolean;
 }
 
 export const OAUTH_AUTHORIZE_PATH = "/oauth/authorize";
 export const OAUTH_CALLBACK_PATH = "/oauth/callback";
 export const OAUTH_TOKEN_PATH = "/oauth/token";
+export const OAUTH_REGISTER_PATH = "/oauth/register";
+
+export function mcpOAuthRegisteredClientId(): string | undefined {
+  const id = process.env.MCP_OAUTH_CLIENT_ID?.trim();
+  return id && id.length > 0 ? id : undefined;
+}
+
+export function mcpOAuthRegisteredClientSecret(): string | undefined {
+  const secret = process.env.MCP_OAUTH_CLIENT_SECRET?.trim();
+  return secret && secret.length > 0 ? secret : undefined;
+}
+
+/** DCR at `/oauth/register` when OAuth proxy is on and `MCP_OAUTH_CLIENT_ID` is configured. */
+export function isMcpDcrEnabled(): boolean {
+  return isMcpOAuthProxyEnabled() && !!mcpOAuthRegisteredClientId();
+}
 
 export function mcpOAuthTokenEndpointUrl(resourceServerUrl: URL): string {
   return `${resourceServerUrl.origin}${OAUTH_TOKEN_PATH}`;
@@ -68,6 +90,43 @@ export function mcpOAuthProxyMetadataOverrides(resourceServerUrl: URL): {
     token_endpoint: `${origin}${OAUTH_TOKEN_PATH}`,
     authorization_response_iss_parameter_supported: true,
   };
+}
+
+const DCR_TOKEN_AUTH_METHODS = ["none", "client_secret_post", "client_secret_basic"] as const;
+
+/** Proxy + optional DCR fields for OIDC discovery and OAuth AS metadata. */
+export function mcpOAuthDiscoveryOverrides(resourceServerUrl: URL): Record<string, unknown> {
+  const merged: Record<string, unknown> = {
+    ...mcpOAuthProxyMetadataOverrides(resourceServerUrl),
+  };
+  if (isMcpDcrEnabled()) {
+    merged.registration_endpoint = `${resourceServerUrl.origin}${OAUTH_REGISTER_PATH}`;
+    merged.token_endpoint_auth_methods_supported = [...DCR_TOKEN_AUTH_METHODS];
+  } else if (isMcpOAuthProxyEnabled()) {
+    merged.registration_endpoint = undefined;
+  }
+  return merged;
+}
+
+function applyProxyAndDcrToOAuthMetadata(
+  metadata: OAuthMetadata,
+  resourceServerUrl: URL
+): OAuthMetadata {
+  const overrides = mcpOAuthDiscoveryOverrides(resourceServerUrl);
+  const next: OAuthMetadata = {
+    ...metadata,
+    issuer: overrides.issuer as string,
+    authorization_endpoint: overrides.authorization_endpoint as string,
+    token_endpoint: overrides.token_endpoint as string,
+    authorization_response_iss_parameter_supported: true,
+  };
+  if (isMcpDcrEnabled()) {
+    next.registration_endpoint = overrides.registration_endpoint as string;
+    next.token_endpoint_auth_methods_supported = [...DCR_TOKEN_AUTH_METHODS];
+  } else if (isMcpOAuthProxyEnabled()) {
+    delete next.registration_endpoint;
+  }
+  return next;
 }
 
 /** Three-segment base64url shape; does not verify signature. */
@@ -107,10 +166,7 @@ export function applyMcpTokenEndpointProxy(
   if (!isMcpOAuthProxyEnabled()) {
     return metadata;
   }
-  return {
-    ...metadata,
-    ...mcpOAuthProxyMetadataOverrides(resourceServerUrl),
-  };
+  return applyProxyAndDcrToOAuthMetadata(metadata, resourceServerUrl);
 }
 
 function issuerBase(): string | undefined {
@@ -260,6 +316,15 @@ export async function loadMcpOAuthRuntime(resourceServerUrl: URL): Promise<McpOA
           ` (register ${callbackUrl} as a redirect URI with the IdP)`
         : "")
   );
+  const registeredClientId = mcpOAuthRegisteredClientId();
+  const registeredClientSecret = mcpOAuthRegisteredClientSecret();
+  const dcrEnabled = isMcpDcrEnabled();
+  if (dcrEnabled) {
+    logger.info(
+      `MCP OAuth DCR enabled at ${resourceServerUrl.origin}${OAUTH_REGISTER_PATH} ` +
+        `(client_id=${registeredClientId}; IdP secret stays on server)`
+    );
+  }
   return {
     authMetadata,
     resourceMetadataUrl,
@@ -267,6 +332,9 @@ export async function loadMcpOAuthRuntime(resourceServerUrl: URL): Promise<McpOA
     upstreamTokenEndpoint,
     upstreamAuthorizationEndpoint,
     callbackUrl,
+    registeredClientId,
+    registeredClientSecret,
+    dcrEnabled,
   };
 }
 
@@ -354,7 +422,77 @@ export function handleOAuthAuthorize(url: URL, runtime: McpOAuthRuntime): Respon
   }
   upstream.searchParams.set("redirect_uri", runtime.callbackUrl);
   upstream.searchParams.set("state", key);
+  if (runtime.registeredClientId) {
+    const incomingClientId = upstream.searchParams.get("client_id");
+    if (!incomingClientId || incomingClientId === runtime.registeredClientId) {
+      upstream.searchParams.set("client_id", runtime.registeredClientId);
+    }
+  }
   return new Response(null, { status: 302, headers: { Location: upstream.toString() } });
+}
+
+export interface OAuthRegisterRequestBody {
+  redirect_uris?: unknown;
+  client_name?: unknown;
+}
+
+/** RFC 7591 registration stub: all dynamic clients share the pre-registered IdP client_id. */
+export function handleOAuthRegister(
+  body: OAuthRegisterRequestBody,
+  runtime: McpOAuthRuntime
+): Response {
+  if (!runtime.dcrEnabled || !runtime.registeredClientId) {
+    return new Response(JSON.stringify({ error: "not_found" }), {
+      status: 404,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  const redirectUris = body.redirect_uris;
+  if (!Array.isArray(redirectUris) || redirectUris.length === 0) {
+    return new Response(JSON.stringify({ error: "invalid_redirect_uri" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  for (const uri of redirectUris) {
+    if (typeof uri !== "string" || !isAllowedClientRedirectUri(uri)) {
+      return new Response(JSON.stringify({ error: "invalid_redirect_uri" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  }
+  const clientName =
+    typeof body.client_name === "string" && body.client_name.length > 0
+      ? body.client_name
+      : undefined;
+  return new Response(
+    JSON.stringify({
+      client_id: runtime.registeredClientId,
+      client_id_issued_at: Math.floor(Date.now() / 1000),
+      redirect_uris: redirectUris,
+      grant_types: ["authorization_code", "refresh_token"],
+      response_types: ["code"],
+      token_endpoint_auth_method: "none",
+      ...(clientName ? { client_name: clientName } : {}),
+    }),
+    { status: 201, headers: { "Content-Type": "application/json; charset=utf-8" } }
+  );
+}
+
+export async function readOAuthRegisterBody(req: IncomingMessage): Promise<OAuthRegisterRequestBody> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of req) {
+    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+  }
+  if (chunks.length === 0) {
+    return {};
+  }
+  try {
+    return JSON.parse(Buffer.concat(chunks).toString("utf8")) as OAuthRegisterRequestBody;
+  } catch {
+    return {};
+  }
 }
 
 /**
@@ -409,6 +547,42 @@ export function rewriteTokenRequestRedirectUri(
   return Buffer.from(params.toString(), "utf8");
 }
 
+/**
+ * Inject IdP client_secret for DCR clients that use `token_endpoint_auth_method: none`.
+ * Skips when the client already sent a secret or Authorization header (handled by caller).
+ */
+export function injectClientSecret(
+  body: Buffer,
+  contentType: string | undefined,
+  registeredClientId: string | undefined,
+  clientSecret: string | undefined
+): Buffer {
+  if (
+    !registeredClientId ||
+    !clientSecret ||
+    !contentType?.toLowerCase().includes("application/x-www-form-urlencoded")
+  ) {
+    return body;
+  }
+  const params = new URLSearchParams(body.toString("utf8"));
+  const grantType = params.get("grant_type");
+  if (grantType !== "authorization_code" && grantType !== "refresh_token") {
+    return body;
+  }
+  if (params.has("client_secret")) {
+    return body;
+  }
+  const clientId = params.get("client_id");
+  if (clientId && clientId !== registeredClientId) {
+    return body;
+  }
+  if (!clientId) {
+    params.set("client_id", registeredClientId);
+  }
+  params.set("client_secret", clientSecret);
+  return Buffer.from(params.toString(), "utf8");
+}
+
 function oauthGrantTypeFromFormBody(body: Buffer): string | undefined {
   try {
     return new URLSearchParams(body.toString("utf8")).get("grant_type") ?? undefined;
@@ -428,7 +602,8 @@ function tokenShapeForLog(token: unknown): string {
 export async function proxyOAuthTokenRequest(
   req: IncomingMessage,
   upstreamTokenEndpoint: string,
-  callbackUrl?: string
+  callbackUrl?: string,
+  runtime?: Pick<McpOAuthRuntime, "registeredClientId" | "registeredClientSecret">
 ): Promise<Response> {
   if (req.method?.toUpperCase() !== "POST") {
     return new Response("Method Not Allowed", { status: 405 });
@@ -439,18 +614,27 @@ export async function proxyOAuthTokenRequest(
     chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
   }
   const contentType = req.headers["content-type"];
-  const body = rewriteTokenRequestRedirectUri(
-    Buffer.concat(chunks),
-    typeof contentType === "string" ? contentType : undefined,
-    callbackUrl
-  );
+  const contentTypeStr = typeof contentType === "string" ? contentType : undefined;
+  let body = rewriteTokenRequestRedirectUri(Buffer.concat(chunks), contentTypeStr, callbackUrl);
+  const authorization = req.headers.authorization;
+  if (
+    typeof authorization !== "string" &&
+    runtime?.registeredClientId &&
+    runtime.registeredClientSecret
+  ) {
+    body = injectClientSecret(
+      body,
+      contentTypeStr,
+      runtime.registeredClientId,
+      runtime.registeredClientSecret
+    );
+  }
   const grantType = oauthGrantTypeFromFormBody(body);
 
   const headers: Record<string, string> = {
     Accept: "application/json",
-    ...(typeof contentType === "string" ? { "Content-Type": contentType } : {}),
+    ...(contentTypeStr ? { "Content-Type": contentTypeStr } : {}),
   };
-  const authorization = req.headers.authorization;
   if (typeof authorization === "string") {
     headers.Authorization = authorization;
   }
