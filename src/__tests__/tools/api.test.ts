@@ -147,6 +147,27 @@ describe("API Tools", () => {
       });
     });
 
+    it("sends configured extra headers, with built-in headers taking precedence", async () => {
+      process.env.RUNDECK_EXTRA_HEADERS = JSON.stringify({ "CF-Access-Client-Id": "id" });
+      configManager.initialize();
+      configManager.setRundeckConnection("https://test.rundeck.com", "test-token");
+
+      mockFetch.mockResolvedValueOnce({
+        status: 200,
+        headers: { get: () => null, forEach: () => {} } as unknown as Headers,
+        text: async () => "",
+      } as unknown as Response);
+
+      const { rundeckApiCall } = await import("../../tools/api.js");
+      await rundeckApiCall({ endpoint: "/projects" });
+      delete process.env.RUNDECK_EXTRA_HEADERS;
+
+      expect((mockFetch.mock.calls[0][1] as RequestInit).headers).toMatchObject({
+        "CF-Access-Client-Id": "id",
+        "X-Rundeck-Auth-Token": "test-token",
+      });
+    });
+
     it("should include request body for POST requests", async () => {
       configManager.setRundeckConnection(
         "https://test.rundeck.com",

@@ -5,6 +5,7 @@
 import { existsSync, realpathSync } from "fs";
 import { join, resolve } from "path";
 import { logger } from "./utils/logger.js";
+import { ExtraHeaders, mergeExtraHeaders, validateExtraHeaders } from "./utils/headers.js";
 
 export interface RundeckConfig {
   rundeckUrl?: string;
@@ -12,6 +13,8 @@ export interface RundeckConfig {
   apiVersion: string;
   docsPath: string;
   apiTimeoutMs: number;
+  /** Extra HTTP headers sent on every Rundeck request: RUNDECK_EXTRA_HEADERS merged with the active instance's "headers". */
+  extraHeaders: ExtraHeaders;
 }
 
 const DEFAULT_API_TIMEOUT_MS = 30_000;
@@ -19,6 +22,7 @@ const DEFAULT_API_TIMEOUT_MS = 30_000;
 interface RundeckInstanceEntry {
   url: string;
   token: string;
+  headers?: ExtraHeaders;
 }
 
 interface RundeckInstanceRegistry {
@@ -31,9 +35,44 @@ class ConfigManager {
     apiVersion: "59",
     docsPath: this.findDocsPath(),
     apiTimeoutMs: DEFAULT_API_TIMEOUT_MS,
+    extraHeaders: {},
   };
 
   private instanceRegistry: RundeckInstanceRegistry | null = null;
+
+  // Kept separate so the effective headers can be recomputed whenever the
+  // active instance changes: global ones always apply, instance ones layer on top.
+  private globalExtraHeaders: ExtraHeaders = {};
+  private instanceExtraHeaders: ExtraHeaders = {};
+
+  /**
+   * Parses RUNDECK_EXTRA_HEADERS. Anything malformed or unsafe is dropped
+   * whole (never partially applied) with a logged error that names the problem
+   * but never quotes the input — header values are often secrets.
+   */
+  private parseGlobalExtraHeaders(): ExtraHeaders {
+    const raw = process.env.RUNDECK_EXTRA_HEADERS;
+    if (!raw) {
+      return {};
+    }
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      logger.error("RUNDECK_EXTRA_HEADERS is not valid JSON — ignoring it");
+      return {};
+    }
+    const result = validateExtraHeaders(parsed, "RUNDECK_EXTRA_HEADERS");
+    if (!result.ok) {
+      logger.error(`${result.error} — ignoring it`);
+      return {};
+    }
+    return result.headers;
+  }
+
+  private applyExtraHeaders(): void {
+    this.config.extraHeaders = mergeExtraHeaders(this.globalExtraHeaders, this.instanceExtraHeaders);
+  }
 
   /** Parses RUNDECK_API_TIMEOUT_MS, falling back to the default on anything non-positive or non-numeric. */
   private parseApiTimeoutMs(): number {
@@ -87,6 +126,9 @@ class ConfigManager {
     this.config.apiToken = process.env.RUNDECK_TOKEN;
     this.config.apiVersion = process.env.RUNDECK_API_VERSION || "59";
     this.config.apiTimeoutMs = this.parseApiTimeoutMs();
+    this.globalExtraHeaders = this.parseGlobalExtraHeaders();
+    this.instanceExtraHeaders = {};
+    this.applyExtraHeaders();
 
     // Only override docs path if explicitly set
     if (process.env.RUNDECK_DOCS_PATH) {
@@ -171,9 +213,20 @@ class ConfigManager {
         );
         return;
       }
+      const rawHeaders = (entry as RundeckInstanceEntry).headers;
+      let headers: ExtraHeaders | undefined;
+      if (rawHeaders !== undefined) {
+        const headerCheck = validateExtraHeaders(rawHeaders, `RUNDECK_INSTANCES entry "${name}" "headers"`);
+        if (!headerCheck.ok) {
+          logger.error(`${headerCheck.error} — ignoring RUNDECK_INSTANCES`);
+          return;
+        }
+        headers = headerCheck.headers;
+      }
       validated[name] = {
         url: (entry as RundeckInstanceEntry).url,
         token: (entry as RundeckInstanceEntry).token,
+        headers,
       };
     }
 
@@ -197,7 +250,12 @@ class ConfigManager {
     this.instanceRegistry = { default: defaultName, instances: validated };
 
     if (defaultName !== undefined) {
-      this.setRundeckConnection(validated[defaultName].url, validated[defaultName].token);
+      this.setRundeckConnection(
+        validated[defaultName].url,
+        validated[defaultName].token,
+        undefined,
+        validated[defaultName].headers
+      );
       logger.info(`Connected to default Rundeck instance "${defaultName}" from RUNDECK_INSTANCES`);
     } else {
       // No default means no instance should be active until the user picks
@@ -238,7 +296,7 @@ class ConfigManager {
         }.`,
       };
     }
-    this.setRundeckConnection(entry.url, entry.token);
+    this.setRundeckConnection(entry.url, entry.token, undefined, entry.headers);
     return { ok: true };
   }
 
@@ -246,6 +304,9 @@ class ConfigManager {
   clearConnection(): void {
     this.config.rundeckUrl = undefined;
     this.config.apiToken = undefined;
+    // Instance headers can be credentials for that instance's proxy — never carry them over.
+    this.instanceExtraHeaders = {};
+    this.applyExtraHeaders();
   }
 
   /**
@@ -260,6 +321,8 @@ class ConfigManager {
     this.config.apiToken = process.env.RUNDECK_TOKEN || this.config.apiToken;
     this.config.apiVersion = process.env.RUNDECK_API_VERSION || this.config.apiVersion;
     this.config.apiTimeoutMs = this.parseApiTimeoutMs();
+    this.globalExtraHeaders = this.parseGlobalExtraHeaders();
+    this.applyExtraHeaders();
 
     if (!hadToken && this.config.apiToken) {
       logger.info("RUNDECK_TOKEN found in environment and loaded");
@@ -275,13 +338,18 @@ class ConfigManager {
   setRundeckConnection(
     url: string,
     token: string,
-    apiVersion?: string
+    apiVersion?: string,
+    instanceHeaders: ExtraHeaders = {}
   ): void {
     this.config.rundeckUrl = url;
     this.config.apiToken = token;
     if (apiVersion) {
       this.config.apiVersion = apiVersion;
     }
+    // Always replaced, so switching connections never leaves the previous
+    // instance's headers attached to the new one's requests.
+    this.instanceExtraHeaders = instanceHeaders;
+    this.applyExtraHeaders();
   }
 
   /**

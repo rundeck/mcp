@@ -67,6 +67,13 @@ The server supports the following environment variables:
   - Invalid or non-positive values fall back to the default with a logged warning.
   - Example: `60000`
 
+- **`RUNDECK_EXTRA_HEADERS`** (optional): JSON object of extra HTTP headers sent on every request to Rundeck, for deployments behind a proxy that needs them (e.g. Cloudflare Access).
+  - Example: `{"CF-Access-Client-Id": "<id>", "CF-Access-Client-Secret": "<secret>"}`
+  - Names must be valid HTTP header names and values printable ASCII with no line breaks.
+  - **Server-managed headers cannot be overridden.** The server always sets these itself, so they are rejected if you try to set them, both here and in a per-instance `headers` object: `X-Rundeck-Auth-Token` (your API token), `Content-Type`, `Accept`, `User-Agent`, `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Keep-Alive`, `Proxy-Authorization`, `Proxy-Connection`, `TE`, `Trailer`, `Upgrade` and `Expect`. Names are matched case-insensitively. Other headers, including `Authorization` and `Cookie`, are allowed.
+  - If any header is invalid (including an attempt to set a server-managed one), the whole variable is ignored and an error is logged (values are never logged).
+  - With `RUNDECK_INSTANCES`, these apply to every instance; an instance can add to or replace these global headers with its own `headers` field (see below).
+
 - **`RUNDECK_INSTANCES`** (optional): JSON registry of multiple named Rundeck instances, for switching between them (e.g. prod/staging) mid-session without restarting the server. Most users only ever talk to one Rundeck instance and don't need this — see [Multiple Rundeck Instances](#multiple-rundeck-instances-optional) below if you do.
 
 - **`RUNDECK_DOCS_PATH`** (optional): Path to a Rundeck documentation directory on disk.
@@ -124,7 +131,7 @@ If you need to switch between more than one Rundeck instance (e.g. prod and stag
 ```
 
 - `default` is which instance the server connects to on startup.
-- Every entry needs both `url` and `token`.
+- Every entry needs both `url` and `token`. An entry may also have a `headers` object (same rules as `RUNDECK_EXTRA_HEADERS`) of extra HTTP headers for that instance only; they are layered over `RUNDECK_EXTRA_HEADERS` (same name, case-insensitive, wins) and dropped when you switch to another instance. The same server-managed headers cannot be set here either, and an invalid `headers` object rejects the whole registry.
 - Once `RUNDECK_INSTANCES` is set, an extra tool, `rundeck_connect`, becomes available — ask your assistant to "use staging" and every subsequent `api_call`/`job_create`/etc. call uses that instance's URL and token.
 - The registry is only read once, at process start. To rotate a token or add an instance, edit the JSON and relaunch.
 
