@@ -53,7 +53,7 @@
     "ip-address": "10.7.4",
     "@hono/node-server": "2.1.5",
     "rolldown": "1.2.14",
-    "es-toolkit": "1.52.0"
+    "es-toolkit": "1.53.0"
   },
   "devDependencies": {
     "@modelcontextprotocol/inspector": "2.11.0",
