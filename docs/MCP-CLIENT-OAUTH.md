@@ -34,6 +34,8 @@ Optional:
 | `MCP_OAUTH_SCOPES` | — | Comma/space-separated scopes advertised to clients |
 | `MCP_OAUTH_CLIENT_ID` | — | Pre-registered IdP OAuth client id; enables **Dynamic Client Registration** at `POST /oauth/register` (RFC 7591) when the OAuth proxy is on |
 | `MCP_OAUTH_CLIENT_SECRET` | — | Optional IdP client secret; injected server-side on token exchange for DCR clients (`token_endpoint_auth_method: none`) — **never** returned to MCP clients |
+| `MCP_OAUTH_ISSUER_DISCOVERY` | — | Set `rundeck` to read the issuer (and scopes) from Rundeck's Protected Resource Metadata at `RUNDECK_URL/.well-known/oauth-protected-resource` instead of setting `OIDC_ISSUER`. An explicit `OIDC_ISSUER` always wins. HTTPS only unless `MCP_DANGEROUSLY_ALLOW_INSECURE_ISSUER_URL=1` |
+| `MCP_OAUTH_ALLOWED_ISSUERS` | — | Comma/space-separated issuers that discovery may return; anything else fails startup |
 | `MCP_REQUIRE_BEARER` | on in JWT/OAuth mode | Set `0` to allow unauthenticated MCP connect (tools still need a token for Rundeck) |
 
 When `OIDC_ISSUER` is set, the server loads `/.well-known/openid-configuration` at startup and serves:
@@ -42,6 +44,12 @@ When `OIDC_ISSUER` is set, the server loads `/.well-known/openid-configuration` 
 - `GET /.well-known/oauth-authorization-server` — Authorization Server metadata (RFC 8414 snapshot)
 
 Unauthenticated `POST /mcp` returns **401** with `WWW-Authenticate: Bearer … resource_metadata="…"`.
+
+## Discovering the issuer from Rundeck
+
+With `MCP_OAUTH_ISSUER_DISCOVERY=rundeck` and no `OIDC_ISSUER`, the server reads Rundeck's [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) Protected Resource Metadata at startup, so the IdP is configured once, in Rundeck. It tries `/.well-known/oauth-protected-resource/<RUNDECK_URL path>` and then `/.well-known/oauth-protected-resource`, without following redirects, and uses the first `authorization_servers` entry. The document is public and holds no credentials; the client ID and secret still come from `MCP_OAUTH_CLIENT_ID` / `MCP_OAUTH_CLIENT_SECRET`.
+
+Rundeck does not publish this document yet — until it does, startup fails with a message pointing back to `OIDC_ISSUER`.
 
 ## Cursor configuration
 
