@@ -66,10 +66,11 @@ describe("rundeck auth discovery", () => {
     expect(isRundeckIssuerDiscoveryEnabled()).toBe(true);
   });
 
-  it("tries the path-inserted metadata URL before the origin root", () => {
+  it("tries the path-inserted URL, the origin root, then the context path", () => {
     expect(rundeckMetadataUrls(new URL("https://rd.example.com/rundeck/"))).toEqual([
       "https://rd.example.com/.well-known/oauth-protected-resource/rundeck",
       "https://rd.example.com/.well-known/oauth-protected-resource",
+      "https://rd.example.com/rundeck/.well-known/oauth-protected-resource",
     ]);
     expect(rundeckMetadataUrls(RUNDECK)).toEqual([
       "https://rundeck.example.com/.well-known/oauth-protected-resource",
@@ -133,6 +134,20 @@ describe("rundeck auth discovery", () => {
     expect(mockFetch).toHaveBeenCalledTimes(2);
     expect(result.metadataUrl).toBe(
       "https://rundeck.example.com/.well-known/oauth-protected-resource"
+    );
+  });
+
+  it("finds metadata served inside a servlet context path", async () => {
+    useRundeckUrl("https://rundeck.example.com/rundeck");
+    mockFetch
+      .mockResolvedValueOnce(jsonResponse(404, {}))
+      .mockResolvedValueOnce(jsonResponse(404, {}))
+      .mockResolvedValueOnce(jsonResponse(200, { ...METADATA, resource: "https://rundeck.example.com/rundeck" }));
+
+    const result = await discoverRundeckAuth();
+
+    expect(result.metadataUrl).toBe(
+      "https://rundeck.example.com/rundeck/.well-known/oauth-protected-resource"
     );
   });
 

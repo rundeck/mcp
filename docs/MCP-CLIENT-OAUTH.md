@@ -47,7 +47,7 @@ Unauthenticated `POST /mcp` returns **401** with `WWW-Authenticate: Bearer … r
 
 ## Discovering the issuer from Rundeck
 
-With `MCP_OAUTH_ISSUER_DISCOVERY=rundeck` and no `OIDC_ISSUER`, the server reads Rundeck's [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) Protected Resource Metadata at startup, so the IdP is configured once, in Rundeck. It tries `/.well-known/oauth-protected-resource/<RUNDECK_URL path>` and then `/.well-known/oauth-protected-resource`, without following redirects, and uses the first `authorization_servers` entry. The document is public and holds no credentials; the client ID and secret still come from `MCP_OAUTH_CLIENT_ID` / `MCP_OAUTH_CLIENT_SECRET`.
+With `MCP_OAUTH_ISSUER_DISCOVERY=rundeck` and no `OIDC_ISSUER`, the server reads Rundeck's [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) Protected Resource Metadata at startup, so the IdP is configured once, in Rundeck. It tries `/.well-known/oauth-protected-resource/<RUNDECK_URL path>`, then `/.well-known/oauth-protected-resource`, then `<RUNDECK_URL path>/.well-known/oauth-protected-resource` (Rundeck under a servlet context path can only serve it there), without following redirects, and uses the first `authorization_servers` entry. The document is public and holds no credentials; the client ID and secret still come from `MCP_OAUTH_CLIENT_ID` / `MCP_OAUTH_CLIENT_SECRET`.
 
 Rundeck does not publish this document yet — until it does, startup fails with a message pointing back to `OIDC_ISSUER`.
 

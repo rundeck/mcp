@@ -58,8 +58,10 @@ function requireSecureUrl(raw: string, what: string): URL {
 }
 
 /**
- * Candidate metadata URLs for a resource (RFC 9728 §3.1): the path-inserted form first
- * (`/.well-known/oauth-protected-resource/<path>`), then the origin root.
+ * Candidate metadata URLs for a resource: the RFC 9728 §3.1 path-inserted form first
+ * (`/.well-known/oauth-protected-resource/<path>`), then the origin root. Rundeck under a
+ * servlet context path (e.g. `/rundeck`) can only serve the document inside that path, so
+ * `<path>/.well-known/oauth-protected-resource` is tried last.
  */
 export function rundeckMetadataUrls(rundeckUrl: URL): string[] {
   const path = stripTrailingSlash(rundeckUrl.pathname);
@@ -68,6 +70,9 @@ export function rundeckMetadataUrls(rundeckUrl: URL): string[] {
     urls.push(`${rundeckUrl.origin}${RUNDECK_PRM_WELL_KNOWN}${path}`);
   }
   urls.push(`${rundeckUrl.origin}${RUNDECK_PRM_WELL_KNOWN}`);
+  if (path) {
+    urls.push(`${rundeckUrl.origin}${path}${RUNDECK_PRM_WELL_KNOWN}`);
+  }
   return urls;
 }
 
