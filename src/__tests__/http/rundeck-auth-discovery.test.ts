@@ -102,6 +102,22 @@ describe("rundeck auth discovery", () => {
     expect(parseRundeckMetadata(doc, RUNDECK, "m").issuer).toBe("http://localhost:8080/realms/dev");
   });
 
+  it("uses the first listed issuer that MCP_OAUTH_ALLOWED_ISSUERS allows", () => {
+    const doc = {
+      ...METADATA,
+      authorization_servers: ["https://accounts.google.com", "https://idp.example.com/realms/rundeck"],
+    };
+    process.env.MCP_OAUTH_ALLOWED_ISSUERS = "https://idp.example.com/realms/rundeck";
+    expect(parseRundeckMetadata(doc, RUNDECK, "m").issuer).toBe("https://idp.example.com/realms/rundeck");
+  });
+
+  it("publishes the MCP client id when Rundeck provides one", () => {
+    expect(parseRundeckMetadata(METADATA, RUNDECK, "m").clientId).toBeUndefined();
+    expect(
+      parseRundeckMetadata({ ...METADATA, rundeck_mcp_client_id: " rundeck-mcp " }, RUNDECK, "m").clientId
+    ).toBe("rundeck-mcp");
+  });
+
   it("enforces MCP_OAUTH_ALLOWED_ISSUERS when set", () => {
     process.env.MCP_OAUTH_ALLOWED_ISSUERS = "https://other.example.com";
     expect(() => parseRundeckMetadata(METADATA, RUNDECK, "m")).toThrow(/MCP_OAUTH_ALLOWED_ISSUERS/);

@@ -48,9 +48,16 @@ export const OAUTH_CALLBACK_PATH = "/oauth/callback";
 export const OAUTH_TOKEN_PATH = "/oauth/token";
 export const OAUTH_REGISTER_PATH = "/oauth/register";
 
+/** Client id read from Rundeck's metadata at startup; MCP_OAUTH_CLIENT_ID overrides it. */
+let discoveredClientId: string | undefined;
+
+export function setDiscoveredClientId(clientId: string | undefined): void {
+  discoveredClientId = clientId;
+}
+
 export function mcpOAuthRegisteredClientId(): string | undefined {
   const id = process.env.MCP_OAUTH_CLIENT_ID?.trim();
-  return id && id.length > 0 ? id : undefined;
+  return id && id.length > 0 ? id : discoveredClientId;
 }
 
 export function mcpOAuthRegisteredClientSecret(): string | undefined {
@@ -297,6 +304,7 @@ export async function loadMcpOAuthRuntime(resourceServerUrl: URL): Promise<McpOA
     const discovered = await discoverRundeckAuth();
     issuer = discovered.issuer;
     discoveredScopes = discovered.scopes;
+    setDiscoveredClientId(discovered.clientId);
   }
   if (!issuer) {
     throw new Error("OIDC_ISSUER (or MCP_OAUTH_ISSUER_DISCOVERY=rundeck) is required for MCP client OAuth");

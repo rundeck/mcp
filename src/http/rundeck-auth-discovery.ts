@@ -17,6 +17,8 @@ const DISCOVERY_TIMEOUT_MS = 10_000;
 export interface RundeckAuthDiscovery {
   issuer: string;
   scopes?: string[];
+  /** Public client id Rundeck publishes for MCP clients (`rundeck_mcp_client_id` extension). */
+  clientId?: string;
   resource: string;
   metadataUrl: string;
 }
@@ -106,25 +108,35 @@ export function parseRundeckMetadata(
   if (servers.length === 0) {
     throw new Error(`Rundeck auth discovery: ${metadataUrl} lists no authorization_servers`);
   }
+  // With MCP_OAUTH_ALLOWED_ISSUERS, use the first listed server that is allowed; otherwise the
+  // first one (Rundeck lists its MCP primary provider first).
+  const pinned = allowedIssuers();
+  const chosen =
+    pinned.length > 0
+      ? servers.find((s) => pinned.includes(stripTrailingSlash(s)))
+      : servers[0];
+  if (!chosen) {
+    throw new Error(
+      `Rundeck auth discovery: none of ${servers.join(", ")} is in MCP_OAUTH_ALLOWED_ISSUERS`
+    );
+  }
   if (servers.length > 1) {
     logger.warn(
-      `Rundeck auth discovery: ${servers.length} authorization servers listed; using ${servers[0]}`
+      `Rundeck auth discovery: ${servers.length} authorization servers listed; using ${chosen}`
     );
   }
-  const issuer = stripTrailingSlash(requireSecureUrl(servers[0], "authorization server").href);
-
-  const pinned = allowedIssuers();
-  if (pinned.length > 0 && !pinned.includes(issuer)) {
-    throw new Error(
-      `Rundeck auth discovery: issuer ${issuer} is not in MCP_OAUTH_ALLOWED_ISSUERS`
-    );
-  }
+  const issuer = stripTrailingSlash(requireSecureUrl(chosen, "authorization server").href);
 
   const scopes = Array.isArray(doc.scopes_supported)
     ? doc.scopes_supported.filter((s): s is string => typeof s === "string")
     : undefined;
 
-  return { issuer, scopes: scopes?.length ? scopes : undefined, resource, metadataUrl };
+  const clientId =
+    typeof doc.rundeck_mcp_client_id === "string" && doc.rundeck_mcp_client_id.trim()
+      ? doc.rundeck_mcp_client_id.trim()
+      : undefined;
+
+  return { issuer, scopes: scopes?.length ? scopes : undefined, clientId, resource, metadataUrl };
 }
 
 /** Reads Rundeck's Protected Resource Metadata and returns the issuer it trusts. */
@@ -159,7 +171,8 @@ export async function discoverRundeckAuth(): Promise<RundeckAuthDiscovery> {
     );
     logger.info(
       `Rundeck auth discovery: issuer ${discovered.issuer} from ${metadataUrl}` +
-        (discovered.scopes ? ` (scopes ${discovered.scopes.join(" ")})` : "")
+        (discovered.scopes ? ` (scopes ${discovered.scopes.join(" ")})` : "") +
+        (discovered.clientId ? ` (client_id ${discovered.clientId})` : "")
     );
     return discovered;
   }
