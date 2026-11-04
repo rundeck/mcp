@@ -117,6 +117,7 @@ Prompts are static objects with `name`, `description`, `arguments`, optional `ar
 | `MCP_TRANSPORT` | `stdio` | `stdio`, `http`, or `both` — see [docs/LOCAL-HTTP-JWT.md](./docs/LOCAL-HTTP-JWT.md) |
 | `MCP_HTTP_HOST` / `MCP_HTTP_PORT` | `127.0.0.1` / `3000` | HTTP listener when `MCP_TRANSPORT` includes `http` |
 | `OIDC_ISSUER` | — | IdP issuer URL; enables RFC 9728 MCP OAuth metadata and 401 challenges — see [docs/MCP-CLIENT-OAUTH.md](./docs/MCP-CLIENT-OAUTH.md) |
+| `MCP_OAUTH_ISSUER_DISCOVERY` | — | Set `rundeck` to read the OAuth issuer from Rundeck's Protected Resource Metadata (`src/http/rundeck-auth-discovery.ts`) instead of `OIDC_ISSUER`; pin results with `MCP_OAUTH_ALLOWED_ISSUERS` |
 | `MCP_PUBLIC_URL` | derived from host/port/path | Public MCP URL clients use (must match client config, including `/mcp`) |
 | `MCP_OAUTH` | on when `OIDC_ISSUER` set | Set `0` to disable RFC 9728 metadata / 401 challenges (manual Bearer only) |
 | `MCP_OAUTH_PROXY_TOKEN` | on | MCP acts as the client-facing OAuth AS: proxies `/oauth/authorize`, `/oauth/callback` and `/oauth/token` to the IdP so Google can return a JWT `access_token` (see [docs/MCP-CLIENT-OAUTH.md](./docs/MCP-CLIENT-OAUTH.md)) |

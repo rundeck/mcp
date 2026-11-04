@@ -18,6 +18,7 @@ import {
 import { decodeJwtPayload } from "../auth/jwt-payload.js";
 import { getRundeckAuthMode } from "../auth/rundeck-auth-mode.js";
 import { logger } from "../utils/logger.js";
+import { discoverRundeckAuth, isRundeckIssuerDiscoveryEnabled } from "./rundeck-auth-discovery.js";
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { writeWebResponse } from "./write-node-response.js";
@@ -47,9 +48,16 @@ export const OAUTH_CALLBACK_PATH = "/oauth/callback";
 export const OAUTH_TOKEN_PATH = "/oauth/token";
 export const OAUTH_REGISTER_PATH = "/oauth/register";
 
+/** Client id read from Rundeck's metadata at startup; MCP_OAUTH_CLIENT_ID overrides it. */
+let discoveredClientId: string | undefined;
+
+export function setDiscoveredClientId(clientId: string | undefined): void {
+  discoveredClientId = clientId;
+}
+
 export function mcpOAuthRegisteredClientId(): string | undefined {
   const id = process.env.MCP_OAUTH_CLIENT_ID?.trim();
-  return id && id.length > 0 ? id : undefined;
+  return id && id.length > 0 ? id : discoveredClientId;
 }
 
 export function mcpOAuthRegisteredClientSecret(): string | undefined {
@@ -185,7 +193,7 @@ export function isMcpClientOAuthEnabled(): boolean {
   if (process.env.MCP_OAUTH === "0" || process.env.MCP_OAUTH === "false") {
     return false;
   }
-  return !!issuerBase();
+  return !!issuerBase() || isRundeckIssuerDiscoveryEnabled();
 }
 
 async function fetchOidcDiscovery(issuer: string): Promise<Record<string, unknown>> {
@@ -289,9 +297,17 @@ export const rundeckJwtPassthroughVerifier: OAuthTokenVerifier = {
 };
 
 export async function loadMcpOAuthRuntime(resourceServerUrl: URL): Promise<McpOAuthRuntime> {
-  const issuer = issuerBase();
+  // An explicit OIDC_ISSUER wins; otherwise ask Rundeck which issuer it trusts.
+  let issuer = issuerBase();
+  let discoveredScopes: string[] | undefined;
+  if (!issuer && isRundeckIssuerDiscoveryEnabled()) {
+    const discovered = await discoverRundeckAuth();
+    issuer = discovered.issuer;
+    discoveredScopes = discovered.scopes;
+    setDiscoveredClientId(discovered.clientId);
+  }
   if (!issuer) {
-    throw new Error("OIDC_ISSUER is required for MCP client OAuth");
+    throw new Error("OIDC_ISSUER (or MCP_OAUTH_ISSUER_DISCOVERY=rundeck) is required for MCP client OAuth");
   }
   const doc = await fetchOidcDiscovery(issuer);
   const discovered = oauthMetadataFromDiscovery(issuer, doc);
@@ -305,7 +321,8 @@ export async function loadMcpOAuthRuntime(resourceServerUrl: URL): Promise<McpOA
     oauthMetadata,
     resourceServerUrl,
     resourceName: process.env.MCP_OAUTH_RESOURCE_NAME?.trim() || "Rundeck MCP",
-    scopesSupported: process.env.MCP_OAUTH_SCOPES?.split(/[\s,]+/).filter(Boolean),
+    scopesSupported:
+      process.env.MCP_OAUTH_SCOPES?.split(/[\s,]+/).filter(Boolean) ?? discoveredScopes,
     dangerouslyAllowInsecureIssuerUrl: allowInsecureIssuer(),
   };
   const resourceMetadataUrl = getOAuthProtectedResourceMetadataUrl(resourceServerUrl);

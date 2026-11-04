@@ -6,6 +6,8 @@ import {
   injectClientSecret,
   isAllowedClientRedirectUri,
   isJwtFormat,
+  mcpOAuthRegisteredClientId,
+  setDiscoveredClientId,
   oauthMetadataFromDiscovery,
   resolveMcpAccessToken,
   rewriteTokenRequestRedirectUri,
@@ -338,5 +340,26 @@ describe("injectClientSecret", () => {
   it("does not inject for a different client_id", () => {
     const body = Buffer.from("grant_type=authorization_code&client_id=other-client");
     expect(injectClientSecret(body, form, id, secret)).toBe(body);
+  });
+});
+
+describe("mcpOAuthRegisteredClientId", () => {
+  const saved = process.env.MCP_OAUTH_CLIENT_ID;
+  afterEach(() => {
+    setDiscoveredClientId(undefined);
+    if (saved === undefined) delete process.env.MCP_OAUTH_CLIENT_ID;
+    else process.env.MCP_OAUTH_CLIENT_ID = saved;
+  });
+
+  it("falls back to the client id discovered from Rundeck", () => {
+    delete process.env.MCP_OAUTH_CLIENT_ID;
+    setDiscoveredClientId("rundeck-mcp");
+    expect(mcpOAuthRegisteredClientId()).toBe("rundeck-mcp");
+  });
+
+  it("lets MCP_OAUTH_CLIENT_ID override the discovered client id", () => {
+    process.env.MCP_OAUTH_CLIENT_ID = "from-env";
+    setDiscoveredClientId("rundeck-mcp");
+    expect(mcpOAuthRegisteredClientId()).toBe("from-env");
   });
 });
