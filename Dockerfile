@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # ── Stage 1: build ────────────────────────────────────────────────────────────
-FROM node:24-alpine AS builder
+FROM node:26-alpine AS builder
 WORKDIR /app
 
 # Install all deps (dev included — TypeScript compiler needed for build)
@@ -40,7 +40,7 @@ RUN npm run build
 RUN npm prune --omit=dev
 
 # ── Stage 2: production image ─────────────────────────────────────────────────
-FROM node:24-alpine AS production
+FROM node:26-alpine AS production
 WORKDIR /app
 
 # git is used by the entrypoint for a sparse partial clone of Rundeck docs,
