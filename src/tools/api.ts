@@ -123,7 +123,10 @@ export async function rundeckApiCall(params: {
     }
   }
 
+  // Spread first: validateExtraHeaders already bars these names from the
+  // built-in ones below, and this ordering keeps that true even if it didn't.
   const headers: Record<string, string> = {
+    ...config.extraHeaders,
     "X-Rundeck-Auth-Token": config.apiToken,
     "Accept": "application/json",
     "Content-Type": params.content_type || "application/json",

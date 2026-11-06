@@ -285,6 +285,72 @@ describe("Config Manager", () => {
       expect(configManager.hasInstanceRegistry()).toBe(false);
     });
   });
+  describe("extra headers", () => {
+    afterEach(() => {
+      delete process.env.RUNDECK_EXTRA_HEADERS;
+      delete process.env.RUNDECK_INSTANCES;
+    });
+
+    it("defaults to no extra headers", () => {
+      configManager.initialize();
+      expect({ ...configManager.getConfig().extraHeaders }).toEqual({});
+    });
+
+    it("loads RUNDECK_EXTRA_HEADERS without a registry", () => {
+      process.env.RUNDECK_EXTRA_HEADERS = JSON.stringify({ "CF-Access-Client-Id": "id" });
+      configManager.initialize();
+      expect({ ...configManager.getConfig().extraHeaders }).toEqual({ "CF-Access-Client-Id": "id" });
+    });
+
+    it("drops the whole set when RUNDECK_EXTRA_HEADERS is invalid JSON or unsafe", () => {
+      process.env.RUNDECK_EXTRA_HEADERS = "{not json";
+      configManager.initialize();
+      expect({ ...configManager.getConfig().extraHeaders }).toEqual({});
+
+      process.env.RUNDECK_EXTRA_HEADERS = JSON.stringify({ "X-Ok": "1", "X-Rundeck-Auth-Token": "evil" });
+      configManager.initialize();
+      expect({ ...configManager.getConfig().extraHeaders }).toEqual({});
+    });
+
+    it("applies per-instance headers on top of global ones and swaps them on connect", () => {
+      process.env.RUNDECK_EXTRA_HEADERS = JSON.stringify({ "X-Global": "g", "X-Shared": "global" });
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: {
+          prod: { url: "https://prod.example.com", token: "t1", headers: { "x-shared": "prod", "X-Prod": "p" } },
+          staging: { url: "https://staging.example.com", token: "t2" },
+        },
+      });
+      configManager.initialize();
+      expect({ ...configManager.getConfig().extraHeaders }).toEqual({
+        "X-Global": "g",
+        "x-shared": "prod",
+        "X-Prod": "p",
+      });
+
+      configManager.connectToInstance("staging");
+      expect({ ...configManager.getConfig().extraHeaders }).toEqual({ "X-Global": "g", "X-Shared": "global" });
+    });
+
+    it("drops instance headers when the connection is cleared by a failed switch", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: { prod: { url: "https://prod.example.com", token: "t1", headers: { "X-Prod": "p" } } },
+      });
+      configManager.initialize();
+      configManager.connectToInstance("nope");
+      expect({ ...configManager.getConfig().extraHeaders }).toEqual({});
+    });
+
+    it("rejects the whole registry when an instance has unsafe headers", () => {
+      process.env.RUNDECK_INSTANCES = JSON.stringify({
+        default: "prod",
+        instances: { prod: { url: "https://prod.example.com", token: "t1", headers: { "X-A": "a\r\nX-B: b" } } },
+      });
+      configManager.initialize();
+      expect(configManager.hasInstanceRegistry()).toBe(false);
+    });
+  });
 });
 
 
