@@ -87,6 +87,76 @@ The server supports the following environment variables:
 
 - **`MCP_DEBUG`** (optional): Set to `1` or `true` for verbose server-side logging.
 
+- **OpenTelemetry metrics (optional, OTLP push):** When an OTLP endpoint is configured, the server exports `rundeck_mcp_tool_calls` and `rundeck_mcp_tool_duration_ms` (labels: `tool`, `outcome`, `rundeck_api`). There is no HTTP `/metrics` listener on the MCP process itself.
+  - **`OTEL_SDK_DISABLED`**: Set to `true` or `1` to turn export off.
+  - **`OTEL_METRICS_EXPORTER`**: Set to `otlp` to export (with an endpoint below), or `none` to disable.
+  - **`OTEL_EXPORTER_OTLP_ENDPOINT`**: Collector URL for **gRPC** metrics (e.g. `http://localhost:4317`). Export stays off unless this or `OTEL_EXPORTER_OTLP_METRICS_ENDPOINT` is set (unless `OTEL_METRICS_EXPORTER=otlp` alone, which uses the SDK default endpoint).
+  - **`OTEL_EXPORTER_OTLP_METRICS_ENDPOINT`**: Metrics-only OTLP URL; overrides the generic endpoint for metrics.
+  - **`OTEL_SERVICE_NAME`**: Default `rundeck-mcp`.
+  - **`OTEL_METRIC_EXPORT_INTERVAL`**: Export period in ms; default `60000`.
+
+#### Local test with the monitoring stack
+
+If you run the stack under `rundeck-development/docker/monitoring` (OTel Collector on host port **4317**, Prometheus scrapes collector metrics on **8889**), add these variables to your MCP client's `env` block alongside `RUNDECK_*`:
+
+```json
+"OTEL_SERVICE_NAME": "rundeck-mcp",
+"OTEL_METRICS_EXPORTER": "otlp",
+"OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+"OTEL_EXPORTER_OTLP_ENDPOINT": "http://host.docker.internal:4317",
+"OTEL_METRIC_EXPORT_INTERVAL": "10000"
+```
+
+Restart the MCP server, invoke a few tools (e.g. `api_list`, `docs_search`), then check the collector's Prometheus exporter:
+
+```bash
+curl -s http://127.0.0.1:8889/metrics | grep rundeck_mcp
+```
+
+You should see series such as `rundeck_mcp_tool_calls_total` and `rundeck_mcp_tool_duration_ms_*` with `tool` and `outcome` labels.
+
+When the MCP runs **inside Docker** (Runlayer or `docker run`), use `http://host.docker.internal:4317` for the collector on your Mac host — `127.0.0.1` inside the container is the container itself, not your laptop.
+
+#### Runlayer (`uvx runlayer run …`)
+
+Runlayer launches the same `rundeck/mcp-ci` container; it does not expose extra flags for OTel. Variables must reach the **container process** the same way as `RUNDECK_URL` / `RUNDECK_TOKEN`:
+
+1. **Shell exports before starting the client** (works when Runlayer forwards the parent environment into `docker run`, which is the usual pattern for local MCPs):
+
+```bash
+export OTEL_SERVICE_NAME=rundeck-mcp
+export OTEL_METRICS_EXPORTER=otlp
+export OTEL_EXPORTER_OTLP_PROTOCOL=grpc
+export OTEL_EXPORTER_OTLP_ENDPOINT=http://host.docker.internal:4317
+export OTEL_METRIC_EXPORT_INTERVAL=10000
+export MCP_DEBUG=1   # optional: stderr should log "OpenTelemetry metrics export enabled"
+# then launch Cursor / Claude with runlayer already configured
+```
+
+2. **`env` in the MCP client config** (most reliable for Docker — same as your existing Runlayer `RUNDECK_*` block):
+
+```json
+"env": {
+  "RUNDECK_URL": "…",
+  "RUNDECK_TOKEN": "…",
+  "OTEL_SERVICE_NAME": "rundeck-mcp",
+  "OTEL_METRICS_EXPORTER": "otlp",
+  "OTEL_EXPORTER_OTLP_PROTOCOL": "grpc",
+  "OTEL_EXPORTER_OTLP_ENDPOINT": "http://host.docker.internal:4317",
+  "OTEL_METRIC_EXPORT_INTERVAL": "10000"
+}
+```
+
+After a local image build (below), Runlayer keeps using the image name `rundeck/mcp-ci:latest` from your **local Docker cache** until something pulls a newer remote tag.
+
+**Runlayer does not forward `OTEL_*` into the container.** For local metrics testing, build the **`local-otel`** target so those variables are baked into the image (collector on the Docker host via `host.docker.internal:4317`):
+
+```bash
+docker build --target local-otel -t rundeck/mcp-ci:latest -t rundeck/mcp:latest .
+```
+
+Do not publish the `local-otel` target to Docker Hub; use the default `production` target for releases.
+
 ### Configuration Methods
 
 #### Option 1: MCP Settings (Recommended)

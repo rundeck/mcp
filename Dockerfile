@@ -71,3 +71,23 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
 
 # stdio transport — the MCP client launches this container and pipes stdin/stdout
 ENTRYPOINT ["./docker-entrypoint.sh"]
+
+# ── Target: local-otel ───────────────────────────────────────────────────────
+# Runlayer (and some MCP clients) do not forward OTEL_* into docker run. This
+# target reuses the production image with OTLP metrics enabled for a collector
+# Default endpoint uses host.docker.internal (Runlayer/docker bridge — MCP is not on
+# rundeck-envs-network). Collector must publish host port 4317 (docker/monitoring).
+# Same-network compose: --build-arg OTEL_COLLECTOR_ENDPOINT=http://otel-collector:4317
+#
+#   docker build --target local-otel -t rundeck/mcp-ci:latest .
+#
+# Do not publish this target to Docker Hub — it is for local testing only.
+FROM production AS local-otel
+
+ARG OTEL_COLLECTOR_ENDPOINT=http://host.docker.internal:4317
+
+ENV OTEL_SERVICE_NAME=rundeck-mcp \
+    OTEL_METRICS_EXPORTER=otlp \
+    OTEL_EXPORTER_OTLP_PROTOCOL=grpc \
+    OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_COLLECTOR_ENDPOINT} \
+    OTEL_METRIC_EXPORT_INTERVAL=60000
