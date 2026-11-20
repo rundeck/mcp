@@ -141,7 +141,7 @@ export async function startHttpServer(): Promise<HttpServerHandle> {
       const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
 
       if (mcpOAuth && url.pathname === OAUTH_AUTHORIZE_PATH && req.method?.toUpperCase() === "GET") {
-        await writeWebResponse(res, handleOAuthAuthorize(url, mcpOAuth));
+        await writeWebResponse(res, await handleOAuthAuthorize(url, mcpOAuth));
         return;
       }
 

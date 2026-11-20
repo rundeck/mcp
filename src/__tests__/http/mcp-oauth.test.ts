@@ -6,6 +6,8 @@ import {
   injectClientSecret,
   isAllowedClientRedirectUri,
   isJwtFormat,
+  mcpOAuthRegisteredClientId,
+  setDiscoveredClientId,
   oauthMetadataFromDiscovery,
   resolveMcpAccessToken,
   rewriteTokenRequestRedirectUri,
@@ -84,11 +86,31 @@ describe("applyMcpTokenEndpointProxy", () => {
     process.env.MCP_OAUTH_PROXY_TOKEN = prev;
   });
 
-  it("includes registration_endpoint when MCP_OAUTH_CLIENT_ID is set", () => {
+  it("keeps DCR off by default and advertises CIMD when a client id is known", () => {
+    const prevClient = process.env.MCP_OAUTH_CLIENT_ID;
+    process.env.MCP_OAUTH_CLIENT_ID = "rundeck";
+    const meta = oauthMetadataFromDiscovery("https://auth.example.com", {
+      issuer: "https://auth.example.com",
+      authorization_endpoint: "https://auth.example.com/authorize",
+      token_endpoint: "https://auth.example.com/token",
+      registration_endpoint: "https://auth.example.com/register",
+    });
+    const proxied = applyMcpTokenEndpointProxy(meta, new URL("http://127.0.0.1:3000/mcp")) as Record<
+      string,
+      unknown
+    >;
+    expect(proxied.registration_endpoint).toBeUndefined();
+    expect(proxied.client_id_metadata_document_supported).toBe(true);
+    expect(proxied.code_challenge_methods_supported).toEqual(["S256"]);
+    process.env.MCP_OAUTH_CLIENT_ID = prevClient;
+  });
+
+  it("includes registration_endpoint when MCP_OAUTH_DCR turns the fallback on", () => {
     const prevProxy = process.env.MCP_OAUTH_PROXY_TOKEN;
     const prevClient = process.env.MCP_OAUTH_CLIENT_ID;
     process.env.MCP_OAUTH_PROXY_TOKEN = "1";
     process.env.MCP_OAUTH_CLIENT_ID = "rundeck";
+    process.env.MCP_OAUTH_DCR = "1";
     const meta = oauthMetadataFromDiscovery("https://auth.example.com", {
       issuer: "https://auth.example.com",
       authorization_endpoint: "https://auth.example.com/authorize",
@@ -100,6 +122,7 @@ describe("applyMcpTokenEndpointProxy", () => {
     expect(proxied.token_endpoint_auth_methods_supported).toContain("none");
     process.env.MCP_OAUTH_PROXY_TOKEN = prevProxy;
     process.env.MCP_OAUTH_CLIENT_ID = prevClient;
+    delete process.env.MCP_OAUTH_DCR;
   });
 
   it("strips IdP registration_endpoint when proxy is on but DCR is off", () => {
@@ -163,9 +186,9 @@ function proxyRuntime(overrides: Partial<McpOAuthRuntime> = {}): McpOAuthRuntime
 }
 
 describe("OAuth authorize/callback proxy", () => {
-  it("round-trips the client's redirect_uri and state with the MCP as iss", () => {
+  it("round-trips the client's redirect_uri and state with the MCP as iss", async () => {
     const runtime = proxyRuntime();
-    const authorize = handleOAuthAuthorize(
+    const authorize = await handleOAuthAuthorize(
       new URL(
         "http://127.0.0.1:3000/oauth/authorize?response_type=code&client_id=cid" +
           "&redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Fcallback&state=client-state" +
@@ -205,10 +228,10 @@ describe("OAuth authorize/callback proxy", () => {
     ).toBe(400);
   });
 
-  it("forwards IdP errors to the client", () => {
+  it("forwards IdP errors to the client", async () => {
     const runtime = proxyRuntime();
-    const authorize = handleOAuthAuthorize(
-      new URL("http://127.0.0.1:3000/oauth/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A9%2Fcb"),
+    const authorize = await handleOAuthAuthorize(
+      new URL("http://127.0.0.1:3000/oauth/authorize?redirect_uri=http%3A%2F%2F127.0.0.1%3A9%2Fcb&code_challenge=abc&code_challenge_method=S256"),
       runtime
     );
     const key = new URL(authorize.headers.get("Location")!).searchParams.get("state")!;
@@ -222,7 +245,7 @@ describe("OAuth authorize/callback proxy", () => {
     expect(back.searchParams.has("state")).toBe(false);
   });
 
-  it("rejects non-loopback redirect URIs unless allow-listed", () => {
+  it("rejects non-loopback redirect URIs unless allow-listed", async () => {
     expect(isAllowedClientRedirectUri("http://localhost:8765/callback")).toBe(true);
     expect(isAllowedClientRedirectUri("https://evil.example.com/cb")).toBe(false);
     const prev = process.env.MCP_OAUTH_ALLOWED_REDIRECT_URIS;
@@ -230,8 +253,8 @@ describe("OAuth authorize/callback proxy", () => {
     expect(isAllowedClientRedirectUri("cursor://anysphere.cursor-mcp/oauth/callback")).toBe(true);
     process.env.MCP_OAUTH_ALLOWED_REDIRECT_URIS = prev;
 
-    const res = handleOAuthAuthorize(
-      new URL("http://127.0.0.1:3000/oauth/authorize?redirect_uri=https%3A%2F%2Fevil.example.com%2Fcb"),
+    const res = await handleOAuthAuthorize(
+      new URL("http://127.0.0.1:3000/oauth/authorize?redirect_uri=https%3A%2F%2Fevil.example.com%2Fcb&code_challenge=abc&code_challenge_method=S256"),
       proxyRuntime()
     );
     expect(res.status).toBe(400);
@@ -253,22 +276,22 @@ describe("OAuth authorize/callback proxy", () => {
     expect(rewriteTokenRequestRedirectUri(code, form, undefined)).toBe(code);
   });
 
-  it("rewrites client_id to registered IdP client when DCR client omits or repeats it", () => {
+  it("rewrites client_id to registered IdP client when DCR client omits or repeats it", async () => {
     const runtime = proxyRuntime({ registeredClientId: "rundeck", dcrEnabled: true });
-    const authorize = handleOAuthAuthorize(
+    const authorize = await handleOAuthAuthorize(
       new URL(
         "http://127.0.0.1:3000/oauth/authorize?response_type=code" +
-          "&redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Fcallback&scope=openid"
+          "&redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Fcallback&scope=openid&code_challenge=abc&code_challenge_method=S256"
       ),
       runtime
     );
     const upstream = new URL(authorize.headers.get("Location")!);
     expect(upstream.searchParams.get("client_id")).toBe("rundeck");
 
-    const legacy = handleOAuthAuthorize(
+    const legacy = await handleOAuthAuthorize(
       new URL(
         "http://127.0.0.1:3000/oauth/authorize?client_id=legacy-manual" +
-          "&redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Fcallback"
+          "&redirect_uri=http%3A%2F%2Flocalhost%3A8765%2Fcallback&code_challenge=abc&code_challenge_method=S256"
       ),
       runtime
     );
@@ -338,5 +361,26 @@ describe("injectClientSecret", () => {
   it("does not inject for a different client_id", () => {
     const body = Buffer.from("grant_type=authorization_code&client_id=other-client");
     expect(injectClientSecret(body, form, id, secret)).toBe(body);
+  });
+});
+
+describe("mcpOAuthRegisteredClientId", () => {
+  const saved = process.env.MCP_OAUTH_CLIENT_ID;
+  afterEach(() => {
+    setDiscoveredClientId(undefined);
+    if (saved === undefined) delete process.env.MCP_OAUTH_CLIENT_ID;
+    else process.env.MCP_OAUTH_CLIENT_ID = saved;
+  });
+
+  it("falls back to the client id discovered from Rundeck", () => {
+    delete process.env.MCP_OAUTH_CLIENT_ID;
+    setDiscoveredClientId("rundeck-mcp");
+    expect(mcpOAuthRegisteredClientId()).toBe("rundeck-mcp");
+  });
+
+  it("lets MCP_OAUTH_CLIENT_ID override the discovered client id", () => {
+    process.env.MCP_OAUTH_CLIENT_ID = "from-env";
+    setDiscoveredClientId("rundeck-mcp");
+    expect(mcpOAuthRegisteredClientId()).toBe("from-env");
   });
 });
