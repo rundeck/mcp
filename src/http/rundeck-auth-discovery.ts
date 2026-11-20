@@ -19,6 +19,10 @@ export interface RundeckAuthDiscovery {
   scopes?: string[];
   /** Public client id Rundeck publishes for MCP clients (`rundeck_mcp_client_id` extension). */
   clientId?: string;
+  /** Hosts whose client metadata documents (CIMD) the MCP accepts (`rundeck_mcp_allowed_clients`). */
+  allowedClients?: string[];
+  /** Whether the MCP may offer its DCR fallback (`rundeck_mcp_dcr_enabled`). */
+  dcrEnabled?: boolean;
   resource: string;
   metadataUrl: string;
 }
@@ -136,7 +140,21 @@ export function parseRundeckMetadata(
       ? doc.rundeck_mcp_client_id.trim()
       : undefined;
 
-  return { issuer, scopes: scopes?.length ? scopes : undefined, clientId, resource, metadataUrl };
+  const allowedClients = Array.isArray(doc.rundeck_mcp_allowed_clients)
+    ? doc.rundeck_mcp_allowed_clients.filter((s): s is string => typeof s === "string" && s.length > 0)
+    : undefined;
+  const dcrEnabled =
+    typeof doc.rundeck_mcp_dcr_enabled === "boolean" ? doc.rundeck_mcp_dcr_enabled : undefined;
+
+  return {
+    issuer,
+    scopes: scopes?.length ? scopes : undefined,
+    clientId,
+    allowedClients,
+    dcrEnabled,
+    resource,
+    metadataUrl,
+  };
 }
 
 /** Reads Rundeck's Protected Resource Metadata and returns the issuer it trusts. */

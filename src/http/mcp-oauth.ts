@@ -19,6 +19,13 @@ import { decodeJwtPayload } from "../auth/jwt-payload.js";
 import { getRundeckAuthMode } from "../auth/rundeck-auth-mode.js";
 import { logger } from "../utils/logger.js";
 import { discoverRundeckAuth, isRundeckIssuerDiscoveryEnabled } from "./rundeck-auth-discovery.js";
+import {
+  fetchClientMetadataDocument,
+  isCimdClientId,
+  isCimdEnabled,
+  setDiscoveredCimdAllowedHosts,
+  type CimdFetchOptions,
+} from "./cimd.js";
 import { randomBytes } from "node:crypto";
 import type { IncomingMessage } from "node:http";
 import { writeWebResponse } from "./write-node-response.js";
@@ -39,7 +46,7 @@ export interface McpOAuthRuntime {
   registeredClientId?: string;
   /** IdP client secret injected server-side on token exchange (never exposed to MCP clients). */
   registeredClientSecret?: string;
-  /** True when proxy is on and `MCP_OAUTH_CLIENT_ID` is set. */
+  /** True when proxy is on, a client id is known and DCR is turned on (off by default). */
   dcrEnabled: boolean;
 }
 
@@ -65,9 +72,35 @@ export function mcpOAuthRegisteredClientSecret(): string | undefined {
   return secret && secret.length > 0 ? secret : undefined;
 }
 
-/** DCR at `/oauth/register` when OAuth proxy is on and `MCP_OAUTH_CLIENT_ID` is configured. */
+/** DCR setting read from Rundeck's metadata (`rundeck_mcp_dcr_enabled`); MCP_OAUTH_DCR overrides it. */
+let discoveredDcrEnabled: boolean | undefined;
+
+export function setDiscoveredDcrEnabled(enabled: boolean | undefined): void {
+  discoveredDcrEnabled = enabled;
+}
+
+function dcrSetting(): boolean {
+  const raw = process.env.MCP_OAUTH_DCR?.trim().toLowerCase();
+  if (raw === "1" || raw === "true") {
+    return true;
+  }
+  if (raw === "0" || raw === "false") {
+    return false;
+  }
+  return discoveredDcrEnabled ?? false;
+}
+
+/**
+ * The DCR stub hands every caller the same IdP client id, so it is a fallback for clients that
+ * support neither CIMD nor a pre-configured client id. Off unless MCP_OAUTH_DCR (or Rundeck) turns it on.
+ */
 export function isMcpDcrEnabled(): boolean {
-  return isMcpOAuthProxyEnabled() && !!mcpOAuthRegisteredClientId();
+  return isMcpOAuthProxyEnabled() && !!mcpOAuthRegisteredClientId() && dcrSetting();
+}
+
+/** CIMD needs the proxy and a pre-registered IdP client the MCP signs in with on the client's behalf. */
+export function isMcpCimdEnabled(): boolean {
+  return isMcpOAuthProxyEnabled() && isCimdEnabled() && !!mcpOAuthRegisteredClientId();
 }
 
 export function mcpOAuthTokenEndpointUrl(resourceServerUrl: URL): string {
@@ -106,7 +139,11 @@ const DCR_TOKEN_AUTH_METHODS = ["none", "client_secret_post", "client_secret_bas
 export function mcpOAuthDiscoveryOverrides(resourceServerUrl: URL): Record<string, unknown> {
   const merged: Record<string, unknown> = {
     ...mcpOAuthProxyMetadataOverrides(resourceServerUrl),
+    code_challenge_methods_supported: ["S256"],
   };
+  if (isMcpCimdEnabled()) {
+    merged.client_id_metadata_document_supported = true;
+  }
   if (isMcpDcrEnabled()) {
     merged.registration_endpoint = `${resourceServerUrl.origin}${OAUTH_REGISTER_PATH}`;
     merged.token_endpoint_auth_methods_supported = [...DCR_TOKEN_AUTH_METHODS];
@@ -127,7 +164,11 @@ function applyProxyAndDcrToOAuthMetadata(
     authorization_endpoint: overrides.authorization_endpoint as string,
     token_endpoint: overrides.token_endpoint as string,
     authorization_response_iss_parameter_supported: true,
+    code_challenge_methods_supported: ["S256"],
   };
+  if (isMcpCimdEnabled()) {
+    (next as Record<string, unknown>).client_id_metadata_document_supported = true;
+  }
   if (isMcpDcrEnabled()) {
     next.registration_endpoint = overrides.registration_endpoint as string;
     next.token_endpoint_auth_methods_supported = [...DCR_TOKEN_AUTH_METHODS];
@@ -305,6 +346,8 @@ export async function loadMcpOAuthRuntime(resourceServerUrl: URL): Promise<McpOA
     issuer = discovered.issuer;
     discoveredScopes = discovered.scopes;
     setDiscoveredClientId(discovered.clientId);
+    setDiscoveredCimdAllowedHosts(discovered.allowedClients);
+    setDiscoveredDcrEnabled(discovered.dcrEnabled);
   }
   if (!issuer) {
     throw new Error("OIDC_ISSUER (or MCP_OAUTH_ISSUER_DISCOVERY=rundeck) is required for MCP client OAuth");
@@ -342,6 +385,11 @@ export async function loadMcpOAuthRuntime(resourceServerUrl: URL): Promise<McpOA
         `(client_id=${registeredClientId}; IdP secret stays on server)`
     );
   }
+  if (isMcpCimdEnabled()) {
+    logger.info(
+      `MCP OAuth CIMD enabled — https client ids from allowed hosts sign in through IdP client ${registeredClientId}`
+    );
+  }
   return {
     authMetadata,
     resourceMetadataUrl,
@@ -356,18 +404,29 @@ export async function loadMcpOAuthRuntime(resourceServerUrl: URL): Promise<McpOA
 }
 
 interface PendingAuthorization {
+  clientId?: string;
   clientRedirectUri: string;
   clientState?: string;
   expiresAt: number;
 }
 
+/** A code the IdP returned through `/oauth/callback`, bound to the client that asked for it. */
+interface IssuedCode {
+  clientId?: string;
+  clientRedirectUri: string;
+  expiresAt: number;
+}
+
 const PENDING_AUTHORIZATION_TTL_MS = 10 * 60 * 1000;
 const pendingAuthorizations = new Map<string, PendingAuthorization>();
+const issuedCodes = new Map<string, IssuedCode>();
 
 function prunePendingAuthorizations(now: number): void {
-  for (const [key, entry] of pendingAuthorizations) {
-    if (entry.expiresAt <= now) {
-      pendingAuthorizations.delete(key);
+  for (const store of [pendingAuthorizations, issuedCodes]) {
+    for (const [key, entry] of store) {
+      if (entry.expiresAt <= now) {
+        store.delete(key);
+      }
     }
   }
 }
@@ -405,10 +464,48 @@ function oauthErrorPage(status: number, message: string): Response {
 }
 
 /**
- * `GET /oauth/authorize`: remember the client's redirect_uri/state, then send the browser to the
- * IdP with this server's callback. PKCE and every other parameter pass through untouched.
+ * Checks who may receive the code. A CIMD client id (https URL) must come from an allowed host and
+ * its metadata document must list the redirect_uri; any other client gets loopback redirect URIs
+ * only (Claude Code, Inspector) plus MCP_OAUTH_ALLOWED_REDIRECT_URIS. Returns an error, or undefined.
  */
-export function handleOAuthAuthorize(url: URL, runtime: McpOAuthRuntime): Response {
+async function checkAuthorizeClient(
+  clientId: string | null,
+  redirectUri: string,
+  cimdOptions?: CimdFetchOptions
+): Promise<string | undefined> {
+  if (isCimdClientId(clientId)) {
+    if (!isMcpCimdEnabled()) {
+      return "invalid_client: client metadata documents are not enabled on this server";
+    }
+    try {
+      const doc = await fetchClientMetadataDocument(clientId, cimdOptions);
+      if (!doc.redirect_uris.includes(redirectUri)) {
+        return `invalid_request: redirect_uri ${redirectUri} is not registered for ${clientId}`;
+      }
+      return undefined;
+    } catch (error) {
+      logger.warn(`CIMD: rejected client ${clientId}: ${error instanceof Error ? error.message : String(error)}`);
+      return `invalid_client: ${error instanceof Error ? error.message : "client metadata document rejected"}`;
+    }
+  }
+  if (!isAllowedClientRedirectUri(redirectUri)) {
+    return (
+      `invalid_request: redirect_uri ${redirectUri} is not allowed ` +
+      "(loopback only; add it to MCP_OAUTH_ALLOWED_REDIRECT_URIS)"
+    );
+  }
+  return undefined;
+}
+
+/**
+ * `GET /oauth/authorize`: check the client, remember its client_id/redirect_uri/state, then send the
+ * browser to the IdP with this server's callback. PKCE (S256) is required and passes through to the IdP.
+ */
+export async function handleOAuthAuthorize(
+  url: URL,
+  runtime: McpOAuthRuntime,
+  cimdOptions?: CimdFetchOptions
+): Promise<Response> {
   if (!runtime.callbackUrl) {
     return oauthErrorPage(404, "OAuth authorization proxy is disabled");
   }
@@ -416,18 +513,21 @@ export function handleOAuthAuthorize(url: URL, runtime: McpOAuthRuntime): Respon
   if (!clientRedirectUri) {
     return oauthErrorPage(400, "invalid_request: redirect_uri is required");
   }
-  if (!isAllowedClientRedirectUri(clientRedirectUri)) {
-    return oauthErrorPage(
-      400,
-      `invalid_request: redirect_uri ${clientRedirectUri} is not allowed ` +
-        "(loopback only; add it to MCP_OAUTH_ALLOWED_REDIRECT_URIS)"
-    );
+  if (!url.searchParams.get("code_challenge") || url.searchParams.get("code_challenge_method") !== "S256") {
+    return oauthErrorPage(400, "invalid_request: PKCE with code_challenge_method=S256 is required");
   }
+  const clientId = url.searchParams.get("client_id");
+  const clientError = await checkAuthorizeClient(clientId, clientRedirectUri, cimdOptions);
+  if (clientError) {
+    return oauthErrorPage(400, clientError);
+  }
+  const cimdClient = isCimdClientId(clientId);
 
   const now = Date.now();
   prunePendingAuthorizations(now);
   const key = randomBytes(24).toString("base64url");
   pendingAuthorizations.set(key, {
+    clientId: clientId ?? undefined,
     clientRedirectUri,
     clientState: url.searchParams.get("state") ?? undefined,
     expiresAt: now + PENDING_AUTHORIZATION_TTL_MS,
@@ -441,7 +541,8 @@ export function handleOAuthAuthorize(url: URL, runtime: McpOAuthRuntime): Respon
   upstream.searchParams.set("state", key);
   if (runtime.registeredClientId) {
     const incomingClientId = upstream.searchParams.get("client_id");
-    if (!incomingClientId || incomingClientId === runtime.registeredClientId) {
+    // A CIMD client is not known to the IdP: the MCP signs in with its own registered client.
+    if (cimdClient || !incomingClientId || incomingClientId === runtime.registeredClientId) {
       upstream.searchParams.set("client_id", runtime.registeredClientId);
     }
   }
@@ -530,6 +631,15 @@ export function handleOAuthCallback(url: URL, runtime: McpOAuthRuntime): Respons
   }
   pendingAuthorizations.delete(key);
 
+  const code = url.searchParams.get("code");
+  if (code) {
+    issuedCodes.set(code, {
+      clientId: pending.clientId,
+      clientRedirectUri: pending.clientRedirectUri,
+      expiresAt: Date.now() + PENDING_AUTHORIZATION_TTL_MS,
+    });
+  }
+
   const target = new URL(pending.clientRedirectUri);
   for (const name of ["code", "error", "error_description", "error_uri"]) {
     const value = url.searchParams.get(name);
@@ -542,6 +652,60 @@ export function handleOAuthCallback(url: URL, runtime: McpOAuthRuntime): Respons
   }
   target.searchParams.set("iss", runtime.authMetadata.oauthMetadata.issuer);
   return new Response(null, { status: 302, headers: { Location: target.toString() } });
+}
+
+function tokenError(error: string, description: string): Response {
+  return new Response(JSON.stringify({ error, error_description: description }), {
+    status: 400,
+    headers: { "Content-Type": "application/json; charset=utf-8" },
+  });
+}
+
+/**
+ * Binds the token request to its authorize request: the code must have come through this server's
+ * callback, and client_id, redirect_uri and a PKCE code_verifier must match it. A CIMD client id is
+ * then replaced with the MCP's registered IdP client id, the one the IdP issued the code to.
+ * Returns the (possibly rewritten) body or an error response.
+ */
+export function checkTokenRequest(
+  body: Buffer,
+  contentType: string | undefined,
+  registeredClientId: string | undefined
+): Buffer | Response {
+  if (!contentType?.toLowerCase().includes("application/x-www-form-urlencoded")) {
+    return tokenError("invalid_request", "token requests must be application/x-www-form-urlencoded");
+  }
+  const params = new URLSearchParams(body.toString("utf8"));
+  const grantType = params.get("grant_type");
+  const clientId = params.get("client_id");
+
+  if (grantType === "authorization_code") {
+    prunePendingAuthorizations(Date.now());
+    const code = params.get("code");
+    const issued = code ? issuedCodes.get(code) : undefined;
+    if (!code || !issued) {
+      return tokenError("invalid_grant", "unknown or expired authorization code");
+    }
+    issuedCodes.delete(code);
+    if (issued.clientId && clientId !== issued.clientId) {
+      return tokenError("invalid_grant", "client_id does not match the authorization request");
+    }
+    if (params.get("redirect_uri") !== issued.clientRedirectUri) {
+      return tokenError("invalid_grant", "redirect_uri does not match the authorization request");
+    }
+    if (!params.get("code_verifier")) {
+      return tokenError("invalid_request", "code_verifier is required (PKCE)");
+    }
+  }
+
+  if (isCimdClientId(clientId)) {
+    if (!isMcpCimdEnabled() || !registeredClientId) {
+      return tokenError("invalid_client", "client metadata documents are not enabled on this server");
+    }
+    params.set("client_id", registeredClientId);
+    return Buffer.from(params.toString(), "utf8");
+  }
+  return body;
 }
 
 /**
@@ -632,7 +796,15 @@ export async function proxyOAuthTokenRequest(
   }
   const contentType = req.headers["content-type"];
   const contentTypeStr = typeof contentType === "string" ? contentType : undefined;
-  let body = rewriteTokenRequestRedirectUri(Buffer.concat(chunks), contentTypeStr, callbackUrl);
+  let body: Buffer = Buffer.concat(chunks);
+  if (callbackUrl) {
+    const checked = checkTokenRequest(body, contentTypeStr, runtime?.registeredClientId);
+    if (checked instanceof Response) {
+      return checked;
+    }
+    body = checked;
+  }
+  body = rewriteTokenRequestRedirectUri(body, contentTypeStr, callbackUrl);
   const authorization = req.headers.authorization;
   if (
     typeof authorization !== "string" &&

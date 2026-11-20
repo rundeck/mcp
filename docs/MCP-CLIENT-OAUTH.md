@@ -32,7 +32,11 @@ Optional:
 | `MCP_OAUTH_ACCESS_TOKEN` | `auto` | After code exchange: `auto` (swap opaque → `id_token`), `id_token`, or `upstream` — usually **omit** (defaults are correct) |
 | `MCP_OAUTH_RESOURCE_NAME` | `Rundeck MCP` | Display name in Protected Resource Metadata |
 | `MCP_OAUTH_SCOPES` | — | Comma/space-separated scopes advertised to clients |
-| `MCP_OAUTH_CLIENT_ID` | — | Pre-registered IdP OAuth client id; enables **Dynamic Client Registration** at `POST /oauth/register` (RFC 7591) when the OAuth proxy is on |
+| `MCP_OAUTH_CLIENT_ID` | — | Pre-registered IdP OAuth client id the MCP signs in with on behalf of CIMD and DCR clients |
+| `MCP_OAUTH_CIMD` | on | `0`/`false` turns off Client ID Metadata Documents (https `client_id` URLs, e.g. claude.ai) |
+| `MCP_OAUTH_CIMD_ALLOWED_HOSTS` | Rundeck's `rundeck_mcp_allowed_clients` | Comma-separated hosts whose metadata documents are accepted (`claude.ai`, `*.example.com`); overrides Rundeck; empty allows none |
+| `MCP_OAUTH_CIMD_DANGEROUSLY_ALLOW_PRIVATE` | — | `1` allows http documents on private/loopback addresses — local development only |
+| `MCP_OAUTH_DCR` | Rundeck's `rundeck_mcp_dcr_enabled`, else off | `1` turns on the **Dynamic Client Registration** fallback at `POST /oauth/register` (RFC 7591) |
 | `MCP_OAUTH_CLIENT_SECRET` | — | Optional IdP client secret; injected server-side on token exchange for DCR clients (`token_endpoint_auth_method: none`) — **never** returned to MCP clients |
 | `MCP_OAUTH_ISSUER_DISCOVERY` | — | Set `rundeck` to read the issuer (and scopes) from Rundeck's Protected Resource Metadata at `RUNDECK_URL/.well-known/oauth-protected-resource` instead of setting `OIDC_ISSUER`. An explicit `OIDC_ISSUER` always wins. HTTPS only unless `MCP_DANGEROUSLY_ALLOW_INSECURE_ISSUER_URL=1` |
 | `MCP_OAUTH_ALLOWED_ISSUERS` | — | Comma/space-separated issuers discovery may use; the first `authorization_servers` entry in this list is chosen, and startup fails if none is |
@@ -47,7 +51,7 @@ Unauthenticated `POST /mcp` returns **401** with `WWW-Authenticate: Bearer … r
 
 ## Discovering the issuer from Rundeck
 
-With `MCP_OAUTH_ISSUER_DISCOVERY=rundeck` and no `OIDC_ISSUER`, the server reads Rundeck's [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) Protected Resource Metadata at startup, so the IdP is configured once, in Rundeck. It tries `/.well-known/oauth-protected-resource/<RUNDECK_URL path>`, then `/.well-known/oauth-protected-resource`, then `<RUNDECK_URL path>/.well-known/oauth-protected-resource` (Rundeck under a servlet context path can only serve it there), without following redirects, and uses the first `authorization_servers` entry. The document is public and holds no credentials. When `MCP_OAUTH_CLIENT_ID` is unset, the client ID comes from the document's `rundeck_mcp_client_id` (Rundeck's `resourceServer.mcp.clientId`), which also turns on dynamic client registration; with a **public** IdP client (PKCE, no client secret) no OAuth env vars are needed beyond discovery. A confidential client still needs `MCP_OAUTH_CLIENT_SECRET` on the MCP — secrets are never published.
+With `MCP_OAUTH_ISSUER_DISCOVERY=rundeck` and no `OIDC_ISSUER`, the server reads Rundeck's [RFC 9728](https://www.rfc-editor.org/rfc/rfc9728) Protected Resource Metadata at startup, so the IdP is configured once, in Rundeck. It tries `/.well-known/oauth-protected-resource/<RUNDECK_URL path>`, then `/.well-known/oauth-protected-resource`, then `<RUNDECK_URL path>/.well-known/oauth-protected-resource` (Rundeck under a servlet context path can only serve it there), without following redirects, and uses the first `authorization_servers` entry. The document is public and holds no credentials. When `MCP_OAUTH_CLIENT_ID` is unset, the client ID comes from the document's `rundeck_mcp_client_id` (Rundeck's `resourceServer.mcp.clientId`), and the CIMD host allowlist and DCR setting come from `rundeck_mcp_allowed_clients` and `rundeck_mcp_dcr_enabled`; with a **public** IdP client (PKCE, no client secret) no OAuth env vars are needed beyond discovery. A confidential client still needs `MCP_OAUTH_CLIENT_SECRET` on the MCP — secrets are never published.
 
 Rundeck does not publish this document yet — until it does, startup fails with a message pointing back to `OIDC_ISSUER`.
 
@@ -90,9 +94,22 @@ Enterprise configs often require an explicit transport type:
 
 Use the same `OIDC_ISSUER` / `MCP_PUBLIC_URL` on the server process. If a gateway (e.g. Runlayer) sits in front of this server, set `MCP_PUBLIC_URL` to the URL the **client** uses to reach MCP, not only the upstream `:3000` bind address.
 
+## Client ID Metadata Documents (CIMD)
+
+Clients such as claude.ai identify themselves with an https URL as `client_id` (draft-ietf-oauth-client-id-metadata-document). The MCP advertises `client_id_metadata_document_supported: true` and, on `/oauth/authorize`:
+
+1. checks the URL's host against `MCP_OAUTH_CIMD_ALLOWED_HOSTS` (or Rundeck's `rundeck_mcp_allowed_clients`);
+2. fetches the document — public addresses only, no redirects, 5 s timeout, 5 KB cap, cached 5 minutes;
+3. requires the document's `client_id` to equal the URL and the request's `redirect_uri` to be in its `redirect_uris`;
+4. requires PKCE (`S256`) and sends the browser to the IdP as the MCP's own registered client.
+
+On `/oauth/token` the code must have come through `/oauth/callback`, `client_id` and `redirect_uri` must match the authorize request, and `code_verifier` is required; the MCP then swaps the URL for its registered client id. claude.ai must reach the MCP over public https, so a local MCP needs a tunnel.
+
+Loopback clients (Claude Code, Inspector) keep working: pass the registered client id, e.g. `claude mcp add --transport http --client-id rundeck-mcp …`, or turn on DCR below.
+
 ## Registro sin client-id (DCR)
 
-When `MCP_OAUTH_CLIENT_ID` is set (and the OAuth proxy is enabled), the MCP server exposes **`POST /oauth/register`** and advertises `registration_endpoint` in OAuth/OIDC metadata. MCP clients (Claude Code, Cursor) can register dynamically and never receive the IdP **client secret** — it stays on the MCP process only.
+DCR is a fallback that hands every caller the same IdP client id, so it is **off by default**. With `MCP_OAUTH_DCR=1` (or Rundeck's `dcr-enabled`) and a known client id, the MCP server exposes **`POST /oauth/register`** and advertises `registration_endpoint` in OAuth/OIDC metadata. MCP clients (Claude Code, Cursor) can register dynamically and never receive the IdP **client secret** — it stays on the MCP process only.
 
 **Keycloak (local) example — server:**
 
@@ -101,6 +118,7 @@ export MCP_TRANSPORT=http
 export MCP_PUBLIC_URL=http://127.0.0.1:3000/mcp
 export OIDC_ISSUER=http://localhost:8080/realms/rundeck-dev
 export MCP_OAUTH_CLIENT_ID=rundeck
+export MCP_OAUTH_DCR=1
 export MCP_OAUTH_CLIENT_SECRET=rundeck-dev-secret   # optional if the IdP client is public
 export MCP_OAUTH_SCOPES="openid profile email"
 # … RUNDECK_URL, RUNDECK_AUTH_MODE=jwt_bearer, etc.

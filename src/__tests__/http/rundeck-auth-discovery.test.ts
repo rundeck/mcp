@@ -118,6 +118,19 @@ describe("rundeck auth discovery", () => {
     ).toBe("rundeck-mcp");
   });
 
+  it("reads the CIMD host allowlist and DCR setting Rundeck publishes", () => {
+    const parsed = parseRundeckMetadata(
+      { ...METADATA, rundeck_mcp_allowed_clients: ["claude.ai", 7], rundeck_mcp_dcr_enabled: true },
+      RUNDECK,
+      "m"
+    );
+    expect(parsed.allowedClients).toEqual(["claude.ai"]);
+    expect(parsed.dcrEnabled).toBe(true);
+    const bare = parseRundeckMetadata(METADATA, RUNDECK, "m");
+    expect(bare.allowedClients).toBeUndefined();
+    expect(bare.dcrEnabled).toBeUndefined();
+  });
+
   it("enforces MCP_OAUTH_ALLOWED_ISSUERS when set", () => {
     process.env.MCP_OAUTH_ALLOWED_ISSUERS = "https://other.example.com";
     expect(() => parseRundeckMetadata(METADATA, RUNDECK, "m")).toThrow(/MCP_OAUTH_ALLOWED_ISSUERS/);
