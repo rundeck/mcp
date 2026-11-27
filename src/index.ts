@@ -67,7 +67,7 @@ import {
   CARD_URI, CARD_MIME, CARD_TOOL_META,
   showJobSchema, runJobSchema, executionStatusSchema, showRunnersSchema,
   SHOW_JOB_DESCRIPTION, RUN_JOB_DESCRIPTION, EXECUTION_STATUS_DESCRIPTION, SHOW_RUNNERS_DESCRIPTION,
-  showJob, runJob, executionCard, showRunners, type CardResult,
+  showJob, runJob, executionStatus, showRunners, type CardResult,
 } from "./apps/cards.js";
 import { CARD_HTML } from "./apps/card-html.js";
 
@@ -544,7 +544,7 @@ server.setRequestHandler('tools/call', async (request, ctx: ServerContext): Prom
         const card: CardResult =
           name === "show_job" ? await showJob(showJobSchema.parse(args), clientRendersCards())
           : name === "run_job" ? await runJob(runJobSchema.parse(args))
-          : name === "execution_status" ? await executionCard(executionStatusSchema.parse(args).execution_id)
+          : name === "execution_status" ? await executionStatus(executionStatusSchema.parse(args))
           : await showRunners(showRunnersSchema.parse(args ?? {}));
         return { content: [{ type: "text", text: card.text }], structuredContent: card.data };
       }

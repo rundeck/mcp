@@ -3,7 +3,7 @@
  */
 
 import { jest } from "@jest/globals";
-import { showJob, runJob, executionCard, showRunners, CARD_TOOL_META, CARD_URI } from "../../apps/cards.js";
+import { showJob, runJob, executionCard, executionStatus, showRunners, currentInstanceTag, CARD_TOOL_META, CARD_URI } from "../../apps/cards.js";
 import { CARD_HTML } from "../../apps/card-html.js";
 import { configManager } from "../../config.js";
 
@@ -41,6 +41,15 @@ describe("card resource", () => {
     expect(CARD_HTML).toContain("ui/initialize");
     expect(CARD_HTML).not.toContain("run_remote_command");
   });
+
+  it("classifies unhealthy/disconnected runners as bad, not ok", () => {
+    const m = CARD_HTML.match(/function cls\(st\)\{[^\n]*\}/);
+    const cls = new Function(`${m![0]}; return cls;`)() as (s: string) => string;
+    expect(cls("Unhealthy")).toBe("bad");
+    expect(cls("Disconnected")).toBe("bad");
+    expect(cls("Healthy")).toBe("ok");
+    expect(cls("running")).toBe("run");
+  });
 });
 
 describe("showJob", () => {
@@ -68,6 +77,26 @@ describe("showJob", () => {
     expect(r.data.lastExecution).toBeUndefined();
   });
 
+  it("rejects a bare name that matches jobs in several groups", async () => {
+    route({ "GET /project/demo/jobs": [{ id: "a", name: "Deploy", group: "shop" }, { id: "b", name: "Deploy", group: "other" }] });
+    await expect(showJob({ project: "demo", job: "Deploy" })).rejects.toThrow(/matches 2 jobs.*shop\/Deploy.*other\/Deploy/);
+  });
+
+  it("never exposes secure option values", async () => {
+    route({
+      [`GET /job/${JOB_ID}`]: [{ name: "Deploy", options: [{ name: "token", secure: true, value: "s3cret" }, { name: "svc", value: "web" }] }],
+      [`GET /job/${JOB_ID}/executions`]: { executions: [] },
+    });
+    const r = await showJob({ project: "demo", job: JOB_ID, options: { token: "proposed-secret" } });
+    expect(r.data.options).toEqual([
+      expect.objectContaining({ name: "token", secure: true, value: "" }),
+      expect.objectContaining({ name: "svc", secure: false, value: "web" }),
+    ]);
+    expect(r.text).not.toMatch(/s3cret|proposed-secret/);
+    expect(r.text).toContain("token=(secure, not shown)");
+    expect(r.data.instance).toBe(currentInstanceTag());
+  });
+
   it("fails clearly when the job does not exist", async () => {
     route({ "GET /project/demo/jobs": [] });
     await expect(showJob({ project: "demo", job: "nope" })).rejects.toThrow('No job "nope" in project demo');
@@ -85,6 +114,28 @@ describe("runJob and executionCard", () => {
     expect(r.data).toEqual(expect.objectContaining({ kind: "execution", id: 42, status: "running", title: "shop/Deploy", node: "node1", log: "line 1\nline 2" }));
     const runCall = mockFetch.mock.calls.find(([u, i]) => String(u).endsWith(`/job/${JOB_ID}/run`) && i?.method === "POST");
     expect(JSON.parse(String(runCall?.[1]?.body))).toEqual({ options: { service: "api" } });
+  });
+
+  it("asks for the last 20 lines only", async () => {
+    route({ "GET /execution/5": { id: 5, status: "running" }, "GET /execution/5/output": { entries: [] } });
+    await executionCard(5);
+    const out = mockFetch.mock.calls.find(([u]) => String(u).includes("/execution/5/output"));
+    expect(new URL(String(out?.[0])).searchParams.get("lastlines")).toBe("20");
+  });
+
+  it("keeps the execution id and warns not to rerun when the status read fails after starting", async () => {
+    route({ [`POST /job/${JOB_ID}/run`]: { id: 77 }, "GET /execution/77": [503, {}] });
+    const r = await runJob({ job_id: JOB_ID });
+    expect(r.data).toEqual(expect.objectContaining({ kind: "execution", id: 77 }));
+    expect(r.text).toContain("Do NOT run it again");
+  });
+
+  it("rejects a card from a different Rundeck instance before calling the API", async () => {
+    const tag = currentInstanceTag();
+    configManager.setRundeckConnection("https://prod.example.com", "other-token");
+    await expect(runJob({ job_id: JOB_ID, instance: tag })).rejects.toThrow("different Rundeck instance");
+    await expect(executionStatus({ execution_id: "1", instance: tag })).rejects.toThrow("different Rundeck instance");
+    expect(mockFetch).not.toHaveBeenCalled();
   });
 
   it("throws when Rundeck refuses the run", async () => {
@@ -114,6 +165,23 @@ describe("showRunners", () => {
     expect(runners).toHaveLength(1);
     expect(runners[0]).toEqual(expect.objectContaining({ name: "eks", node: "eks", projects: ["a", "b"], details: [["Version", "5.1"]] }));
     expect(r.text).toContain("node filter `name: eks`");
+  });
+
+  it("keeps same-named runners with different ids apart", async () => {
+    route({
+      "GET /project/a/runnerManagement/runners": { runners: [{ id: "r1", name: "local", status: "Healthy" }] },
+      "GET /project/a/resources": {},
+      "GET /project/b/runnerManagement/runners": { runners: [{ id: "r2", name: "local", status: "Unhealthy" }] },
+      "GET /project/b/resources": {},
+      "GET /projects": [{ name: "a" }, { name: "b" }],
+    });
+    const runners = (await showRunners({})).data.runners as any[];
+    expect(runners.map((r) => [r.id, r.status, r.projects])).toEqual([["r1", "Healthy", ["a"]], ["r2", "Unhealthy", ["b"]]]);
+  });
+
+  it("surfaces runner API errors other than 404", async () => {
+    route({ "GET /project/demo/runnerManagement/runners": [403, { message: "forbidden" }] });
+    await expect(showRunners({ project: "demo" })).rejects.toThrow("HTTP 403");
   });
 
   it("returns no runners on Rundeck OSS (runners API 404)", async () => {

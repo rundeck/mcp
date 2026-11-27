@@ -3,7 +3,9 @@
  * Hosts without MCP Apps just get the text content. See card-html.ts.
  */
 import { z } from "zod";
+import { createHash } from "node:crypto";
 import { rundeckApiCall } from "../tools/api.js";
+import { configManager } from "../config.js";
 
 export const CARD_URI = "ui://rundeck/card";
 export const CARD_MIME = "text/html;profile=mcp-app";
@@ -15,11 +17,16 @@ export const showJobSchema = z.object({
   job: z.string().describe("Job id (UUID) or its path `group/name` (or just the name), e.g. from GET /project/{project}/jobs."),
   options: z.record(z.string(), z.string()).optional().describe("Proposed option values to prefill, e.g. {\"service\": \"checkout-api\"}."),
 });
+const instanceField = z
+  .string()
+  .optional()
+  .describe("Opaque instance tag from a card (`instance` in its data). When set, the call is rejected if the server is now connected to a different Rundeck instance.");
 export const runJobSchema = z.object({
   job_id: z.string().describe("Job id (UUID)."),
   options: z.record(z.string(), z.string()).optional().describe("Option values."),
+  instance: instanceField,
 });
-export const executionStatusSchema = z.object({ execution_id: z.string().describe("Execution id.") });
+export const executionStatusSchema = z.object({ execution_id: z.string().describe("Execution id."), instance: instanceField });
 export const showRunnersSchema = z.object({
   project: z.string().optional().describe("Only runners of this project. Omit for all projects."),
 });
@@ -37,6 +44,19 @@ Use it when the user asks which runners or remote targets they have, or before a
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Opaque tag of the Rundeck instance currently connected (hash of its URL, never the URL itself). */
+export function currentInstanceTag(): string {
+  const url = configManager.getConfig().rundeckUrl ?? "";
+  return createHash("sha256").update(url.replace(/\/+$/, "")).digest("hex").slice(0, 12);
+}
+
+/** Reject actions from a card that was rendered against another Rundeck instance. */
+export function assertSameInstance(instance?: string): void {
+  if (instance && instance !== currentInstanceTag()) {
+    throw new Error("This card belongs to a different Rundeck instance than the one now connected (rundeck_connect switched it). Show the job again to get a fresh card.");
+  }
+}
+
 async function get(endpoint: string, query_params?: Record<string, string>): Promise<any> {
   const r = await rundeckApiCall({ endpoint, method: "GET", query_params });
   if (r.status >= 400) throw new Error(`GET ${endpoint} → HTTP ${r.status}: ${JSON.stringify(r.body).slice(0, 300)}`);
@@ -49,11 +69,15 @@ async function resolveJobId(project: string, job: string): Promise<string> {
   const name = i >= 0 ? job.slice(i + 1) : job;
   const group = i >= 0 ? job.slice(0, i) : undefined;
   const list = await get(`/project/${encodeURIComponent(project)}/jobs`);
-  const hit = (Array.isArray(list) ? list : []).find(
+  const hits = (Array.isArray(list) ? list : []).filter(
     (j: any) => j.name === name && (group === undefined || (j.group || "") === group)
   );
-  if (!hit) throw new Error(`No job "${job}" in project ${project}. List them with GET /project/${project}/jobs.`);
-  return hit.id;
+  if (!hits.length) throw new Error(`No job "${job}" in project ${project}. List them with GET /project/${project}/jobs.`);
+  if (hits.length > 1) {
+    const paths = hits.map((j: any) => `${j.group ? j.group + "/" : ""}${j.name} (${j.id})`).join(", ");
+    throw new Error(`"${job}" matches ${hits.length} jobs in project ${project}: ${paths}. Pass the group/name path or the job UUID.`);
+  }
+  return hits[0].id;
 }
 
 export interface CardResult {
@@ -68,14 +92,19 @@ export async function showJob(params: z.infer<typeof showJobSchema>, uiSupported
   const defs = await get(`/job/${id}`, { format: "json" });
   const def = Array.isArray(defs) ? defs[0] : defs;
   const proposed = p.options ?? {};
-  const options = (def?.options ?? []).map((o: any) => ({
-    name: o.name,
-    required: !!o.required,
-    enforced: !!o.enforced,
-    values: Array.isArray(o.values) ? o.values : undefined,
-    value: proposed[o.name] ?? o.value ?? "",
-    description: o.description,
-  }));
+  const options = (def?.options ?? []).map((o: any) => {
+    const secure = !!(o.secure || o.valueExposed === false || o.storagePath);
+    return {
+      name: o.name,
+      required: !!o.required,
+      enforced: !!o.enforced,
+      secure,
+      values: Array.isArray(o.values) ? o.values : undefined,
+      // Never echo a secret value back (not even a proposed one); the user types it in the card.
+      value: secure ? "" : proposed[o.name] ?? o.value ?? "",
+      description: o.description,
+    };
+  });
   let lastExecution: Record<string, unknown> | undefined;
   try {
     const ex = await get(`/job/${id}/executions`, { max: "1" });
@@ -86,6 +115,7 @@ export async function showJob(params: z.infer<typeof showJobSchema>, uiSupported
   }
   const data = {
     kind: "job",
+    instance: currentInstanceTag(),
     id,
     project: p.project,
     name: def?.name,
@@ -95,7 +125,7 @@ export async function showJob(params: z.infer<typeof showJobSchema>, uiSupported
     lastExecution,
     permalink: def?.permalink,
   };
-  const opts = options.map((o: any) => `${o.name}=${o.value || "(empty)"}`).join(", ");
+  const opts = options.map((o: any) => `${o.name}=${o.secure ? "(secure, not shown)" : o.value || "(empty)"}`).join(", ");
   return {
     text:
       `Proposed job: ${p.project} → ${def?.group ? def.group + "/" : ""}${def?.name} (id ${id})` +
@@ -115,7 +145,7 @@ export async function executionCard(executionId: string | number, title?: string
   const e = await get(`/execution/${executionId}`);
   let log = "";
   try {
-    const out = await get(`/execution/${executionId}/output`);
+    const out = await get(`/execution/${executionId}/output`, { lastlines: "20" });
     const lines = (Array.isArray(out?.entries) ? out.entries : []).map((x: any) => x.log).filter((l: unknown) => l != null);
     log = lines.slice(-20).join("\n");
   } catch {
@@ -126,6 +156,7 @@ export async function executionCard(executionId: string | number, title?: string
   const nodes = [...(e?.successfulNodes ?? []), ...(e?.failedNodes ?? [])];
   const data = {
     kind: "execution",
+    instance: currentInstanceTag(),
     id: e?.id ?? executionId,
     project: e?.project,
     status: e?.status,
@@ -144,13 +175,29 @@ export async function executionCard(executionId: string | number, title?: string
 
 export async function runJob(params: z.infer<typeof runJobSchema>): Promise<CardResult> {
   const p = runJobSchema.parse(params);
+  assertSameInstance(p.instance);
   const r = await rundeckApiCall({ endpoint: `/job/${p.job_id}/run`, method: "POST", body: { options: p.options ?? {} } });
   const id = (r.body as any)?.id;
   if (r.status >= 400 || !id) throw new Error(`Could not run job (HTTP ${r.status}): ${JSON.stringify(r.body).slice(0, 300)}`);
-  return executionCard(id);
+  try {
+    return await executionCard(id);
+  } catch (err) {
+    // The job already started: never report this as a failed run (that invites a second run).
+    return {
+      text: `Job started as execution ${id}, but reading its status failed (${(err as Error).message}). Do NOT run it again; check it with execution_status (execution_id ${id}).`,
+      data: { kind: "execution", instance: currentInstanceTag(), id, status: "running", title: "Execution " + id, log: "" },
+    };
+  }
+}
+
+export async function executionStatus(params: z.infer<typeof executionStatusSchema>): Promise<CardResult> {
+  const p = executionStatusSchema.parse(params);
+  assertSameInstance(p.instance);
+  return executionCard(p.execution_id);
 }
 
 export interface RunnerInfo {
+  id: string;
   name: string;
   description?: string;
   status?: string;
@@ -191,7 +238,12 @@ function runnerDetails(r: any): [string, string][] | undefined {
  */
 async function projectRunners(project: string): Promise<Omit<RunnerInfo, "projects">[]> {
   const res = await rundeckApiCall({ endpoint: `/project/${encodeURIComponent(project)}/runnerManagement/runners`, method: "GET" });
-  const list = res.status < 400 ? ((res.body as any)?.runners ?? []) : [];
+  // OSS has no runners API (404): no runners. Any other error is real and must surface.
+  if (res.status === 404) return [];
+  if (res.status >= 400) {
+    throw new Error(`GET /project/${project}/runnerManagement/runners → HTTP ${res.status}: ${JSON.stringify(res.body).slice(0, 300)}`);
+  }
+  const list = (res.body as any)?.runners ?? [];
   if (!Array.isArray(list) || !list.length) return [];
   let nodes: Record<string, Record<string, unknown>> = {};
   try {
@@ -207,6 +259,7 @@ async function projectRunners(project: string): Promise<Omit<RunnerInfo, "projec
       entries.find(([name, attrs]) => keys.includes(name) || keys.includes(String((attrs as any)?.nodename ?? "")))?.[0] ??
       entries.find(([, attrs]) => Object.values(attrs ?? {}).some((v) => keys.includes(String(v))))?.[0];
     return {
+      id: String(r.id ?? r.name),
       name: String(r.name ?? r.id),
       description: r.description || undefined,
       status: r.status || undefined,
@@ -226,16 +279,17 @@ export async function showRunners(params: z.infer<typeof showRunnersSchema>): Pr
     const list = await get("/projects");
     projects = (Array.isArray(list) ? list : []).map((x: any) => String(x.name));
   }
-  const byName = new Map<string, RunnerInfo>();
+  // Names are only unique within a scope, so merge by runner id.
+  const byId = new Map<string, RunnerInfo>();
   for (const project of projects) {
     for (const r of await projectRunners(project)) {
-      const cur = byName.get(r.name) ?? { ...r, projects: [] };
+      const cur = byId.get(r.id) ?? { ...r, projects: [] };
       cur.projects.push(project);
       cur.node = cur.node ?? r.node;
-      byName.set(r.name, cur);
+      byId.set(r.id, cur);
     }
   }
-  const runners = [...byName.values()];
+  const runners = [...byId.values()];
   const text = runners.length
     ? runners
         .map((r) => `- ${r.name} [${r.status ?? "?"}] tags: ${r.tags.join(", ") || "-"} · projects: ${r.projects.join(", ")}` +

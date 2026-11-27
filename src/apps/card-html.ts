@@ -34,19 +34,19 @@ pre{background:var(--chip);border:1px solid var(--line);border-radius:6px;paddin
   function request(method,params){var id=nextId++;send({jsonrpc:'2.0',id:id,method:method,params:params});return new Promise(function(res,rej){pending[id]={res:res,rej:rej}})}
   function notify(method,params){send({jsonrpc:'2.0',method:method,params:params})}
   function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]})}
-  function cls(st){st=String(st||'').toLowerCase();if(/succeed|healthy|ok|connected|active/.test(st))return 'ok';if(/fail|abort|unhealthy|timedout|error|disconnect|never/.test(st))return 'bad';if(/run|schedul|queued|pending/.test(st))return 'run';return ''}
+  function cls(st){st=String(st||'').toLowerCase();if(/fail|abort|unhealthy|timedout|error|disconnect|never|inactive|offline/.test(st))return 'bad';if(/succeed|healthy|^ok$|connected|active|online/.test(st))return 'ok';if(/run|schedul|queued|pending/.test(st))return 'run';return ''}
   function badge(st){return '<span class="badge '+cls(st)+'"><span class="dot"></span>'+esc(st||'unknown')+'</span>'}
   function link(url,text){return url?'<a data-url="'+esc(url)+'">'+esc(text||'Open in Rundeck')+' ↗</a>':''}
   function resize(){notify('ui/notifications/size-changed',{width:document.documentElement.scrollWidth,height:document.documentElement.scrollHeight})}
   function summary(t){return String(t||'').split(/\n\s*---\s*\n|\n\s*\n/)[0].trim()}
   function askInChat(text){return request('ui/message',{role:'user',content:[{type:'text',text:text}]})}
-  function callTool(name,args){return request('tools/call',{name:name,arguments:args}).then(function(r){if(r&&r.isError){throw new Error((r.content&&r.content[0]&&r.content[0].text)||'Tool error')}return r})}
+  function callTool(name,args){return request('tools/call',{name:name,arguments:args}).then(function(r){if(r&&r.isError){var e=new Error((r.content&&r.content[0]&&r.content[0].text)||'Tool error');e.toolError=true;throw e}return r})}
 
   function renderJob(d){
     var rows=(d.options||[]).map(function(o){
       var input=o.values&&o.values.length&&o.enforced
         ?'<select data-opt="'+esc(o.name)+'">'+o.values.map(function(v){return '<option'+(v===o.value?' selected':'')+'>'+esc(v)+'</option>'}).join('')+'</select>'
-        :'<input data-opt="'+esc(o.name)+'" value="'+esc(o.value||'')+'" placeholder="'+(o.required?'required':'optional')+'">';
+        :'<input data-opt="'+esc(o.name)+'"'+(o.secure?' data-secure="1" type="password" autocomplete="off"':'')+' value="'+esc(o.secure?'':(o.value||''))+'" placeholder="'+(o.required?'required':'optional')+'">';
       return '<tr><td class="k">'+esc(o.name)+(o.required?' *':'')+'</td><td>'+input+'</td></tr>'}).join('');
     var last=d.lastExecution?'<div class="sub" style="margin-top:8px">Last run: '+badge(d.lastExecution.status)+' '+esc(d.lastExecution.date||'')+' '+link(d.lastExecution.permalink,'#'+d.lastExecution.id)+'</div>':'';
     root.innerHTML='<div class="card"><div class="top"><div><div class="sub">'+esc(d.project)+(d.group?' · '+esc(d.group):'')+'</div><h1>'+esc(d.name)+'</h1></div><span class="badge">Rundeck job</span></div>'+
@@ -55,9 +55,13 @@ pre{background:var(--chip);border:1px solid var(--line);border-radius:6px;paddin
     document.getElementById('run').onclick=function(){
       var b=this,opts={};b.disabled=true;b.textContent='Starting…';
       Array.prototype.forEach.call(root.querySelectorAll('[data-opt]'),function(el){if(el.value!=='')opts[el.getAttribute('data-opt')]=el.value});
-      var label=Object.keys(opts).map(function(k){return k+'='+opts[k]}).join(', ');
+      var secret={};Array.prototype.forEach.call(root.querySelectorAll('[data-secure]'),function(el){secret[el.getAttribute('data-opt')]=1});
+      var label=Object.keys(opts).map(function(k){return k+'='+(secret[k]?'(secure, not shown)':opts[k])}).join(', ');
       var prompt='Yes, run the Rundeck job '+d.project+' → '+(d.group?d.group+'/':'')+d.name+' (job_id '+d.id+')'+(label?' with '+label:'')+'.';
-      callTool('run_job',{job_id:d.id,options:opts}).then(function(r){render(r.structuredContent)}).catch(function(){
+      var args={job_id:d.id,options:opts};if(d.instance)args.instance=d.instance;
+      callTool('run_job',args).then(function(r){render(r.structuredContent)}).catch(function(e){
+        if(e&&e.toolError){b.disabled=false;b.textContent='Run job';document.getElementById('err').textContent=e.message;return}
+        // Only here the host could not call the tool at all, so nothing was started: hand it to chat.
         askInChat(prompt).then(function(){b.textContent='Sent to chat'}).catch(function(){b.disabled=false;b.textContent='Run job';document.getElementById('err').textContent='This app cannot run tools from the card. Reply in chat: '+prompt})})};
   }
 
@@ -69,10 +73,15 @@ pre{background:var(--chip);border:1px solid var(--line);border-radius:6px;paddin
       (d.duration?'<tr><td class="k">Duration</td><td>'+esc(d.duration)+'</td></tr>':'')+'</table>'+
       (d.log?'<pre>'+esc(d.log)+'</pre>':'')+
       '<div class="actions"><button id="refresh">'+(running?'Refreshing…':'Refresh')+'</button>'+link(d.permalink)+'</div></div>';
-    document.getElementById('refresh').onclick=function(){poll(d.id)};
-    clearTimeout(timer);if(running){timer=setTimeout(function(){poll(d.id)},3000)}
+    document.getElementById('refresh').onclick=function(){poll(d.id,d.instance,0)};
+    clearTimeout(timer);if(running){timer=setTimeout(function(){poll(d.id,d.instance,0)},3000)}
   }
-  function poll(id){callTool('execution_status',{execution_id:String(id)}).then(function(r){render(r.structuredContent)}).catch(function(){})}
+  function poll(id,instance,fails){
+    var args={execution_id:String(id)};if(instance)args.instance=instance;
+    callTool('execution_status',args).then(function(r){render(r.structuredContent)}).catch(function(e){
+      // Keep polling through transient failures (backing off), but stop on a definitive tool error.
+      if(e&&e.toolError&&/different Rundeck instance/.test(e.message))return;
+      clearTimeout(timer);if(fails<10){timer=setTimeout(function(){poll(id,instance,fails+1)},Math.min(30000,3000*Math.pow(2,fails)))}})}
 
   function renderRunners(d){
     var list=d.runners||[];
