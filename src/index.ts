@@ -63,6 +63,13 @@ import {
 import { requestDestructiveConfirmation, type DestructiveAction } from "./utils/confirmation.js";
 import { prompts, getPrompt } from "./prompts/index.js";
 import { ASK_USER_ERROR_TRAILER, ASK_USER_LINE } from "./utils/escalation.js";
+import {
+  CARD_URI, CARD_MIME, CARD_TOOL_META,
+  showJobSchema, runJobSchema, executionStatusSchema, showRunnersSchema,
+  SHOW_JOB_DESCRIPTION, RUN_JOB_DESCRIPTION, EXECUTION_STATUS_DESCRIPTION, SHOW_RUNNERS_DESCRIPTION,
+  showJob, runJob, executionStatus, showRunners, type CardResult,
+} from "./apps/cards.js";
+import { CARD_HTML } from "./apps/card-html.js";
 
 export { REGISTERED_TOOL_NAMES };
 
@@ -199,12 +206,20 @@ server.setRequestHandler('resources/list', async (request) => {
   logger.logRequest("resources/list", request.params);
   const resources = listResources();
   const result = {
-    resources: resources.map((r) => ({
-      uri: r.uri,
-      name: r.description,
-      mimeType: "text/markdown",
-      description: r.description,
-    })),
+    resources: [
+      {
+        uri: CARD_URI,
+        name: "Rundeck cards (MCP App)",
+        mimeType: CARD_MIME,
+        description: "UI template that renders job, execution and runner cards in MCP Apps hosts.",
+      },
+      ...resources.map((r) => ({
+        uri: r.uri,
+        name: r.description,
+        mimeType: "text/markdown",
+        description: r.description,
+      })),
+    ],
   };
   logger.logResponse("resources/list", result);
   return result;
@@ -225,6 +240,9 @@ server.setRequestHandler('resources/read', async (request) => {
   const uri = request.params.uri;
   logger.logRequest("resources/read", request.params);
   logger.logResourceAccess(uri);
+  if (uri === CARD_URI) {
+    return { contents: [{ uri, mimeType: CARD_MIME, text: CARD_HTML }] };
+  }
   const content = handleResource(uri);
   const result = {
     contents: [{ uri, mimeType: "text/markdown", text: content }],
@@ -235,9 +253,15 @@ server.setRequestHandler('resources/read', async (request) => {
 
 // ── Tools ──────────────────────────────────────────────────────────────────
 
+/** True when the client declared MCP Apps support, i.e. it will render ui://rundeck/card. */
+function clientRendersCards(): boolean {
+  const caps = server.getClientCapabilities() as { extensions?: Record<string, unknown> } | undefined;
+  return !!caps?.extensions?.["io.modelcontextprotocol/ui"];
+}
+
 server.setRequestHandler('tools/list', async (request) => {
   logger.logRequest("tools/list", request.params);
-  const toolDefinitions: Record<string, { description: string; inputSchema: any }> = {
+  const toolDefinitions: Record<string, { description: string; inputSchema: any; _meta?: Record<string, unknown> }> = {
     api_call: {
       description: API_CALL_DESCRIPTION,
       inputSchema: convertSchema(rundeckApiCallSchema),
@@ -300,6 +324,14 @@ ${ASK_USER_LINE}`,
       description: RESOURCE_MODEL_SOURCE_MANAGE_DESCRIPTION,
       inputSchema: convertSchema(rundeckManageResourceSourceSchema),
     },
+    show_job: { description: SHOW_JOB_DESCRIPTION, inputSchema: convertSchema(showJobSchema), _meta: CARD_TOOL_META },
+    run_job: { description: RUN_JOB_DESCRIPTION, inputSchema: convertSchema(runJobSchema), _meta: CARD_TOOL_META },
+    execution_status: {
+      description: EXECUTION_STATUS_DESCRIPTION,
+      inputSchema: convertSchema(executionStatusSchema),
+      _meta: CARD_TOOL_META,
+    },
+    show_runners: { description: SHOW_RUNNERS_DESCRIPTION, inputSchema: convertSchema(showRunnersSchema), _meta: CARD_TOOL_META },
     docs_search: {
       description: `Search local Rundeck documentation (markdown under RUNDECK_DOCS_PATH) by keywords and phrases.
 
@@ -503,6 +535,18 @@ server.setRequestHandler('tools/call', async (request, ctx: ServerContext): Prom
         const resourceSourceParams = rundeckManageResourceSourceSchema.parse(args);
         const resourceSourceResult = await rundeckManageResourceSource(resourceSourceParams);
         return { content: [{ type: "text", text: JSON.stringify(resourceSourceResult, null, 2) }] };
+      }
+
+      case "show_job":
+      case "run_job":
+      case "execution_status":
+      case "show_runners": {
+        const card: CardResult =
+          name === "show_job" ? await showJob(showJobSchema.parse(args), clientRendersCards())
+          : name === "run_job" ? await runJob(runJobSchema.parse(args))
+          : name === "execution_status" ? await executionStatus(executionStatusSchema.parse(args))
+          : await showRunners(showRunnersSchema.parse(args ?? {}));
+        return { content: [{ type: "text", text: card.text }], structuredContent: card.data };
       }
 
       case "docs_search": {
