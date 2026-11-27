@@ -17,4 +17,8 @@ export const REGISTERED_TOOL_NAMES: string[] = [
   "acl_manage",
   "resource_model_source_manage",
   "docs_search",
+  "show_job",
+  "run_job",
+  "execution_status",
+  "show_runners",
 ];
